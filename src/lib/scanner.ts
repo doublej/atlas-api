@@ -1,5 +1,9 @@
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execAsync = promisify(exec);
 
 const IGNORE = new Set(['.DS_Store', '.git', 'node_modules', '.TemporaryItems', 'dist', 'build', '.svelte-kit', '__pycache__', '.venv', 'venv', '.cache', '.beads']);
 const MAX_DEPTH = 3;
@@ -10,6 +14,8 @@ export type Framework =
 	| 'fastapi' | 'flask' | 'django' | 'streamlit'
 	| 'tauri' | 'electron'
 	| 'unknown';
+
+export type GitStatus = 'clean' | 'dirty' | 'no-repo' | 'error';
 
 export interface Project {
 	name: string;
@@ -23,6 +29,8 @@ export interface Project {
 	scripts?: Record<string, string>;
 	devCommand?: string;
 	runner?: 'bun' | 'npm' | 'yarn' | 'pnpm' | 'uv';
+	git?: GitStatus;
+	gitBranch?: string;
 }
 
 export interface ProjectIndex {
@@ -49,6 +57,26 @@ async function detectRunner(fullPath: string): Promise<Project['runner'] | undef
 		} catch { /* not found */ }
 	}
 	return undefined;
+}
+
+async function detectGitStatus(fullPath: string): Promise<{ status: GitStatus; branch?: string }> {
+	try {
+		await stat(join(fullPath, '.git'));
+	} catch {
+		return { status: 'no-repo' };
+	}
+
+	try {
+		const { stdout: branchOut } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: fullPath });
+		const branch = branchOut.trim();
+
+		const { stdout: statusOut } = await execAsync('git status --porcelain', { cwd: fullPath });
+		const status: GitStatus = statusOut.trim() === '' ? 'clean' : 'dirty';
+
+		return { status, branch };
+	} catch {
+		return { status: 'error' };
+	}
 }
 
 function detectFrameworkFromPkg(pkg: Record<string, unknown>): Framework {
@@ -94,7 +122,7 @@ async function detectPythonFramework(fullPath: string): Promise<Framework> {
 	return 'unknown';
 }
 
-async function getProjectInfo(fullPath: string): Promise<Partial<Project>> {
+async function getProjectInfo(fullPath: string, skipGit: boolean = false): Promise<Partial<Project>> {
 	const info: Partial<Project> = {};
 
 	// Node.js project
@@ -141,25 +169,32 @@ async function getProjectInfo(fullPath: string): Promise<Partial<Project>> {
 		} catch { /* no go.mod */ }
 	}
 
-	// README
+	// README - only check existence, load content lazily
 	try {
-		const readme = await readFile(join(fullPath, 'README.md'), 'utf-8');
-		info.readme = readme;
+		await stat(join(fullPath, 'README.md'));
+		info.readme = '__HAS_README__'; // marker for lazy loading
 		if (!info.description) {
-			const firstLine = readme.split('\n').find(l => l && !l.startsWith('#'))?.trim();
+			// Read only first 500 bytes for description extraction
+			const fd = await readFile(join(fullPath, 'README.md'), 'utf-8');
+			const firstLine = fd.slice(0, 500).split('\n').find(l => l && !l.startsWith('#'))?.trim();
 			if (firstLine) info.description = firstLine.slice(0, 150);
 		}
 	} catch { /* no readme */ }
 
 	info.runner = await detectRunner(fullPath);
 
+	if (!skipGit) {
+		const gitInfo = await detectGitStatus(fullPath);
+		info.git = gitInfo.status;
+		info.gitBranch = gitInfo.branch;
+	}
+
 	return info;
 }
 
-async function scanFolder(baseDir: string, dir: string, depth: number = 0): Promise<Project[]> {
+async function scanFolder(baseDir: string, dir: string, depth: number = 0, skipGit: boolean = false, folders: string[] = []): Promise<Project[]> {
 	if (depth > MAX_DEPTH) return [];
 
-	const projects: Project[] = [];
 	let entries: string[];
 
 	try {
@@ -168,37 +203,51 @@ async function scanFolder(baseDir: string, dir: string, depth: number = 0): Prom
 		return [];
 	}
 
-	for (const entry of entries) {
-		if (entry.startsWith('.') || IGNORE.has(entry)) continue;
+	const validEntries: { entry: string; fullPath: string; stats: Awaited<ReturnType<typeof stat>> }[] = [];
 
-		const fullPath = join(dir, entry);
-		let stats;
+	// Parallel stat check
+	const statResults = await Promise.all(
+		entries
+			.filter(entry => !entry.startsWith('.') && !IGNORE.has(entry))
+			.map(async entry => {
+				const fullPath = join(dir, entry);
+				try {
+					const stats = await stat(fullPath);
+					return stats.isDirectory() ? { entry, fullPath, stats } : null;
+				} catch {
+					return null;
+				}
+			})
+	);
 
-		try {
-			stats = await stat(fullPath);
-		} catch {
-			continue;
-		}
-
-		if (!stats.isDirectory()) continue;
-
-		const info = await getProjectInfo(fullPath);
-
-		if (info.type) {
-			projects.push({
-				name: entry,
-				path: fullPath,
-				relativePath: relative(baseDir, fullPath),
-				modifiedAt: stats.mtime.toISOString(),
-				...info
-			} as Project);
-		} else {
-			const subProjects = await scanFolder(baseDir, fullPath, depth + 1);
-			projects.push(...subProjects);
-		}
+	for (const result of statResults) {
+		if (result) validEntries.push(result);
 	}
 
-	return projects;
+	// Parallel project info gathering
+	const projectResults = await Promise.all(
+		validEntries.map(async ({ entry, fullPath, stats }) => {
+			const info = await getProjectInfo(fullPath, skipGit);
+
+			if (info.type) {
+				return [{
+					name: entry,
+					path: fullPath,
+					relativePath: relative(baseDir, fullPath),
+					modifiedAt: stats.mtime.toISOString(),
+					...info
+				} as Project];
+			} else {
+				// Collect non-project folders for move targets (during same traversal)
+				if (depth < 2) {
+					folders.push(relative(baseDir, fullPath) || entry);
+				}
+				return scanFolder(baseDir, fullPath, depth + 1, skipGit, folders);
+			}
+		})
+	);
+
+	return projectResults.flat();
 }
 
 async function collectFolders(baseDir: string, dir: string, depth: number = 0): Promise<string[]> {
@@ -239,12 +288,25 @@ async function collectFolders(baseDir: string, dir: string, depth: number = 0): 
 	return folders;
 }
 
-export async function scan(baseDir: string): Promise<ProjectIndex> {
-	const projects = await scanFolder(baseDir, baseDir);
+const CACHE_FILE = '.project-index-cache.json';
+const CACHE_TTL = 30 * 1000; // 30 seconds for stale-while-revalidate
+const CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes max before forced refresh
+
+interface CachedIndex extends ProjectIndex {
+	cachedAt: number;
+}
+
+export interface ScanResult extends ProjectIndex {
+	fromCache: boolean;
+	stale: boolean;
+}
+
+async function performScan(baseDir: string, skipGit: boolean): Promise<ProjectIndex> {
+	const folders: string[] = [];
+	const projects = await scanFolder(baseDir, baseDir, 0, skipGit, folders);
 	projects.sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
 
 	const frameworks = [...new Set(projects.map(p => p.framework).filter(Boolean))] as Framework[];
-	const folders = await collectFolders(baseDir, baseDir);
 
 	return {
 		baseDir,
@@ -253,6 +315,43 @@ export async function scan(baseDir: string): Promise<ProjectIndex> {
 		frameworks,
 		folders
 	};
+}
+
+export async function scan(baseDir: string, options: { skipGit?: boolean; useCache?: boolean; forceRefresh?: boolean } = {}): Promise<ScanResult> {
+	const { skipGit = false, useCache = true, forceRefresh = false } = options;
+	const cachePath = join(baseDir, CACHE_FILE);
+
+	// Try cache first (stale-while-revalidate pattern)
+	if (useCache && !forceRefresh) {
+		try {
+			const cached: CachedIndex = JSON.parse(await readFile(cachePath, 'utf-8'));
+			const age = Date.now() - cached.cachedAt;
+
+			if (age < CACHE_MAX_AGE) {
+				return { ...cached, fromCache: true, stale: age > CACHE_TTL };
+			}
+		} catch { /* no cache or invalid */ }
+	}
+
+	const result = await performScan(baseDir, skipGit);
+
+	// Save to cache (fire and forget)
+	const cacheData: CachedIndex = { ...result, cachedAt: Date.now() };
+	writeFile(cachePath, JSON.stringify(cacheData)).catch(() => {});
+
+	return { ...result, fromCache: false, stale: false };
+}
+
+export async function getGitStatus(projectPath: string): Promise<{ status: GitStatus; branch?: string }> {
+	return detectGitStatus(projectPath);
+}
+
+export async function getReadme(projectPath: string): Promise<string | null> {
+	try {
+		return await readFile(join(projectPath, 'README.md'), 'utf-8');
+	} catch {
+		return null;
+	}
 }
 
 export async function updateDescription(projectPath: string, description: string): Promise<void> {
