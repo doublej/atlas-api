@@ -1,4 +1,4 @@
-import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { readdir, readFile, stat, writeFile, open } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -13,9 +13,28 @@ export type Framework =
 	| 'express' | 'fastify' | 'hono' | 'elysia'
 	| 'fastapi' | 'flask' | 'django' | 'streamlit'
 	| 'tauri' | 'electron'
+	| 'vapor'
 	| 'unknown';
 
 export type GitStatus = 'clean' | 'dirty' | 'no-repo' | 'error';
+export type DeployPlatform = 'vercel' | 'render' | 'netlify' | 'docker' | 'github-actions';
+
+export interface DeployInfo {
+	platform: DeployPlatform;
+	url?: string;
+}
+
+export interface BeadsInfo {
+	open: number;
+	inProgress: number;
+	closed: number;
+}
+
+export interface PromotionStatus {
+	status: 'none' | 'draft' | 'in-progress' | 'ready' | 'published';
+	platforms: Record<string, string>;
+	vaultPath?: string;
+}
 
 export interface Project {
 	name: string;
@@ -31,6 +50,11 @@ export interface Project {
 	runner?: 'bun' | 'npm' | 'yarn' | 'pnpm' | 'uv';
 	git?: GitStatus;
 	gitBranch?: string;
+	hasJustfile?: boolean;
+	justRecipes?: string[];
+	deploy?: DeployInfo[];
+	beads?: BeadsInfo;
+	promotion?: PromotionStatus;
 }
 
 export interface ProjectIndex {
@@ -57,6 +81,120 @@ async function detectRunner(fullPath: string): Promise<Project['runner'] | undef
 		} catch { /* not found */ }
 	}
 	return undefined;
+}
+
+async function detectJustfile(fullPath: string): Promise<{ hasJustfile: boolean; recipes: string[] }> {
+	const names = ['justfile', 'Justfile', '.justfile'];
+	for (const filename of names) {
+		try {
+			const content = await readFile(join(fullPath, filename), 'utf-8');
+			const recipePattern = /^([a-zA-Z_][a-zA-Z0-9_-]*)\s*[^:]*:/gm;
+			const recipes: string[] = [];
+			let match;
+			while ((match = recipePattern.exec(content)) !== null) {
+				if (!match[1].startsWith('_')) recipes.push(match[1]);
+			}
+			return { hasJustfile: true, recipes };
+		} catch { /* not found */ }
+	}
+	return { hasJustfile: false, recipes: [] };
+}
+
+async function detectPromotion(projectName: string, baseDir: string): Promise<PromotionStatus | undefined> {
+	const vaultIndex = join(baseDir, '_management', 'promotion-vault', 'projects', projectName, 'index.md');
+	try {
+		const raw = await readFile(vaultIndex, 'utf-8');
+		// Parse YAML frontmatter manually (avoid importing gray-matter in scanner)
+		const fmMatch = raw.match(/^---\n([\s\S]*?)\n---/);
+		if (!fmMatch) return undefined;
+
+		const fm = fmMatch[1];
+		const statusMatch = fm.match(/^status:\s*(.+)$/m);
+		const status = (statusMatch?.[1]?.trim() ?? 'draft') as PromotionStatus['status'];
+
+		const platforms: Record<string, string> = {};
+		const platformBlock = fm.match(/^platforms:\n((?:\s+\w+:.*\n?)*)/m);
+		if (platformBlock) {
+			const lines = platformBlock[1].split('\n');
+			for (const line of lines) {
+				const m = line.match(/^\s+(\w+):\s*\{?\s*status:\s*(\w+)/);
+				if (m) platforms[m[1]] = m[2];
+			}
+		}
+
+		return {
+			status,
+			platforms,
+			vaultPath: `_management/promotion-vault/projects/${projectName}`,
+		};
+	} catch {
+		return undefined;
+	}
+}
+
+async function detectDeploy(fullPath: string): Promise<DeployInfo[]> {
+	const results: DeployInfo[] = [];
+
+	const checks = await Promise.allSettled([
+		stat(join(fullPath, 'vercel.json')).then(() => 'vercel-json' as const),
+		stat(join(fullPath, '.vercel', 'project.json')).then(() => 'vercel-dir' as const),
+		stat(join(fullPath, 'render.yaml')).then(() => 'render' as const),
+		stat(join(fullPath, 'netlify.toml')).then(() => 'netlify' as const),
+		stat(join(fullPath, 'Dockerfile')).then(() => 'docker' as const),
+		stat(join(fullPath, '.github', 'workflows')).then(() => 'github-actions' as const),
+	]);
+
+	const found = new Set(
+		checks.filter(r => r.status === 'fulfilled').map(r => (r as PromiseFulfilledResult<string>).value)
+	);
+
+	if (found.has('vercel-json') || found.has('vercel-dir')) {
+		const entry: DeployInfo = { platform: 'vercel' };
+		if (found.has('vercel-dir')) {
+			try {
+				const raw = JSON.parse(await readFile(join(fullPath, '.vercel', 'project.json'), 'utf-8'));
+				if (raw.projectId) entry.url = `https://vercel.com/~/projects/${raw.projectId}`;
+			} catch { /* ignore */ }
+		}
+		results.push(entry);
+	}
+
+	if (found.has('render')) {
+		const entry: DeployInfo = { platform: 'render' };
+		try {
+			const content = await readFile(join(fullPath, 'render.yaml'), 'utf-8');
+			const urlMatch = content.match(/ORIGIN\s*:\s*["']?(https?:\/\/[^\s"']+)/);
+			if (urlMatch) entry.url = urlMatch[1];
+		} catch { /* ignore */ }
+		results.push(entry);
+	}
+
+	if (found.has('netlify')) results.push({ platform: 'netlify' });
+	if (found.has('docker')) results.push({ platform: 'docker' });
+	if (found.has('github-actions')) results.push({ platform: 'github-actions' });
+
+	return results;
+}
+
+async function detectBeads(fullPath: string): Promise<BeadsInfo | undefined> {
+	let raw: string;
+	try {
+		raw = await readFile(join(fullPath, '.beads', 'issues.jsonl'), 'utf-8');
+	} catch {
+		return undefined;
+	}
+
+	const counts: BeadsInfo = { open: 0, inProgress: 0, closed: 0 };
+	for (const line of raw.split('\n')) {
+		if (!line) continue;
+		try {
+			const { status } = JSON.parse(line);
+			if (status === 'open') counts.open++;
+			else if (status === 'in_progress') counts.inProgress++;
+			else if (status === 'closed') counts.closed++;
+		} catch { /* malformed line */ }
+	}
+	return counts;
 }
 
 async function detectGitStatus(fullPath: string): Promise<{ status: GitStatus; branch?: string }> {
@@ -169,19 +307,60 @@ async function getProjectInfo(fullPath: string, skipGit: boolean = false): Promi
 		} catch { /* no go.mod */ }
 	}
 
+	// Swift package
+	if (!info.type) {
+		try {
+			const swift = await readFile(join(fullPath, 'Package.swift'), 'utf-8');
+			info.type = 'swift';
+			info.framework = swift.includes('vapor') ? 'vapor' : 'unknown';
+			info.devCommand = 'build';
+		} catch { /* no Package.swift */ }
+	}
+
+	// .project-index fallback (like .gitkeep, but with metadata)
+	if (!info.type) {
+		try {
+			const raw = await readFile(join(fullPath, '.project-index'), 'utf-8');
+			const meta = JSON.parse(raw);
+			if (meta.description || (meta.type && meta.type !== 'generic')) {
+				info.type = meta.type ?? 'generic';
+				info.description = meta.description;
+				info.framework = meta.framework ?? 'unknown';
+			}
+		} catch { /* no .project-index */ }
+	}
+
 	// README - only check existence, load content lazily
 	try {
-		await stat(join(fullPath, 'README.md'));
+		const readmePath = join(fullPath, 'README.md');
+		await stat(readmePath);
 		info.readme = '__HAS_README__'; // marker for lazy loading
 		if (!info.description) {
-			// Read only first 500 bytes for description extraction
-			const fd = await readFile(join(fullPath, 'README.md'), 'utf-8');
-			const firstLine = fd.slice(0, 500).split('\n').find(l => l && !l.startsWith('#'))?.trim();
+			// Read only first 512 bytes for description extraction
+			const fh = await open(readmePath, 'r');
+			const buf = Buffer.alloc(512);
+			await fh.read(buf, 0, 512, 0);
+			await fh.close();
+			const text = buf.toString('utf-8');
+			const firstLine = text.split('\n').find(l => l && !l.startsWith('#'))?.trim();
 			if (firstLine) info.description = firstLine.slice(0, 150);
 		}
 	} catch { /* no readme */ }
 
-	info.runner = await detectRunner(fullPath);
+	const [runner, justfileInfo, deployInfo, beadsInfo] = await Promise.all([
+		detectRunner(fullPath),
+		detectJustfile(fullPath),
+		detectDeploy(fullPath),
+		detectBeads(fullPath),
+	]);
+
+	info.runner = runner;
+	if (beadsInfo) info.beads = beadsInfo;
+	if (justfileInfo.hasJustfile) {
+		info.hasJustfile = true;
+		info.justRecipes = justfileInfo.recipes;
+	}
+	if (deployInfo.length > 0) info.deploy = deployInfo;
 
 	if (!skipGit) {
 		const gitInfo = await detectGitStatus(fullPath);
@@ -230,19 +409,23 @@ async function scanFolder(baseDir: string, dir: string, depth: number = 0, skipG
 			const info = await getProjectInfo(fullPath, skipGit);
 
 			if (info.type) {
+				const promotion = await detectPromotion(entry, baseDir);
 				return [{
 					name: entry,
 					path: fullPath,
 					relativePath: relative(baseDir, fullPath),
 					modifiedAt: stats.mtime.toISOString(),
-					...info
+					...info,
+					...(promotion ? { promotion } : {})
 				} as Project];
 			} else {
 				// Collect non-project folders for move targets (during same traversal)
 				if (depth < 2) {
 					folders.push(relative(baseDir, fullPath) || entry);
 				}
-				return scanFolder(baseDir, fullPath, depth + 1, skipGit, folders);
+				const subProjects = await scanFolder(baseDir, fullPath, depth + 1, skipGit, folders);
+
+				return subProjects;
 			}
 		})
 	);
@@ -289,8 +472,7 @@ async function collectFolders(baseDir: string, dir: string, depth: number = 0): 
 }
 
 const CACHE_FILE = '.project-index-cache.json';
-const CACHE_TTL = 30 * 1000; // 30 seconds for stale-while-revalidate
-const CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes max before forced refresh
+const CACHE_TTL = 60 * 1000; // 1 minute before considered stale
 
 interface CachedIndex extends ProjectIndex {
 	cachedAt: number;
@@ -321,15 +503,13 @@ export async function scan(baseDir: string, options: { skipGit?: boolean; useCac
 	const { skipGit = false, useCache = true, forceRefresh = false } = options;
 	const cachePath = join(baseDir, CACHE_FILE);
 
-	// Try cache first (stale-while-revalidate pattern)
+	// Always return cache first if available (stale-while-revalidate)
 	if (useCache && !forceRefresh) {
 		try {
 			const cached: CachedIndex = JSON.parse(await readFile(cachePath, 'utf-8'));
 			const age = Date.now() - cached.cachedAt;
-
-			if (age < CACHE_MAX_AGE) {
-				return { ...cached, fromCache: true, stale: age > CACHE_TTL };
-			}
+			// Always return cache - let client decide to refresh in background
+			return { ...cached, fromCache: true, stale: age > CACHE_TTL };
 		} catch { /* no cache or invalid */ }
 	}
 
@@ -389,6 +569,18 @@ export async function updateDescription(projectPath: string, description: string
 		await writeFile(cargoPath, content);
 		return;
 	} catch { /* no Cargo.toml */ }
+
+	// Fallback: create/update .project-index (only if description is non-empty)
+	if (description) {
+		const piPath = join(projectPath, '.project-index');
+		try {
+			const existing = JSON.parse(await readFile(piPath, 'utf-8'));
+			existing.description = description;
+			await writeFile(piPath, JSON.stringify(existing, null, 2) + '\n');
+		} catch {
+			await writeFile(piPath, JSON.stringify({ description }, null, 2) + '\n');
+		}
+	}
 }
 
 export async function scanAndSave(baseDir: string, outputPath: string): Promise<ProjectIndex> {
