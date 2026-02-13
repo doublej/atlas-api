@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Project, Framework, GitStatus } from '$lib/scanner';
+	import type { Project, Framework, GitStatus, PromotionStatus } from '$lib/scanner';
 	import { onMount } from 'svelte';
 
 	type ViewMode = 'flat' | 'nested';
@@ -11,16 +11,24 @@
 	}
 
 	let { data } = $props();
-	let projects = $state(data.projects);
-	let frameworks = $state(data.frameworks);
-	let folders = $state(data.folders);
+	let projects = $state<Project[]>([]);
+	let frameworks = $state<Framework[]>([]);
+	let folders = $state<string[]>([]);
 	let isRefreshing = $state(false);
+
+	$effect(() => {
+		projects = data.projects;
+		frameworks = data.frameworks;
+		folders = data.folders;
+	});
 	let search = $state('');
 	let selectedFrameworks = $state<Set<Framework>>(new Set());
 	let selectedTypes = $state<Set<string>>(new Set());
 	let selectedRunners = $state<Set<string>>(new Set());
+	let selectedTools = $state<Set<string>>(new Set());
 	let onlyWithDev = $state(false);
 	let onlyWithReadme = $state(false);
+	let selectedPromotion = $state<string | null>(null);
 	let runningPorts = $state<Record<string, string>>({});
 	let editing = $state<string | null>(null);
 	let editValue = $state('');
@@ -99,16 +107,21 @@
 			if (selectedFrameworks.size > 0 && (!p.framework || !selectedFrameworks.has(p.framework))) return false;
 			if (selectedTypes.size > 0 && (!p.type || !selectedTypes.has(p.type))) return false;
 			if (selectedRunners.size > 0 && (!p.runner || !selectedRunners.has(p.runner))) return false;
+			if (selectedTools.has('just') && !p.hasJustfile) return false;
 			if (onlyWithDev && !p.devCommand) return false;
 			if (onlyWithReadme && !p.readme) return false;
+
+			if (selectedPromotion === 'promoted' && !p.promotion) return false;
+			if (selectedPromotion === 'unpromoted' && p.promotion) return false;
+			if (selectedPromotion === 'in-progress' && p.promotion?.status !== 'in-progress') return false;
 
 			return true;
 		})
 	);
 
 	const activeFilterCount = $derived(
-		selectedFrameworks.size + selectedTypes.size + selectedRunners.size +
-		(onlyWithDev ? 1 : 0) + (onlyWithReadme ? 1 : 0)
+		selectedFrameworks.size + selectedTypes.size + selectedRunners.size + selectedTools.size +
+		(onlyWithDev ? 1 : 0) + (onlyWithReadme ? 1 : 0) + (selectedPromotion ? 1 : 0)
 	);
 
 	const nestedProjects = $derived.by(() => {
@@ -176,8 +189,10 @@
 		selectedFrameworks = new Set();
 		selectedTypes = new Set();
 		selectedRunners = new Set();
+		selectedTools = new Set();
 		onlyWithDev = false;
 		onlyWithReadme = false;
+		selectedPromotion = null;
 	}
 
 	const typeColors: Record<string, string> = {
@@ -189,7 +204,7 @@
 		sveltekit: '#ff3e00', svelte: '#ff3e00', next: '#a1a1aa', nuxt: '#4ade80',
 		astro: '#c084fc', remix: '#a1a1aa', react: '#38bdf8', vue: '#4ade80',
 		angular: '#f87171', vite: '#a78bfa', express: '#71717a', fastify: '#71717a',
-		hono: '#fb923c', elysia: '#a78bfa', fastapi: '#2dd4bf', flask: '#71717a',
+		hono: '#fb923c', elysia: '#a78bfa', vapor: '#a78bfa', fastapi: '#2dd4bf', flask: '#71717a',
 		django: '#4ade80', streamlit: '#f87171', tauri: '#fbbf24', electron: '#38bdf8',
 		unknown: '#52525b'
 	};
@@ -205,6 +220,30 @@
 		if (result.url) {
 			runningPorts[project.path] = result.url;
 			setTimeout(() => window.open(result.url, '_blank'), 2000);
+		}
+	}
+
+	async function runJust(project: Project, recipe: string) {
+		const res = await fetch('/api/run', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ path: project.path, command: recipe, type: 'just' })
+		});
+		const result = await res.json();
+		if (result.url) {
+			runningPorts[project.path] = result.url;
+		}
+	}
+
+	async function runScript(project: Project, script: string) {
+		const res = await fetch('/api/run', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ path: project.path, command: script, runner: project.runner || 'npm' })
+		});
+		const result = await res.json();
+		if (result.url) {
+			runningPorts[project.path] = result.url;
 		}
 	}
 
@@ -296,7 +335,7 @@
 	{#if showFilters}
 		<div class="filters">
 			<div class="filter-group">
-				<label>Type</label>
+				<div class="filter-label">Type</div>
 				<div class="chips">
 					{#each types as type}
 						<button
@@ -310,7 +349,7 @@
 			</div>
 
 			<div class="filter-group">
-				<label>Framework</label>
+				<div class="filter-label">Framework</div>
 				<div class="chips">
 					{#each frameworks.filter(f => f !== 'unknown') as fw}
 						<button
@@ -324,7 +363,7 @@
 			</div>
 
 			<div class="filter-group">
-				<label>Runner</label>
+				<div class="filter-label">Runner</div>
 				<div class="chips">
 					{#each runners as runner}
 						<button
@@ -336,11 +375,34 @@
 				</div>
 			</div>
 
+			{#if projects.some(p => p.hasJustfile)}
+				<div class="filter-group">
+					<div class="filter-label">Tools</div>
+					<div class="chips">
+						<button
+							class="chip"
+							class:active={selectedTools.has('just')}
+							style="--color: #fbbf24"
+							onclick={() => selectedTools = toggleSet(selectedTools, 'just')}
+						>just</button>
+					</div>
+				</div>
+			{/if}
+
 			<div class="filter-group">
-				<label>Features</label>
+				<div class="filter-label">Features</div>
 				<div class="chips">
 					<button class="chip" class:active={onlyWithDev} onclick={() => onlyWithDev = !onlyWithDev}>Has dev command</button>
 					<button class="chip" class:active={onlyWithReadme} onclick={() => onlyWithReadme = !onlyWithReadme}>Has README</button>
+				</div>
+			</div>
+
+			<div class="filter-group">
+				<div class="filter-label">Promotion</div>
+				<div class="chips">
+					<button class="chip" class:active={selectedPromotion === 'promoted'} style="--color: #4ade80" onclick={() => selectedPromotion = selectedPromotion === 'promoted' ? null : 'promoted'}>Promoted</button>
+					<button class="chip" class:active={selectedPromotion === 'unpromoted'} style="--color: #71717a" onclick={() => selectedPromotion = selectedPromotion === 'unpromoted' ? null : 'unpromoted'}>Unpromoted</button>
+					<button class="chip" class:active={selectedPromotion === 'in-progress'} style="--color: #fbbf24" onclick={() => selectedPromotion = selectedPromotion === 'in-progress' ? null : 'in-progress'}>In Progress</button>
 				</div>
 			</div>
 		</div>
@@ -350,6 +412,9 @@
 		{@const git = gitStatus[project.path]}
 		<li class="project-card" data-git={git?.status}>
 			<div class="header">
+				{#if project.promotion}
+					<span class="promotion-badge" data-status={project.promotion.status} title="Promotion: {project.promotion.status}"></span>
+				{/if}
 				<span class="type" style="background: {typeColors[project.type ?? 'folder']}">{project.type}</span>
 				{#if project.framework && project.framework !== 'unknown'}
 					<span class="framework" style="background: {frameworkColors[project.framework]}">{project.framework}</span>
@@ -403,8 +468,20 @@
 			{#if project.scripts}
 				<div class="scripts">
 					{#each Object.keys(project.scripts).slice(0, 6) as script}
-						<span class="script">{script}</span>
+						<button class="script" onclick={() => runScript(project, script)}>{script}</button>
 					{/each}
+				</div>
+			{/if}
+
+			{#if project.justRecipes?.length}
+				<div class="just-recipes">
+					<span class="just-label">just:</span>
+					{#each project.justRecipes.slice(0, 6) as recipe}
+						<button class="recipe" onclick={() => runJust(project, recipe)}>{recipe}</button>
+					{/each}
+					{#if project.justRecipes.length > 6}
+						<span class="more">+{project.justRecipes.length - 6}</span>
+					{/if}
 				</div>
 			{/if}
 
@@ -472,8 +549,19 @@
 </main>
 
 {#if renaming}
-	<div class="modal-backdrop" onclick={() => renaming = null}>
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
+	<div
+		class="modal-backdrop"
+		role="presentation"
+		onclick={() => renaming = null}
+		onkeydown={(e) => e.key === 'Escape' && (renaming = null)}
+	>
+		<div
+			class="modal"
+			role="dialog"
+			aria-modal="true"
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
+		>
 			<h3>Rename "{renaming.name}"</h3>
 			<input type="text" bind:value={renameValue} onkeydown={(e) => e.key === 'Enter' && doRename()} />
 			<div class="modal-actions">
@@ -485,8 +573,19 @@
 {/if}
 
 {#if moving}
-	<div class="modal-backdrop" onclick={() => moving = null}>
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
+	<div
+		class="modal-backdrop"
+		role="presentation"
+		onclick={() => moving = null}
+		onkeydown={(e) => e.key === 'Escape' && (moving = null)}
+	>
+		<div
+			class="modal"
+			role="dialog"
+			aria-modal="true"
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
+		>
 			<h3>Move "{moving.name}" to</h3>
 			<select bind:value={moveTarget}>
 				<option value="">Select folder...</option>
@@ -706,7 +805,7 @@
 		gap: 1rem;
 	}
 
-	.filter-group label {
+	.filter-label {
 		display: block;
 		font-family: 'IBM Plex Mono', monospace;
 		font-size: 0.625rem;
@@ -815,6 +914,38 @@
 		background: transparent;
 		border-color: var(--text-muted);
 		color: var(--text-muted);
+	}
+
+	/* === PROMOTION BADGE === */
+	.promotion-badge {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		flex-shrink: 0;
+		margin-right: auto;
+	}
+
+	.promotion-badge[data-status="published"] {
+		background: var(--accent-green);
+		box-shadow: 0 0 6px var(--accent-green);
+	}
+
+	.promotion-badge[data-status="ready"] {
+		background: var(--accent-green);
+	}
+
+	.promotion-badge[data-status="in-progress"] {
+		background: var(--accent-amber);
+		box-shadow: 0 0 6px var(--accent-amber);
+	}
+
+	.promotion-badge[data-status="draft"] {
+		background: var(--accent-purple);
+	}
+
+	.promotion-badge[data-status="none"] {
+		background: var(--text-muted);
+		opacity: 0.5;
 	}
 
 	strong {
@@ -977,6 +1108,52 @@
 		background: var(--bg-base);
 		border: 1px solid var(--border);
 		color: var(--accent-green);
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.script:hover {
+		background: var(--accent-green);
+		color: var(--bg-base);
+		border-color: var(--accent-green);
+	}
+
+	/* === JUST RECIPES === */
+	.just-recipes {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+		margin: 0.5rem 0;
+		align-items: center;
+	}
+
+	.just-label {
+		font-family: 'IBM Plex Mono', monospace;
+		font-size: 0.625rem;
+		color: var(--accent-amber);
+		margin-right: 0.25rem;
+	}
+
+	.recipe {
+		font-family: 'IBM Plex Mono', monospace;
+		font-size: 0.625rem;
+		padding: 0.125rem 0.375rem;
+		background: var(--bg-base);
+		border: 1px solid var(--accent-amber);
+		color: var(--accent-amber);
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.recipe:hover {
+		background: var(--accent-amber);
+		color: var(--bg-base);
+	}
+
+	.more {
+		font-family: 'IBM Plex Mono', monospace;
+		font-size: 0.625rem;
+		color: var(--text-muted);
 	}
 
 	/* === ACTIONS === */

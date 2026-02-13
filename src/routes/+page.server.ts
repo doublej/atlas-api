@@ -1,11 +1,10 @@
 import { scan, type ScanResult } from '$lib/scanner';
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 export type { Project } from '$lib/scanner';
 
-const PROJECT_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
-export const DEV_FOLDER = dirname(dirname(PROJECT_ROOT)); // development folder
+export const DEV_FOLDER = join(homedir(), 'Documents', 'development');
 
 export async function load(): Promise<ScanResult> {
 	return scan(DEV_FOLDER, { skipGit: true });

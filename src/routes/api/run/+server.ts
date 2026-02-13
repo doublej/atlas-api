@@ -5,7 +5,7 @@ import type { RequestHandler } from './$types';
 const runningProcesses = new Map<string, { port?: number; pid: number }>();
 
 export const POST: RequestHandler = async ({ request }) => {
-	const { path, command, runner } = await request.json();
+	const { path, command, runner, type } = await request.json();
 
 	if (!path || !command) {
 		return json({ error: 'Missing path or command' }, { status: 400 });
@@ -23,8 +23,19 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Find available port
 	const port = 3000 + Math.floor(Math.random() * 1000);
 
-	const cmd = runner === 'bun' ? 'bun' : runner === 'yarn' ? 'yarn' : runner === 'pnpm' ? 'pnpm' : 'npm';
-	const args = runner === 'npm' ? ['run', command, '--', '--port', String(port)] : [command, '--port', String(port)];
+	let cmd: string;
+	let args: string[];
+
+	if (type === 'just') {
+		cmd = 'just';
+		args = [command];
+	} else if (runner === 'uv') {
+		cmd = 'uv';
+		args = ['run', command];
+	} else {
+		cmd = runner === 'bun' ? 'bun' : runner === 'yarn' ? 'yarn' : runner === 'pnpm' ? 'pnpm' : 'npm';
+		args = runner === 'npm' ? ['run', command, '--', '--port', String(port)] : [command, '--port', String(port)];
+	}
 
 	const child = spawn(cmd, args, {
 		cwd: path,
