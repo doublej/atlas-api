@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { resolveInCatalog } from '$lib/claude-tree';
 import { getAction, type AgentEngine } from '$lib/claude-tree-actions';
 import { runAction } from '$lib/claude-tree-agent';
+import type { EntityKind } from '$lib/claude-tree-entities';
 import { DEV_FOLDER } from '$lib/config';
 import type { RequestHandler } from './$types';
 
@@ -16,7 +17,7 @@ interface AgentBody {
 	actionId: string;
 	locked: boolean;
 	question?: string;
-	entity: { text: string; startLine: number; endLine: number; kind: 'section' | 'bullet' };
+	entity: { text: string; startLine: number; endLine: number; kind: EntityKind };
 }
 
 export const POST: RequestHandler = async ({ request }) => {

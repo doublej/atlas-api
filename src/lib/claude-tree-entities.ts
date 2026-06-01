@@ -1,23 +1,27 @@
-// Markdown entity detection for the CLAUDE.md editor: every heading (a section)
-// and every list item (a bullet) becomes an addressable entity with a line range,
-// so the editor can offer per-item agent actions. Pure + framework-free — imported
-// client-side by CmEditor and (for validation) server-side by the agent endpoint.
+// Markdown entity detection for the CLAUDE.md editor. Every non-blank line is an
+// addressable item; the richer enclosing units anchor on their opening line:
+// a heading → the whole section, a lone <tag> → the whole tagged block, a list
+// marker → the whole bullet, everything else → that single line. Each carries a
+// line range so the editor can offer per-item agent actions. Pure + framework-free
+// — imported client-side by CmEditor and server-side by the agent endpoint.
 
-export type EntityKind = 'section' | 'bullet';
+export type EntityKind = 'section' | 'block' | 'bullet' | 'line';
 
 export interface Entity {
 	id: string; // stable within one parse — `${kind}:${anchorLine}`
 	kind: EntityKind;
-	anchorLine: number; // 1-based line of the heading / bullet marker
+	anchorLine: number; // 1-based line the affordance sits on (the opening line)
 	startLine: number; // 1-based, inclusive (== anchorLine)
 	endLine: number; // 1-based, inclusive — last line owned by this entity
-	level: number; // heading depth (1–6); bullet indent depth (spaces) for bullets
+	level: number; // heading depth (1–6); else the line's indentation in spaces
 	title: string; // short label for the action menu
 	text: string; // the entity's full source text (startLine..endLine)
 }
 
 const HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
 const BULLET = /^(\s*)(?:[-*+]|\d+[.)])\s+(.+)/;
+const TAG_OPEN = /^<([A-Za-z][\w:-]*)(?:\s[^>]*)?>$/; // a line that is solely an opening tag
+const TAG_CLOSE = /^<\/[A-Za-z][\w:-]*>$/; // a line that is solely a closing tag
 const FENCE = /^\s*(```|~~~)/;
 const TITLE_MAX = 64;
 
@@ -68,30 +72,54 @@ function bulletEnd(lines: string[], fenced: boolean[], start: number, indent: nu
 	return end;
 }
 
+/** Last line a `<tag>` block owns: its depth-aware matching close, else null. */
+function blockEnd(lines: string[], fenced: boolean[], start: number, tag: string): number | null {
+	const openRe = new RegExp(`<${tag}(?:\\s[^>]*)?>`, 'g');
+	const closeRe = new RegExp(`</${tag}>`, 'g');
+	let depth = 0;
+	for (let i = start; i < lines.length; i++) {
+		if (fenced[i]) continue;
+		depth += (lines[i].match(openRe) || []).length - (lines[i].match(closeRe) || []).length;
+		if (i > start && depth <= 0) return i;
+	}
+	return null;
+}
+
 function sliceText(lines: string[], startIdx: number, endIdx: number): string {
 	return lines.slice(startIdx, endIdx + 1).join('\n');
 }
 
-/** Detect every section and bullet as an addressable entity, in document order. */
+/**
+ * Classify one line into its entity: a heading owns its section, a lone `<tag>`
+ * owns its block, a list marker owns its bullet, anything else is a single line.
+ * Returns null for lines that belong to a block opened elsewhere (closing tags).
+ */
+function lineEntity(lines: string[], fenced: boolean[], i: number): Entity | null {
+	const raw = lines[i];
+	const h = HEADING.exec(raw);
+	if (h) return makeEntity('section', i, sectionEnd(lines, fenced, i, h[1].length) - 1, h[1].length, h[2].trim(), lines);
+	const trimmed = raw.trim();
+	const open = TAG_OPEN.exec(trimmed);
+	if (open) {
+		const end = blockEnd(lines, fenced, i, open[1]);
+		if (end !== null) return makeEntity('block', i, end, leadingSpaces(raw), `<${open[1]}>`, lines);
+	}
+	if (TAG_CLOSE.test(trimmed)) return null; // owned by its block's opening affordance
+	const b = BULLET.exec(raw);
+	if (b) return makeEntity('bullet', i, bulletEnd(lines, fenced, i, b[1].length), b[1].length, b[2].trim(), lines);
+	return makeEntity('line', i, i, leadingSpaces(raw), trimmed, lines);
+}
+
+/** Detect every non-blank line as an addressable entity, in document order. */
 export function parseEntities(text: string): Entity[] {
 	const lines = text.split('\n');
 	const fenced = fencedLines(lines);
 	const start = bodyStart(lines);
 	const out: Entity[] = [];
 	for (let i = start; i < lines.length; i++) {
-		if (fenced[i]) continue;
-		const h = HEADING.exec(lines[i]);
-		if (h) {
-			const endIdx = sectionEnd(lines, fenced, i, h[1].length) - 1;
-			out.push(makeEntity('section', i, endIdx, h[1].length, h[2].trim(), lines));
-			continue;
-		}
-		const b = BULLET.exec(lines[i]);
-		if (b) {
-			const indent = b[1].length;
-			const endIdx = bulletEnd(lines, fenced, i, indent);
-			out.push(makeEntity('bullet', i, endIdx, indent, b[2].trim(), lines));
-		}
+		if (fenced[i] || lines[i].trim() === '') continue;
+		const entity = lineEntity(lines, fenced, i);
+		if (entity) out.push(entity);
 	}
 	return out;
 }

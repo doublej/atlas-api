@@ -45,7 +45,7 @@
 
 <div class="entity-menu" style="left: {left}px; top: {pos.y}px; width: {MENU_W}px;" role="menu" tabindex="-1">
 	<header class="em-head">
-		<span class="em-kind" class:section={entity.kind === 'section'}>{entity.kind}</span>
+		<span class="em-kind" class:wide={entity.kind === 'section' || entity.kind === 'block'}>{entity.kind}</span>
 		<span class="em-title">{entity.title}</span>
 		<button class="em-close" title="Close (Esc)" aria-label="Close" onclick={onClose}>✕</button>
 	</header>
@@ -122,7 +122,7 @@
 		background: var(--color-card-2);
 		color: var(--color-fg-2);
 	}
-	.em-kind.section {
+	.em-kind.wide {
 		background: var(--color-accent-soft);
 		color: var(--color-accent-soft-fg);
 	}

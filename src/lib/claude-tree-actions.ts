@@ -67,8 +67,8 @@ const CLOSE = '<<<END_ATLAS_RESULT>>>';
 const SYSTEM_EDIT =
 	'You edit CLAUDE.md instruction files for AI coding agents. You return ONLY the rewritten ' +
 	`markdown, fenced exactly between ${OPEN} and ${CLOSE} on their own lines — no preamble, no ` +
-	'explanation, no code fences. Preserve the original markdown structure: same heading level, ' +
-	'bullet marker, and indentation.';
+	'explanation, no code fences. Preserve the original structure: heading levels, list markers, ' +
+	'indentation, and any XML-style <tags>.';
 
 const SYSTEM_ANSWER =
 	'You answer questions about CLAUDE.md instruction files for AI coding agents. Respond in ' +
