@@ -21,9 +21,13 @@
 	} = $props();
 
 	// Auto-checked: by default the agent may only rewrite this one item.
+	// For the whole-file action the lock is moot — the file is always the scope.
 	let locked = $state(true);
 	let asking = $state(false);
 	let question = $state('');
+
+	const isFile = $derived(entity.kind === 'file');
+	const effectiveLocked = $derived(isFile ? false : locked);
 
 	const MENU_W = 248;
 	const left = $derived(Math.min(pos.x, (globalThis.innerWidth ?? 1280) - MENU_W - 8));
@@ -34,18 +38,20 @@
 			asking = true;
 			return;
 		}
-		onRun({ actionId: action.id, locked });
+		onRun({ actionId: action.id, locked: effectiveLocked });
 	}
 
 	function submitQuestion() {
 		if (busy || !question.trim()) return;
-		onRun({ actionId: 'ask', locked, question });
+		onRun({ actionId: 'ask', locked: effectiveLocked, question });
 	}
 </script>
 
 <div class="entity-menu" style="left: {left}px; top: {pos.y}px; width: {MENU_W}px;" role="menu" tabindex="-1">
 	<header class="em-head">
-		<span class="em-kind" class:wide={entity.kind === 'section' || entity.kind === 'block'}>{entity.kind}</span>
+		<span class="em-kind" class:wide={isFile || entity.kind === 'section' || entity.kind === 'block'}
+			>{isFile ? 'whole file' : entity.kind}</span
+		>
 		<span class="em-title">{entity.title}</span>
 		<button class="em-close" title="Close (Esc)" aria-label="Close" onclick={onClose}>✕</button>
 	</header>
@@ -84,10 +90,12 @@
 		</div>
 	{/if}
 
-	<label class="em-lock" class:disabled={busy}>
-		<input type="checkbox" bind:checked={locked} disabled={busy} />
-		Agent can only change this item
-	</label>
+	{#if !isFile}
+		<label class="em-lock" class:disabled={busy}>
+			<input type="checkbox" bind:checked={locked} disabled={busy} />
+			Agent can only change this item
+		</label>
+	{/if}
 
 	{#if busy}
 		<div class="em-busy">Running {engine}…</div>

@@ -5,7 +5,9 @@
 // line range so the editor can offer per-item agent actions. Pure + framework-free
 // — imported client-side by CmEditor and server-side by the agent endpoint.
 
-export type EntityKind = 'section' | 'block' | 'bullet' | 'line';
+// 'file' is never produced by parseEntities — the editor synthesizes it for the
+// whole-file action button (startLine 1 → last line).
+export type EntityKind = 'section' | 'block' | 'bullet' | 'line' | 'file';
 
 export interface Entity {
 	id: string; // stable within one parse — `${kind}:${anchorLine}`
