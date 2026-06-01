@@ -23,7 +23,7 @@
 	// Auto-checked: by default the agent may only rewrite this one item.
 	// For the whole-file action the lock is moot — the file is always the scope.
 	let locked = $state(true);
-	let asking = $state(false);
+	let asking = $state<AgentAction | null>(null); // the input-collecting action awaiting text
 	let question = $state('');
 
 	const isFile = $derived(entity.kind === 'file');
@@ -35,15 +35,16 @@
 	function pick(action: AgentAction) {
 		if (busy) return;
 		if (action.needsInput) {
-			asking = true;
+			asking = action;
+			question = '';
 			return;
 		}
 		onRun({ actionId: action.id, locked: effectiveLocked });
 	}
 
-	function submitQuestion() {
-		if (busy || !question.trim()) return;
-		onRun({ actionId: 'ask', locked: effectiveLocked, question });
+	function submitInput() {
+		if (busy || !asking || !question.trim()) return;
+		onRun({ actionId: asking.id, locked: effectiveLocked, question });
 	}
 </script>
 
@@ -81,12 +82,14 @@
 			<!-- svelte-ignore a11y_autofocus -->
 			<input
 				bind:value={question}
-				placeholder="Ask about this item…"
+				placeholder={asking.id === 'custom' ? 'Describe the change…' : 'Ask about this item…'}
 				disabled={busy}
 				autofocus
-				onkeydown={(e) => e.key === 'Enter' && submitQuestion()}
+				onkeydown={(e) => e.key === 'Enter' && submitInput()}
 			/>
-			<button class="em-send" disabled={busy || !question.trim()} onclick={submitQuestion}>Ask</button>
+			<button class="em-send" disabled={busy || !question.trim()} onclick={submitInput}>
+				{asking.id === 'custom' ? 'Run' : 'Ask'}
+			</button>
 		</div>
 	{/if}
 

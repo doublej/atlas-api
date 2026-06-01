@@ -55,6 +55,14 @@ export const ENTITY_ACTIONS: AgentAction[] = [
 		icon: '✶',
 		needsInput: true,
 		instruction: 'Answer this question about the selected item: {question}'
+	},
+	{
+		id: 'custom',
+		label: 'Custom prompt…',
+		mode: 'edit',
+		icon: '➤',
+		needsInput: true,
+		instruction: '{question}'
 	}
 ];
 
