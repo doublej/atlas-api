@@ -1,4 +1,4 @@
-# Project Index
+# Atlas API
 
 SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays projects in a filterable UI.
 
@@ -21,7 +21,7 @@ bun run dev
 - Git status with branch name (clean/dirty/no-repo/error)
 - Description extraction from package.json, pyproject.toml, Cargo.toml, or README
 - Dev command detection (dev, start, serve scripts)
-- Stale-while-revalidate caching (60s TTL, `.project-index-cache.json`)
+- Stale-while-revalidate caching (60s TTL, `.atlas-cache.json`)
 
 ### UI
 

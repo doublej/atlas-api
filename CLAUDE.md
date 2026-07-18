@@ -27,8 +27,8 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 - Detects project type from manifests: package.json, pyproject.toml, Cargo.toml, go.mod
 - Detects package manager from lockfiles: bun.lockb, yarn.lock, pnpm-lock.yaml, package-lock.json, uv.lock
 - Detects justfile presence and parses recipes
-- Exports `Project` and `ProjectIndex` types used throughout
-- Implements stale-while-revalidate caching (`.project-index-cache.json`, 60s TTL)
+- Exports `Project` and `ProjectAtlas` types used throughout
+- Implements stale-while-revalidate caching (`.atlas-cache.json`, 60s TTL)
 - Ignores: node_modules, .git, dist, build, .svelte-kit, __pycache__, .venv, .cache, .beads
 
 **Main UI (`src/routes/+page.svelte`)**
@@ -47,6 +47,21 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 - `PUT /api/description` - Update project description in manifest
 - `POST /api/rename`, `/api/move` - File operations
 - `GET/POST/PUT /api/agent-files` - CLAUDE.md and AGENTS.md operations
+- `GET /api/daemons` - List launchd daemons joined with live `launchctl` state, port check, stale-path detection
+- `POST /api/daemons/:label` - Lifecycle actions (`{action: 'start'|'stop'|'restart'}`); gated by `ATLAS_DAEMON_WRITE=1`
+
+### Daemon management
+
+Atlas reads the shared registry at `../shared/daemons.json` and shells out to `launchctl` via `src/lib/launchctl.ts` (5s SIGKILL timeout on every call).
+
+Three-layer guard prevents atlas-api from lifecycle-managing itself:
+1. Registry flag — `com.jurrejan.atlas-api` is marked `selfManaged: true`.
+2. Endpoint guard — `POST /api/daemons/:label` returns 403 `self-managed` for any daemon with that flag.
+3. Env gate — all writes return 403 `writes disabled` unless `ATLAS_DAEMON_WRITE=1` is set (configured in the plist's `EnvironmentVariables`).
+
+`atlas-watchdog` remains the sole supervisor for `com.jurrejan.atlas-api`. No auto-restart logic lives in atlas-api itself.
+
+Plists live in their owning repo under a `launchd/` directory and are symlinked from `~/Library/LaunchAgents/`. Edit plists by hand; v1 ships zero plist writes from code.
 
 ### Data Flow
 

@@ -8,7 +8,12 @@ const DEFAULT_DIR = join(homedir(), 'Documents', 'development');
 
 export const GET: RequestHandler = async ({ url }) => {
 	const baseDir = url.searchParams.get('dir') || DEFAULT_DIR;
+	const includeArchived = url.searchParams.get('includeArchived') === 'true';
 	const index = await scan(baseDir);
+
+	if (!includeArchived) {
+		index.projects = index.projects.filter(p => !p.archived);
+	}
 
 	return json(index, {
 		headers: {

@@ -1,0 +1,204 @@
+/* =============================================================
+   atlas-api — design tokens (Tooling design system)
+   Data-dense neutral aesthetic (Linear / Vercel / Stripe school).
+   Semantic CSS vars only; the whole app re-themes by toggling
+   `.dark` on <html>. App-specific aliases (node kinds, git/
+   promotion status) derive from the semantic tokens so they
+   flip with the theme automatically.
+   ============================================================= */
+
+/* ---------- Tokens: Light (default) ---------- */
+:root {
+	/* Surfaces */
+	--color-bg: #fafafa;
+	--color-bg-elev: #ffffff;
+	--color-card: #ffffff;
+	--color-card-2: #f4f4f5;
+	--color-hover: #e9e9ec; /* control / row hover surface */
+	--color-overlay: rgba(10, 10, 10, 0.4);
+
+	/* Text */
+	--color-fg: #0a0a0a;
+	--color-fg-2: #27272a;
+	--color-muted: #71717a;
+	--color-muted-2: #a1a1aa;
+	--color-disabled: #d4d4d8;
+
+	/* Lines */
+	--color-border: rgba(10, 10, 10, 0.12);
+	--color-border-soft: rgba(10, 10, 10, 0.06);
+	--color-border-strong: rgba(10, 10, 10, 0.18);
+	--color-ring: #5e6ad2;
+
+	/* Brand / accent (Linear-ish indigo) */
+	--color-accent: #5e6ad2;
+	--color-accent-fg: #ffffff;
+	--color-accent-soft: #eef0fb;
+	--color-accent-soft-fg: #3a44a3;
+
+	/* Semantic */
+	--color-pos: #16a34a;
+	--color-pos-soft: #dcfce7;
+	--color-neg: #dc2626;
+	--color-neg-soft: #fee2e2;
+	--color-warn: #d97706;
+	--color-warn-soft: #fef3c7;
+	--color-info: #2563eb;
+	--color-info-soft: #dbeafe;
+
+	/* Categorical (node kinds, framework/type chips) */
+	--chart-1: #5e6ad2;
+	--chart-2: #16a34a;
+	--chart-3: #d97706;
+	--chart-4: #dc2626;
+	--chart-5: #0891b2;
+	--chart-6: #7c3aed;
+	--chart-7: #db2777;
+	--chart-8: #65a30d;
+
+	/* Radii */
+	--radius-xs: 4px;
+	--radius-sm: 6px;
+	--radius-md: 8px;
+	--radius-lg: 12px;
+	--radius-full: 9999px;
+
+	/* Elevation — used sparingly (popovers, menus, toasts only) */
+	--shadow-sm: 0 1px 2px rgba(10, 10, 10, 0.06), 0 1px 1px rgba(10, 10, 10, 0.04);
+	--shadow-md: 0 4px 12px rgba(10, 10, 10, 0.08), 0 2px 4px rgba(10, 10, 10, 0.04);
+	--shadow-lg: 0 12px 32px rgba(10, 10, 10, 0.12), 0 4px 8px rgba(10, 10, 10, 0.04);
+
+	/* Type families */
+	--font-sans: 'Geist', 'Geist Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+		Roboto, system-ui, sans-serif;
+	--font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+	--font-display: 'Instrument Serif', 'Times New Roman', Georgia, serif;
+
+	/* ---- App aliases: node kinds (claude-tree) ---- */
+	--kind-root: var(--color-warn);
+	--kind-project: var(--color-accent);
+	--kind-ancestor: var(--chart-6);
+	--kind-descendant: var(--color-muted);
+	--kind-glossary: var(--color-pos);
+	--kind-rule: var(--color-info);
+
+	/* ---- App aliases: status ---- */
+	--status-clean: var(--color-pos);
+	--status-dirty: var(--color-warn);
+	--status-error: var(--color-neg);
+	--status-idle: var(--color-muted-2);
+}
+
+/* ---------- Tokens: Dark ---------- */
+.dark {
+	--color-bg: #0a0a0a;
+	--color-bg-elev: #131316;
+	--color-card: #111114;
+	--color-card-2: #18181b;
+	--color-overlay: rgba(0, 0, 0, 0.6);
+
+	--color-fg: #fafafa;
+	--color-fg-2: #e4e4e7;
+	--color-muted: #a1a1aa;
+	--color-muted-2: #71717a;
+	--color-disabled: #3f3f46;
+
+	--color-border: rgba(255, 255, 255, 0.12);
+	--color-border-soft: rgba(255, 255, 255, 0.06);
+	--color-border-strong: rgba(255, 255, 255, 0.2);
+	--color-ring: #8b93e6;
+
+	--color-accent: #8b93e6;
+	--color-accent-fg: #0a0a0a;
+	--color-accent-soft: rgba(139, 147, 230, 0.14);
+	--color-accent-soft-fg: #b6bcef;
+
+	--color-pos: #22c55e;
+	--color-pos-soft: rgba(34, 197, 94, 0.14);
+	--color-neg: #ef4444;
+	--color-neg-soft: rgba(239, 68, 68, 0.14);
+	--color-warn: #f59e0b;
+	--color-warn-soft: rgba(245, 158, 11, 0.14);
+	--color-info: #60a5fa;
+	--color-info-soft: rgba(96, 165, 250, 0.14);
+
+	--chart-1: #8b93e6;
+	--chart-2: #22c55e;
+	--chart-3: #f59e0b;
+	--chart-4: #ef4444;
+	--chart-5: #22d3ee;
+	--chart-6: #a78bfa;
+	--chart-7: #f472b6;
+	--chart-8: #a3e635;
+
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+	--shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+	--shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+/* ---------- Base ---------- */
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	background: var(--color-bg);
+	color: var(--color-fg);
+	font-family: var(--font-sans);
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	font-feature-settings: 'ss01', 'cv11';
+}
+
+code,
+kbd,
+samp,
+pre,
+.mono {
+	font-family: var(--font-mono);
+	font-feature-settings: 'tnum', 'ss01';
+}
+
+.num {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	letter-spacing: -0.01em;
+}
+
+/* ---------- Focus ---------- */
+:focus {
+	outline: none;
+}
+:focus-visible {
+	outline: 2px solid var(--color-ring);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
+}
+
+/* ---------- Selection ---------- */
+::selection {
+	background: var(--color-accent-soft);
+	color: var(--color-accent-soft-fg);
+}
+
+/* ---------- Scrollbar ---------- */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--color-border-strong) transparent;
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.001ms !important;
+		transition-duration: 0.001ms !important;
+	}
+}

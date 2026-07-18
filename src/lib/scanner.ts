@@ -55,9 +55,11 @@ export interface Project {
 	deploy?: DeployInfo[];
 	beads?: BeadsInfo;
 	promotion?: PromotionStatus;
+	archived?: boolean;
+	port?: number;
 }
 
-export interface ProjectIndex {
+export interface ProjectAtlas {
 	baseDir: string;
 	scannedAt: string;
 	projects: Project[];
@@ -240,6 +242,18 @@ function detectFrameworkFromPkg(pkg: Record<string, unknown>): Framework {
 	return 'unknown';
 }
 
+function detectPyScripts(content: string): Record<string, string> {
+	const scripts: Record<string, string> = {};
+	const sectionMatch = content.match(/\[project\.scripts\]\s*\n([\s\S]*?)(?=\n\[|\n*$)/);
+	if (!sectionMatch) return scripts;
+	const lines = sectionMatch[1].split('\n');
+	for (const line of lines) {
+		const m = line.match(/^(\w[\w-]*)\s*=\s*"([^"]+)"/);
+		if (m) scripts[m[1]] = m[2];
+	}
+	return scripts;
+}
+
 async function detectPythonFramework(fullPath: string): Promise<Framework> {
 	try {
 		const pyproject = await readFile(join(fullPath, 'pyproject.toml'), 'utf-8');
@@ -284,6 +298,8 @@ async function getProjectInfo(fullPath: string, skipGit: boolean = false): Promi
 			if (descMatch) info.description = descMatch[1];
 			info.type = 'python';
 			info.framework = await detectPythonFramework(fullPath);
+			const pyScripts = detectPyScripts(pyproject);
+			if (Object.keys(pyScripts).length > 0) info.scripts = pyScripts;
 		} catch { /* no pyproject.toml */ }
 	}
 
@@ -317,18 +333,19 @@ async function getProjectInfo(fullPath: string, skipGit: boolean = false): Promi
 		} catch { /* no Package.swift */ }
 	}
 
-	// .project-index fallback (like .gitkeep, but with metadata)
-	if (!info.type) {
-		try {
-			const raw = await readFile(join(fullPath, '.project-index'), 'utf-8');
-			const meta = JSON.parse(raw);
-			if (meta.description || (meta.type && meta.type !== 'generic')) {
-				info.type = meta.type ?? 'generic';
-				info.description = meta.description;
-				info.framework = meta.framework ?? 'unknown';
-			}
-		} catch { /* no .project-index */ }
-	}
+	// .atlas metadata (fallback for type detection + archive flag)
+	try {
+		const raw = await readFile(join(fullPath, '.atlas'), 'utf-8');
+		const meta = JSON.parse(raw);
+		if (meta.archived) info.archived = true;
+		if (meta.port) info.port = meta.port;
+		// Presence of .atlas marks the folder as an intentional project.
+		if (!info.type) {
+			info.type = meta.type ?? 'generic';
+			if (meta.description) info.description = meta.description;
+			info.framework = meta.framework ?? 'unknown';
+		}
+	} catch { /* no .atlas */ }
 
 	// README - only check existence, load content lazily
 	try {
@@ -410,13 +427,16 @@ async function scanFolder(baseDir: string, dir: string, depth: number = 0, skipG
 
 			if (info.type) {
 				const promotion = await detectPromotion(entry, baseDir);
+				const relPath = relative(baseDir, fullPath);
+				const archived = info.archived || relPath.includes('_archive') || undefined;
 				return [{
 					name: entry,
 					path: fullPath,
-					relativePath: relative(baseDir, fullPath),
+					relativePath: relPath,
 					modifiedAt: stats.mtime.toISOString(),
 					...info,
-					...(promotion ? { promotion } : {})
+					...(promotion ? { promotion } : {}),
+					...(archived ? { archived } : {}),
 				} as Project];
 			} else {
 				// Collect non-project folders for move targets (during same traversal)
@@ -471,19 +491,19 @@ async function collectFolders(baseDir: string, dir: string, depth: number = 0): 
 	return folders;
 }
 
-const CACHE_FILE = '.project-index-cache.json';
+const CACHE_FILE = '.atlas-cache.json';
 const CACHE_TTL = 60 * 1000; // 1 minute before considered stale
 
-interface CachedIndex extends ProjectIndex {
+interface CachedIndex extends ProjectAtlas {
 	cachedAt: number;
 }
 
-export interface ScanResult extends ProjectIndex {
+export interface ScanResult extends ProjectAtlas {
 	fromCache: boolean;
 	stale: boolean;
 }
 
-async function performScan(baseDir: string, skipGit: boolean): Promise<ProjectIndex> {
+async function performScan(baseDir: string, skipGit: boolean): Promise<ProjectAtlas> {
 	const folders: string[] = [];
 	const projects = await scanFolder(baseDir, baseDir, 0, skipGit, folders);
 	projects.sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
@@ -570,9 +590,9 @@ export async function updateDescription(projectPath: string, description: string
 		return;
 	} catch { /* no Cargo.toml */ }
 
-	// Fallback: create/update .project-index (only if description is non-empty)
+	// Fallback: create/update .atlas (only if description is non-empty)
 	if (description) {
-		const piPath = join(projectPath, '.project-index');
+		const piPath = join(projectPath, '.atlas');
 		try {
 			const existing = JSON.parse(await readFile(piPath, 'utf-8'));
 			existing.description = description;
@@ -583,7 +603,40 @@ export async function updateDescription(projectPath: string, description: string
 	}
 }
 
-export async function scanAndSave(baseDir: string, outputPath: string): Promise<ProjectIndex> {
+export async function setArchived(projectPath: string, archived: boolean): Promise<void> {
+	const atlasPath = join(projectPath, '.atlas');
+	let meta: Record<string, unknown> = {};
+	try {
+		meta = JSON.parse(await readFile(atlasPath, 'utf-8'));
+	} catch { /* no existing .atlas */ }
+
+	if (archived) {
+		meta.archived = true;
+	} else {
+		delete meta.archived;
+	}
+
+	await writeFile(atlasPath, JSON.stringify(meta, null, 2) + '\n');
+}
+
+export async function enrichCacheWithGit(cachePath: string, atlas: ProjectAtlas): Promise<void> {
+	const BATCH_SIZE = 20;
+	const { projects } = atlas;
+
+	for (let i = 0; i < projects.length; i += BATCH_SIZE) {
+		const batch = projects.slice(i, i + BATCH_SIZE);
+		const results = await Promise.all(batch.map(p => detectGitStatus(p.path)));
+		for (let j = 0; j < batch.length; j++) {
+			batch[j].git = results[j].status;
+			batch[j].gitBranch = results[j].branch;
+		}
+	}
+
+	const cacheData: CachedIndex = { ...atlas, cachedAt: Date.now() };
+	await writeFile(cachePath, JSON.stringify(cacheData));
+}
+
+export async function scanAndSave(baseDir: string, outputPath: string): Promise<ProjectAtlas> {
 	const index = await scan(baseDir);
 	await writeFile(outputPath, JSON.stringify(index, null, 2));
 	return index;

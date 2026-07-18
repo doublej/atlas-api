@@ -1,5 +1,5 @@
 {
-	"name": "project-index",
+	"name": "atlas-api",
 	"description": "Scan and index development projects. Exposes JSON API at /api/projects",
 	"private": true,
 	"version": "0.0.1",
@@ -17,9 +17,23 @@
 		"@sveltejs/adapter-auto": "^7.0.0",
 		"@sveltejs/kit": "^2.48.5",
 		"@sveltejs/vite-plugin-svelte": "^6.2.1",
+		"@types/dagre": "^0.7.54",
+		"@types/node": "^25.9.1",
 		"svelte": "^5.43.8",
 		"svelte-check": "^4.3.4",
 		"typescript": "^5.9.3",
 		"vite": "^7.2.2"
+	},
+	"dependencies": {
+		"@anthropic-ai/claude-agent-sdk": "^0.3.159",
+		"@codemirror/commands": "^6.10.3",
+		"@codemirror/lang-markdown": "^6.5.0",
+		"@codemirror/language": "^6.12.3",
+		"@codemirror/state": "^6.6.0",
+		"@codemirror/view": "^6.43.0",
+		"@lezer/highlight": "^1.2.3",
+		"@openai/codex-sdk": "^0.136.0",
+		"@xyflow/svelte": "^1.5.2",
+		"dagre": "^0.8.5"
 	}
 }

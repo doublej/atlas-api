@@ -1,5 +1,8 @@
 <script lang="ts">
 	import type { Project, Framework, GitStatus, PromotionStatus } from '$lib/scanner';
+	import { registry, getActions, getDynamicActions } from '$shared/actions';
+	import type { ActionDef } from '$shared/actions';
+	import { theme, toggleTheme } from '$lib/theme.svelte';
 	import { onMount } from 'svelte';
 
 	type ViewMode = 'flat' | 'nested';
@@ -37,6 +40,7 @@
 	let loadingReadme = $state<string | null>(null);
 	let showFilters = $state(true);
 	let openMenu = $state<string | null>(null);
+	let openRunnerMenu = $state<string | null>(null);
 	let renaming = $state<Project | null>(null);
 	let renameValue = $state('');
 	let moving = $state<Project | null>(null);
@@ -308,10 +312,11 @@
 <main>
 	<header>
 		<h1>Projects</h1>
-		<span class="count">{filtered.length} / {projects.length}</span>
+		<span class="count">{filtered.length} <span class="total">/ {projects.length}</span></span>
 		{#if isRefreshing}
 			<span class="refreshing">Refreshing...</span>
 		{/if}
+		<button class="theme-toggle" onclick={toggleTheme} aria-label="Toggle theme" title="Toggle light / dark">{theme.mode === 'dark' ? '☀' : '☾'}</button>
 	</header>
 
 	<div class="search-row">
@@ -410,6 +415,7 @@
 
 	{#snippet projectItem(project: Project)}
 		{@const git = gitStatus[project.path]}
+		{@const svelteActions = getActions(project, 'svelte')}
 		<li class="project-card" data-git={git?.status}>
 			<div class="header">
 				{#if project.promotion}
@@ -465,38 +471,67 @@
 				{/if}
 			{/if}
 
-			{#if project.scripts}
-				<div class="scripts">
-					{#each Object.keys(project.scripts).slice(0, 6) as script}
-						<button class="script" onclick={() => runScript(project, script)}>{script}</button>
-					{/each}
+			{#if project.scripts && Object.keys(project.scripts).length > 0}
+				<div class="runner-dropdown">
+					<button class="runner-trigger script-trigger" onclick={() => openRunnerMenu = openRunnerMenu === `scripts:${project.path}` ? null : `scripts:${project.path}`}>
+						{project.runner || 'npm'} <span class="runner-count">{Object.keys(project.scripts).length}</span>
+					</button>
+					{#if openRunnerMenu === `scripts:${project.path}`}
+						<div class="runner-menu">
+							{#each Object.keys(project.scripts) as script}
+								<button class="runner-item script" onclick={() => { runScript(project, script); openRunnerMenu = null; }}>{script}</button>
+							{/each}
+						</div>
+					{/if}
 				</div>
 			{/if}
 
 			{#if project.justRecipes?.length}
-				<div class="just-recipes">
-					<span class="just-label">just:</span>
-					{#each project.justRecipes.slice(0, 6) as recipe}
-						<button class="recipe" onclick={() => runJust(project, recipe)}>{recipe}</button>
-					{/each}
-					{#if project.justRecipes.length > 6}
-						<span class="more">+{project.justRecipes.length - 6}</span>
+				<div class="runner-dropdown">
+					<button class="runner-trigger just-trigger" onclick={() => openRunnerMenu = openRunnerMenu === `just:${project.path}` ? null : `just:${project.path}`}>
+						just <span class="runner-count">{project.justRecipes.length}</span>
+					</button>
+					{#if openRunnerMenu === `just:${project.path}`}
+						<div class="runner-menu">
+							{#each project.justRecipes as recipe}
+								<button class="runner-item recipe" onclick={() => { runJust(project, recipe); openRunnerMenu = null; }}>{recipe}</button>
+							{/each}
+						</div>
 					{/if}
 				</div>
 			{/if}
 
 			<div class="actions">
-				{#if project.devCommand}
-					<button onclick={() => runDev(project)}>Run {project.devCommand}</button>
-				{/if}
-				<button onclick={() => openITerm(project.path)}>iTerm</button>
-				<button onclick={() => openFinder(project.path)}>Finder</button>
+				{#each svelteActions as action (action.id)}
+					{#if action.id === 'run-dev' && project.devCommand}
+						<button onclick={() => runDev(project)}>Run {project.devCommand}</button>
+					{:else if action.id === 'open-iterm'}
+						<button onclick={() => openITerm(project.path)}>{action.label.replace('Open in ', '')}</button>
+					{:else if action.id === 'open-finder'}
+						<button onclick={() => openFinder(project.path)}>{action.label.replace('Open in ', '')}</button>
+					{:else if action.id === 'rename'}
+						<!-- rendered in menu below -->
+					{:else if action.id === 'move'}
+						<!-- rendered in menu below -->
+					{:else if action.id === 'refresh'}
+						<!-- handled at page level -->
+					{/if}
+				{/each}
+				<button
+					class="tree-btn"
+					title="View the CLAUDE.md tree for this project"
+					onclick={() => window.open(`/claude-tree?root=${encodeURIComponent(project.path)}`, '_blank')}
+				>Tree</button>
 				<div class="menu-container">
 					<button class="menu-trigger" onclick={() => openMenu = openMenu === project.path ? null : project.path}>⋯</button>
 					{#if openMenu === project.path}
 						<div class="menu-dropdown">
-							<button onclick={() => { startRename(project); openMenu = null; }}>Rename</button>
-							<button onclick={() => { startMove(project); openMenu = null; }}>Move</button>
+							{#if svelteActions.some(a => a.id === 'rename')}
+								<button onclick={() => { startRename(project); openMenu = null; }}>Rename</button>
+							{/if}
+							{#if svelteActions.some(a => a.id === 'move')}
+								<button onclick={() => { startMove(project); openMenu = null; }}>Move</button>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -604,39 +639,25 @@
 <style>
 	/* === DESIGN TOKENS === */
 	main {
-		--bg-base: #0a0a0b;
-		--bg-elevated: #131316;
-		--bg-surface: #1a1a1f;
-		--bg-hover: #222228;
-		--border: #2a2a32;
-		--border-hover: #3a3a44;
-		--text-primary: #e4e4e7;
-		--text-secondary: #a1a1aa;
-		--text-muted: #71717a;
-		--accent-cyan: #22d3ee;
-		--accent-green: #4ade80;
-		--accent-amber: #fbbf24;
-		--accent-red: #f87171;
-		--accent-purple: #a78bfa;
+		--bg-base: var(--color-bg);
+		--bg-elevated: var(--color-bg-elev);
+		--bg-surface: var(--color-card-2);
+		--bg-hover: var(--color-card);
+		--border: var(--color-border);
+		--border-hover: var(--color-border-strong);
+		--text-primary: var(--color-fg);
+		--text-secondary: var(--color-fg-2);
+		--text-muted: var(--color-muted);
+		--accent-cyan: var(--color-accent);
+		--accent-green: var(--color-pos);
+		--accent-amber: var(--color-warn);
+		--accent-red: var(--color-neg);
+		--accent-purple: var(--chart-6);
 
 		width: 100%;
 		min-height: 100vh;
 		padding: 1.5rem 2rem;
 		position: relative;
-	}
-
-	/* Subtle grid background */
-	main::before {
-		content: '';
-		position: fixed;
-		inset: 0;
-		background-image:
-			linear-gradient(var(--border) 1px, transparent 1px),
-			linear-gradient(90deg, var(--border) 1px, transparent 1px);
-		background-size: 50px 50px;
-		opacity: 0.3;
-		pointer-events: none;
-		z-index: -1;
 	}
 
 	/* === HEADER === */
@@ -654,7 +675,7 @@
 	}
 
 	h1 {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-sans);
 		font-size: 1.25rem;
 		font-weight: 600;
 		color: var(--text-primary);
@@ -665,29 +686,40 @@
 	}
 
 	h1::before {
-		content: '>';
-		color: var(--accent-cyan);
-		animation: blink 1s step-end infinite;
-	}
-
-	@keyframes blink {
-		50% { opacity: 0; }
+		content: '';
+		width: 8px;
+		height: 8px;
+		border-radius: 2px;
+		background: var(--color-accent);
+		transform: rotate(45deg);
 	}
 
 	.refreshing {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.625rem;
 		color: var(--accent-cyan);
 		animation: pulse-loading 1s ease-in-out infinite;
 	}
 
 	.count {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-display);
+		font-size: 1.5rem;
+		line-height: 1;
+		color: var(--text-primary);
+		padding: 0 0.25rem;
+	}
+
+	.count .total {
+		font-family: var(--font-mono);
 		font-size: 0.75rem;
 		color: var(--text-muted);
-		background: var(--bg-surface);
-		padding: 0.25rem 0.5rem;
-		border: 1px solid var(--border);
+	}
+
+	.theme-toggle {
+		margin-left: auto;
+		width: 32px;
+		padding: 0.5rem;
+		font-size: 0.875rem;
 	}
 
 	/* === SEARCH ROW === */
@@ -710,10 +742,11 @@
 		flex: 1;
 		min-width: 200px;
 		padding: 0.625rem 0.875rem;
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.875rem;
 		background: var(--bg-surface);
 		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
 		color: var(--text-primary);
 		outline: none;
 		transition: border-color 0.15s, box-shadow 0.15s;
@@ -724,20 +757,19 @@
 	}
 
 	input[type="search"]:focus {
-		border-color: var(--accent-cyan);
-		box-shadow: 0 0 0 1px var(--accent-cyan), 0 0 20px -5px var(--accent-cyan);
+		border-color: var(--color-ring);
+		box-shadow: 0 0 0 3px var(--color-accent-soft);
 	}
 
 	/* === BUTTONS === */
 	button {
-		font-family: 'IBM Plex Sans', sans-serif;
+		font-family: var(--font-sans);
 		font-size: 0.75rem;
 		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
 		padding: 0.5rem 0.875rem;
 		background: var(--bg-surface);
 		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
 		color: var(--text-secondary);
 		cursor: pointer;
 		transition: all 0.15s;
@@ -756,11 +788,12 @@
 	}
 
 	.badge {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.625rem;
-		background: var(--accent-cyan);
-		color: var(--bg-base);
+		background: var(--color-accent);
+		color: var(--color-accent-fg);
 		padding: 0.125rem 0.375rem;
+		border-radius: var(--radius-full);
 		font-weight: 600;
 	}
 
@@ -778,11 +811,13 @@
 	.view-toggle {
 		display: flex;
 		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
 		overflow: hidden;
 	}
 
 	.view-toggle button {
 		border: none;
+		border-radius: 0;
 		padding: 0.5rem 0.75rem;
 	}
 
@@ -791,14 +826,15 @@
 	}
 
 	.view-toggle button.active {
-		background: var(--accent-cyan);
-		color: var(--bg-base);
+		background: var(--color-accent);
+		color: var(--color-accent-fg);
 	}
 
 	/* === FILTERS === */
 	.filters {
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
+		border-radius: var(--radius-lg);
 		padding: 1rem;
 		margin-bottom: 1.5rem;
 		display: grid;
@@ -807,7 +843,7 @@
 
 	.filter-label {
 		display: block;
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.625rem;
 		font-weight: 500;
 		color: var(--text-muted);
@@ -823,15 +859,15 @@
 	}
 
 	.chip {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.6875rem;
-		padding: 0.25rem 0.5rem;
+		padding: 0.25rem 0.625rem;
 		background: var(--bg-surface);
 		border: 1px solid var(--border);
+		border-radius: var(--radius-full);
 		color: var(--text-secondary);
 		cursor: pointer;
 		transition: all 0.15s;
-		text-transform: lowercase;
 	}
 
 	.chip:hover {
@@ -840,8 +876,8 @@
 	}
 
 	.chip.active {
-		background: var(--color, var(--accent-cyan));
-		color: var(--bg-base);
+		background: var(--color, var(--color-accent));
+		color: #ffffff;
 		border-color: transparent;
 	}
 
@@ -856,6 +892,7 @@
 	li {
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
+		border-radius: var(--radius-lg);
 		padding: 1rem 1.25rem;
 		position: relative;
 		transition: all 0.2s;
@@ -871,14 +908,16 @@
 		top: 0;
 		bottom: 0;
 		width: 3px;
-		background: var(--accent-cyan);
+		border-top-left-radius: var(--radius-lg);
+		border-bottom-left-radius: var(--radius-lg);
+		background: var(--color-accent);
 		opacity: 0;
 		transition: opacity 0.2s;
 	}
 
 	li:hover {
 		border-color: var(--border-hover);
-		background: var(--bg-surface);
+		background: var(--color-card);
 	}
 
 	li:hover::before {
@@ -893,21 +932,22 @@
 	}
 
 	.type, .runner, .framework {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.5625rem;
 		font-weight: 600;
 		padding: 0.1875rem 0.375rem;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		border: 1px solid transparent;
+		border-radius: var(--radius-xs);
 	}
 
 	.type {
-		color: var(--bg-base);
+		color: #ffffff;
 	}
 
 	.framework {
-		color: var(--bg-base);
+		color: #ffffff;
 	}
 
 	.runner {
@@ -926,21 +966,19 @@
 	}
 
 	.promotion-badge[data-status="published"] {
-		background: var(--accent-green);
-		box-shadow: 0 0 6px var(--accent-green);
+		background: var(--color-pos);
 	}
 
 	.promotion-badge[data-status="ready"] {
-		background: var(--accent-green);
+		background: var(--color-pos);
 	}
 
 	.promotion-badge[data-status="in-progress"] {
-		background: var(--accent-amber);
-		box-shadow: 0 0 6px var(--accent-amber);
+		background: var(--color-warn);
 	}
 
 	.promotion-badge[data-status="draft"] {
-		background: var(--accent-purple);
+		background: var(--chart-6);
 	}
 
 	.promotion-badge[data-status="none"] {
@@ -949,7 +987,7 @@
 	}
 
 	strong {
-		font-family: 'IBM Plex Sans', sans-serif;
+		font-family: var(--font-sans);
 		font-size: 0.9375rem;
 		font-weight: 600;
 		color: var(--text-primary);
@@ -970,14 +1008,11 @@
 	}
 
 	.git-status[data-status="clean"] {
-		background: var(--accent-green);
-		box-shadow: 0 0 6px var(--accent-green);
+		background: var(--status-clean);
 	}
 
 	.git-status[data-status="dirty"] {
-		background: var(--accent-amber);
-		box-shadow: 0 0 6px var(--accent-amber);
-		animation: pulse-amber 2s ease-in-out infinite;
+		background: var(--status-dirty);
 	}
 
 	.git-status[data-status="no-repo"] {
@@ -986,7 +1021,7 @@
 	}
 
 	.git-status[data-status="error"] {
-		background: var(--accent-red);
+		background: var(--status-error);
 	}
 
 	.git-status[data-status="loading"] {
@@ -1000,30 +1035,26 @@
 		50% { opacity: 0.6; }
 	}
 
-	@keyframes pulse-amber {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.5; }
-	}
-
 	.git-branch {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.625rem;
 		color: var(--text-muted);
-		background: var(--bg-base);
+		background: var(--bg-surface);
 		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
 		padding: 0.125rem 0.375rem;
 		margin-left: auto;
 	}
 
-	/* Dirty project cards get amber left border */
+	/* Dirty project cards get an amber left border */
 	.project-card[data-git="dirty"]::before {
-		background: var(--accent-amber) !important;
+		background: var(--status-dirty) !important;
 		opacity: 1 !important;
 	}
 
 	.path {
 		display: block;
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.6875rem;
 		color: var(--text-muted);
 		margin: 0.25rem 0 0.5rem;
@@ -1052,39 +1083,43 @@
 	.edit-desc input {
 		flex: 1;
 		padding: 0.375rem 0.5rem;
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.8125rem;
-		background: var(--bg-base);
+		background: var(--bg-surface);
 		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
 		color: var(--text-primary);
 		outline: none;
 	}
 
 	.edit-desc input:focus {
-		border-color: var(--accent-cyan);
+		border-color: var(--color-ring);
+		box-shadow: 0 0 0 3px var(--color-accent-soft);
 	}
 
 	/* === README === */
 	.readme-toggle {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.625rem;
 		padding: 0.25rem 0.5rem;
-		background: var(--bg-base);
+		background: var(--bg-surface);
 		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
 		color: var(--text-muted);
 	}
 
 	.readme-toggle:hover {
-		color: var(--accent-cyan);
-		border-color: var(--accent-cyan);
+		color: var(--color-accent);
+		border-color: var(--color-accent);
 	}
 
 	.readme {
 		margin: 0.75rem 0;
 		padding: 1rem;
-		background: var(--bg-base);
+		background: var(--bg-surface);
 		border: 1px solid var(--border);
-		font-family: 'IBM Plex Mono', monospace;
+		border-radius: var(--radius-md);
+		font-family: var(--font-mono);
 		font-size: 0.75rem;
 		color: var(--text-secondary);
 		max-height: 300px;
@@ -1093,67 +1128,114 @@
 		line-height: 1.6;
 	}
 
-	/* === SCRIPTS === */
-	.scripts {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.25rem;
-		margin: 0.5rem 0;
+
+	/* === RUNNER DROPDOWNS === */
+	.runner-dropdown {
+		position: relative;
+		display: inline-block;
+		margin: 0.375rem 0.25rem 0.375rem 0;
 	}
 
-	.script {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.625rem;
-		padding: 0.125rem 0.375rem;
-		background: var(--bg-base);
-		border: 1px solid var(--border);
-		color: var(--accent-green);
+	.runner-trigger {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		padding: 0.25rem 0.5rem;
 		cursor: pointer;
-		transition: all 0.15s;
-	}
-
-	.script:hover {
-		background: var(--accent-green);
-		color: var(--bg-base);
-		border-color: var(--accent-green);
-	}
-
-	/* === JUST RECIPES === */
-	.just-recipes {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.25rem;
-		margin: 0.5rem 0;
+		display: inline-flex;
 		align-items: center;
-	}
-
-	.just-label {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.625rem;
-		color: var(--accent-amber);
-		margin-right: 0.25rem;
-	}
-
-	.recipe {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.625rem;
-		padding: 0.125rem 0.375rem;
-		background: var(--bg-base);
-		border: 1px solid var(--accent-amber);
-		color: var(--accent-amber);
-		cursor: pointer;
+		gap: 0.375rem;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		background: var(--bg-surface);
+		color: var(--text-secondary);
 		transition: all 0.15s;
 	}
 
-	.recipe:hover {
-		background: var(--accent-amber);
-		color: var(--bg-base);
+	.script-trigger {
+		color: var(--color-pos);
+		border-color: var(--color-pos);
 	}
 
-	.more {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.625rem;
-		color: var(--text-muted);
+	.script-trigger:hover {
+		background: var(--color-pos);
+		color: #ffffff;
+		border-color: var(--color-pos);
+	}
+
+	.just-trigger {
+		color: var(--color-warn);
+		border-color: var(--color-warn);
+	}
+
+	.just-trigger:hover {
+		background: var(--color-warn);
+		color: #ffffff;
+		border-color: var(--color-warn);
+	}
+
+	.runner-count {
+		font-size: 0.5625rem;
+		opacity: 0.7;
+	}
+
+	.runner-menu {
+		position: absolute;
+		bottom: 100%;
+		left: 0;
+		margin-bottom: 0.25rem;
+		background: var(--color-bg-elev);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-md);
+		min-width: 140px;
+		max-height: 200px;
+		overflow-y: auto;
+		z-index: 20;
+	}
+
+	.runner-item {
+		display: block;
+		width: 100%;
+		text-align: left;
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		padding: 0.375rem 0.625rem;
+		border: none;
+		border-radius: 0;
+		border-bottom: 1px solid var(--border);
+		background: transparent;
+		cursor: pointer;
+		text-transform: none;
+		letter-spacing: normal;
+	}
+
+	.runner-item:last-child {
+		border-bottom: none;
+	}
+
+	.runner-item:hover {
+		background: var(--bg-hover);
+	}
+
+	.runner-item.script {
+		color: var(--color-pos);
+	}
+
+	.runner-item.script:hover {
+		background: var(--color-pos);
+		color: #ffffff;
+	}
+
+	.runner-item.recipe {
+		color: var(--color-warn);
+	}
+
+	.runner-item.recipe:hover {
+		background: var(--color-warn);
+		color: #ffffff;
 	}
 
 	/* === ACTIONS === */
@@ -1167,14 +1249,15 @@
 	}
 
 	.actions button:first-child {
-		background: var(--accent-green);
-		border-color: var(--accent-green);
-		color: var(--bg-base);
+		background: var(--color-accent);
+		border-color: var(--color-accent);
+		color: var(--color-accent-fg);
 	}
 
 	.actions button:first-child:hover {
-		background: #22c55e;
-		border-color: #22c55e;
+		background: var(--color-accent);
+		border-color: var(--color-accent);
+		filter: brightness(1.08);
 	}
 
 	/* === THREE DOT MENU === */
@@ -1195,8 +1278,10 @@
 		bottom: 100%;
 		right: 0;
 		margin-bottom: 0.25rem;
-		background: var(--bg-surface);
+		background: var(--color-bg-elev);
 		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-md);
 		min-width: 100px;
 		z-index: 20;
 	}
@@ -1206,6 +1291,7 @@
 		width: 100%;
 		text-align: left;
 		border: none;
+		border-radius: 0;
 		border-bottom: 1px solid var(--border);
 	}
 
@@ -1219,9 +1305,9 @@
 		align-items: center;
 		gap: 0.5rem;
 		margin-top: 0.5rem;
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: var(--accent-green);
+		color: var(--color-pos);
 		text-decoration: none;
 	}
 
@@ -1229,7 +1315,7 @@
 		content: '';
 		width: 6px;
 		height: 6px;
-		background: var(--accent-green);
+		background: var(--color-pos);
 		border-radius: 50%;
 		animation: pulse 1.5s ease-in-out infinite;
 	}
@@ -1243,7 +1329,7 @@
 		position: absolute;
 		bottom: 0.625rem;
 		right: 0.75rem;
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.625rem;
 		color: var(--text-muted);
 	}
@@ -1252,7 +1338,7 @@
 	.modal-backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.8);
+		background: var(--color-overlay);
 		backdrop-filter: blur(4px);
 		display: flex;
 		align-items: center;
@@ -1261,18 +1347,19 @@
 	}
 
 	.modal {
-		background: var(--bg-elevated);
+		background: var(--color-bg-elev);
 		border: 1px solid var(--border);
+		border-radius: var(--radius-lg);
 		padding: 1.5rem;
 		min-width: 340px;
 		max-width: 420px;
-		box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+		box-shadow: var(--shadow-lg);
 	}
 
 	.modal h3 {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-sans);
 		font-size: 0.875rem;
-		font-weight: 500;
+		font-weight: 600;
 		color: var(--text-primary);
 		margin: 0 0 1rem;
 	}
@@ -1280,17 +1367,19 @@
 	.modal input, .modal select {
 		width: 100%;
 		padding: 0.625rem 0.75rem;
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.875rem;
-		background: var(--bg-base);
+		background: var(--bg-surface);
 		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
 		color: var(--text-primary);
 		margin-bottom: 1rem;
 		outline: none;
 	}
 
 	.modal input:focus, .modal select:focus {
-		border-color: var(--accent-cyan);
+		border-color: var(--color-ring);
+		box-shadow: 0 0 0 3px var(--color-accent-soft);
 	}
 
 	.modal select {
@@ -1298,7 +1387,7 @@
 	}
 
 	.modal select option {
-		background: var(--bg-base);
+		background: var(--color-bg-elev);
 		color: var(--text-primary);
 	}
 
@@ -1309,9 +1398,9 @@
 	}
 
 	.modal-actions button:first-child {
-		background: var(--accent-cyan);
-		border-color: var(--accent-cyan);
-		color: var(--bg-base);
+		background: var(--color-accent);
+		border-color: var(--color-accent);
+		color: var(--color-accent-fg);
 	}
 
 	.modal-actions button:disabled {
@@ -1336,6 +1425,7 @@
 		padding: 0.5rem 0.75rem;
 		background: var(--bg-surface);
 		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
 		cursor: pointer;
 		width: 100%;
 		text-align: left;
@@ -1354,7 +1444,7 @@
 	}
 
 	.folder-name {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.8125rem;
 		font-weight: 500;
 		color: var(--text-primary);
@@ -1362,11 +1452,12 @@
 	}
 
 	.folder-count {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.625rem;
 		color: var(--text-muted);
-		background: var(--bg-base);
+		background: var(--color-bg);
 		border: 1px solid var(--border);
+		border-radius: var(--radius-full);
 		padding: 0.125rem 0.375rem;
 	}
 
@@ -1391,14 +1482,15 @@
 	}
 
 	::-webkit-scrollbar-track {
-		background: var(--bg-base);
+		background: var(--color-bg);
 	}
 
 	::-webkit-scrollbar-thumb {
-		background: var(--border);
+		background: var(--color-border);
+		border-radius: var(--radius-full);
 	}
 
 	::-webkit-scrollbar-thumb:hover {
-		background: var(--border-hover);
+		background: var(--color-border-strong);
 	}
 </style>
