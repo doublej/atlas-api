@@ -528,13 +528,14 @@
 						<!-- rendered in menu below -->
 					{:else if action.id === 'refresh'}
 						<!-- handled at page level -->
+					{:else if action.id === 'claude-tree-view'}
+						<button
+							class="tree-btn"
+							title="View the CLAUDE.md tree for this project"
+							onclick={() => window.open(`/claude-tree?root=${encodeURIComponent(project.path)}`, '_blank')}
+						>Tree</button>
 					{/if}
 				{/each}
-				<button
-					class="tree-btn"
-					title="View the CLAUDE.md tree for this project"
-					onclick={() => window.open(`/claude-tree?root=${encodeURIComponent(project.path)}`, '_blank')}
-				>Tree</button>
 				<div class="menu-container">
 					<button class="menu-trigger" onclick={() => openMenu = openMenu === project.path ? null : project.path}>⋯</button>
 					{#if openMenu === project.path}
