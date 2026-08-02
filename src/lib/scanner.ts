@@ -1,4 +1,5 @@
 import { readdir, readFile, stat, writeFile, open } from 'node:fs/promises';
+import type { Stats } from 'node:fs';
 import { join, relative } from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -431,7 +432,7 @@ async function scanFolder(baseDir: string, dir: string, depth: number = 0, skipG
 		return [];
 	}
 
-	const validEntries: { entry: string; fullPath: string; stats: Awaited<ReturnType<typeof stat>> }[] = [];
+	const validEntries: { entry: string; fullPath: string; stats: Stats }[] = [];
 
 	// Parallel stat check
 	const statResults = await Promise.all(
