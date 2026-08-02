@@ -3,7 +3,7 @@
 // .claude/scripts/claude_tree.py that shipped in the cookiecutter templates.
 // No framework: consumed by src/routes/api/claude-tree/+server.ts.
 
-import { readFile, writeFile, readdir, stat, appendFile } from 'node:fs/promises';
+import { readFile, writeFile, readdir, stat } from 'node:fs/promises';
 import { join, dirname, basename, resolve, relative, sep, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -498,10 +498,18 @@ const historyPathFor = (p: string): string => p + HISTORY_SUFFIX;
 
 const isoSeconds = (): string => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 
-/** Append the prior file content to the sidecar before an overwrite (one JSON line). */
+const MAX_HISTORY_ENTRIES = 20;
+
+/** Append the prior file content to the sidecar before an overwrite (one JSON line),
+ *  keeping only the newest MAX_HISTORY_ENTRIES snapshots. */
 export async function appendHistory(file: string, priorContent: string): Promise<void> {
 	const record: HistoryEntry = { ts: isoSeconds(), sha: sha(priorContent), content: priorContent };
-	await appendFile(historyPathFor(file), JSON.stringify(record) + '\n', 'utf-8');
+	const entries = [...(await readHistory(file)), record].slice(-MAX_HISTORY_ENTRIES);
+	await writeFile(
+		historyPathFor(file),
+		entries.map((e) => JSON.stringify(e) + '\n').join(''),
+		'utf-8'
+	);
 }
 
 export async function readHistory(file: string): Promise<HistoryEntry[]> {
