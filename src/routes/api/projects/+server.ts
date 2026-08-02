@@ -1,13 +1,10 @@
 import { json } from '@sveltejs/kit';
 import { scan } from '$lib/scanner';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { DEV_FOLDER } from '$lib/config';
 import type { RequestHandler } from './$types';
 
-const DEFAULT_DIR = join(homedir(), 'Documents', 'development');
-
 export const GET: RequestHandler = async ({ url }) => {
-	const baseDir = url.searchParams.get('dir') || DEFAULT_DIR;
+	const baseDir = url.searchParams.get('dir') || DEV_FOLDER;
 	const includeArchived = url.searchParams.get('includeArchived') === 'true';
 	const index = await scan(baseDir);
 

@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { DEV_FOLDER } from '$lib/config';
 import {
 	buildTree,
 	readSafely,
@@ -17,7 +17,7 @@ import type { RequestHandler } from './$types';
 
 // The catalog boundary: every path read/written must resolve inside this dir
 // (or be the global ~/.claude/CLAUDE.md). Fixed — never overridable via query.
-const BASE_DIR = join(homedir(), 'Documents', 'development');
+const BASE_DIR = DEV_FOLDER;
 
 const deny = () => json({ error: 'path is outside the project catalog' }, { status: 403 });
 

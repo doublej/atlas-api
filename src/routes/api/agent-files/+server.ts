@@ -1,11 +1,15 @@
 import { json } from '@sveltejs/kit';
 import { readFile, writeFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { resolveInCatalog } from '$lib/claude-tree';
+import { DEV_FOLDER } from '$lib/config';
 import type { RequestHandler } from './$types';
 
 type FileType = 'claude' | 'agents';
 const FILES: Record<FileType, string> = { claude: 'CLAUDE.md', agents: 'AGENTS.md' };
+
+const deny = () => json({ error: 'path is outside the project catalog' }, { status: 403 });
 
 async function getFilePath(projectPath: string, file: FileType): Promise<string> {
 	return join(projectPath, FILES[file]);
@@ -26,8 +30,10 @@ export const GET: RequestHandler = async ({ url }) => {
 	if (!path || !file || !FILES[file]) {
 		return json({ error: 'Missing path or invalid file type' }, { status: 400 });
 	}
+	const safe = resolveInCatalog(path, DEV_FOLDER);
+	if (!safe) return deny();
 
-	const filePath = await getFilePath(path, file);
+	const filePath = await getFilePath(safe, file);
 	const content = await readAgentFile(filePath);
 	const exists = content !== null;
 
@@ -45,8 +51,10 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (!path || !file || !FILES[file]) {
 		return json({ error: 'Missing path or invalid file type' }, { status: 400 });
 	}
+	const safe = resolveInCatalog(path, DEV_FOLDER);
+	if (!safe) return deny();
 
-	const filePath = await getFilePath(path, file);
+	const filePath = await getFilePath(safe, file);
 
 	// Create file if content provided or file doesn't exist
 	if (content !== undefined) {
@@ -61,7 +69,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	// Open in default editor
 	if (shouldOpen) {
-		exec(`open "${filePath}"`);
+		execFile('open', [filePath]);
 	}
 
 	return json({ created: true, path: filePath });
@@ -77,9 +85,11 @@ export const PUT: RequestHandler = async ({ request }) => {
 	if (!path || !from || !to || !FILES[from] || !FILES[to]) {
 		return json({ error: 'Missing path or invalid file types' }, { status: 400 });
 	}
+	const safe = resolveInCatalog(path, DEV_FOLDER);
+	if (!safe) return deny();
 
-	const fromPath = await getFilePath(path, from);
-	const toPath = await getFilePath(path, to);
+	const fromPath = await getFilePath(safe, from);
+	const toPath = await getFilePath(safe, to);
 
 	const content = await readAgentFile(fromPath);
 	if (content === null) {
