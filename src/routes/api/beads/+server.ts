@@ -19,9 +19,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 		return json({ ticket });
 	} catch (error) {
-		return json(
-			{ error: error instanceof Error ? error.message : 'Failed to create ticket' },
-			{ status: 500 }
-		);
+		const message = error instanceof Error ? error.message : 'Failed to create ticket';
+		return json({ error: message }, { status: message === 'no beads database' ? 400 : 500 });
 	}
 };

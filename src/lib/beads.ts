@@ -1,5 +1,10 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
+
+const execFileAsync = promisify(execFile);
 
 export interface BeadsTicket {
 	id: string;
@@ -23,32 +28,43 @@ interface CreateTicketInput {
 	labels?: string[];
 }
 
-function generateTicketId(projectPath: string): string {
-	const dirName = projectPath.split('/').pop() || 'PRJ';
-	const prefix = dirName
-		.replace(/[^a-zA-Z]/g, '')
-		.toUpperCase()
-		.slice(0, 3)
-		.padEnd(3, 'X');
+// launchd runs atlas-api with a minimal PATH — probe known install locations before
+// falling back to whatever `bd` the environment resolves.
+const BD_CANDIDATES = [join(homedir(), '.local', 'bin', 'bd'), '/opt/homebrew/bin/bd'];
 
-	const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
-	const suffix = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-
-	return `${prefix}-${suffix}`;
+async function resolveBd(): Promise<string> {
+	for (const candidate of BD_CANDIDATES) {
+		try {
+			await stat(candidate);
+			return candidate;
+		} catch { /* not installed here */ }
+	}
+	return 'bd';
 }
 
 export async function createBeadsTicket(
 	projectPath: string,
 	input: CreateTicketInput
 ): Promise<BeadsTicket> {
-	const beadsDir = join(projectPath, '.beads');
-	const issuesFile = join(beadsDir, 'issues.jsonl');
+	try {
+		await stat(join(projectPath, '.beads'));
+	} catch {
+		throw new Error('no beads database');
+	}
 
-	await mkdir(beadsDir, { recursive: true });
+	const args = ['-C', projectPath, 'create', input.title, '--silent'];
+	if (input.description) args.push('-d', input.description);
+	if (input.priority !== undefined) args.push('-p', String(input.priority));
+	if (input.issue_type) args.push('-t', input.issue_type);
+	if (input.labels?.length) args.push('-l', input.labels.join(','));
+
+	const { stdout } = await execFileAsync(await resolveBd(), args);
+	const id = stdout.trim();
+	if (!id) throw new Error('bd create returned no issue id');
 
 	const now = new Date().toISOString();
-	const ticket: BeadsTicket = {
-		id: generateTicketId(projectPath),
+	return {
+		id,
 		title: input.title,
 		description: input.description,
 		status: 'open',
@@ -59,17 +75,4 @@ export async function createBeadsTicket(
 		labels: input.labels,
 		dependencies: []
 	};
-
-	let existingContent = '';
-	try {
-		existingContent = await readFile(issuesFile, 'utf-8');
-	} catch {
-		// File doesn't exist yet, that's fine
-	}
-
-	const newContent = existingContent + (existingContent && !existingContent.endsWith('\n') ? '\n' : '') + JSON.stringify(ticket) + '\n';
-
-	await writeFile(issuesFile, newContent, 'utf-8');
-
-	return ticket;
 }
