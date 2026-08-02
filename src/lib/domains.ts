@@ -14,6 +14,14 @@ const PLACEHOLDER_SUFFIXES = ['.local', '.localhost', '.test', '.invalid'];
 
 /** HTML entry points checked for og:url / canonical, relative to the project root. */
 const HTML_CANDIDATES = ['src/app.html', 'index.html', 'public/index.html', 'static/index.html'];
+const ROBOTS_CANDIDATES = ['static/robots.txt', 'public/robots.txt', 'robots.txt'];
+const ENV_CANDIDATES = ['.env', '.env.production', '.env.local'];
+
+/**
+ * Env keys that hold the site's *own* public URL. Deliberately narrow —
+ * generic names like BASE_URL usually point at a third-party API instead.
+ */
+const SITE_URL_KEY = /^(?:PUBLIC_|VITE_|NEXT_PUBLIC_|NUXT_PUBLIC_)?(?:SITE_URL|SITE_ORIGIN|ORIGIN)$/;
 
 /**
  * Normalize a URL, host or route pattern to a bare hostname.
@@ -66,12 +74,18 @@ export function extractHtmlDomains(content: string): string[] {
 	return found;
 }
 
-/** Custom domains from a wrangler config (routes / patterns, toml or json). */
+/** Custom domains from a wrangler config (routes / patterns, toml or json), plus the pages.dev default. */
 function extractWranglerDomains(content: string): string[] {
 	const found: string[] = [];
 
 	for (const [, value] of content.matchAll(/(?:route|pattern|custom_domain)\s*[:=]\s*["']([^"']+)["']/gi)) {
 		found.push(value);
+	}
+
+	// Cloudflare Pages projects always answer on <name>.pages.dev.
+	if (/pages_build_output_dir/.test(content)) {
+		const name = content.match(/^\s*"?name"?\s*[:=]\s*["']([^"']+)["']/m);
+		if (name) found.push(`${name[1]}.pages.dev`);
 	}
 
 	const routesBlock = content.match(/routes\s*[:=]\s*\[([\s\S]*?)\]/i);
@@ -112,6 +126,15 @@ export async function detectDomains(fullPath: string, options: { homepage?: stri
 		} catch { /* malformed vercel.json */ }
 	}
 
+	// A linked Vercel project answers on <projectName>.vercel.app.
+	const vercelLink = await readIfPresent(join(fullPath, '.vercel', 'project.json'));
+	if (vercelLink) {
+		try {
+			const { projectName } = JSON.parse(vercelLink);
+			if (typeof projectName === 'string') found.push(`${projectName}.vercel.app`);
+		} catch { /* malformed project.json */ }
+	}
+
 	for (const name of ['wrangler.toml', 'wrangler.jsonc', 'wrangler.json']) {
 		const content = await readIfPresent(join(fullPath, name));
 		if (content) found.push(...extractWranglerDomains(content));
@@ -120,6 +143,20 @@ export async function detectDomains(fullPath: string, options: { homepage?: stri
 	for (const candidate of HTML_CANDIDATES) {
 		const content = await readIfPresent(join(fullPath, candidate));
 		if (content) found.push(...extractHtmlDomains(content));
+	}
+
+	for (const candidate of ROBOTS_CANDIDATES) {
+		const content = await readIfPresent(join(fullPath, candidate));
+		if (!content) continue;
+		for (const [, url] of content.matchAll(/^\s*sitemap\s*:\s*(\S+)/gim)) found.push(url);
+	}
+
+	for (const candidate of ENV_CANDIDATES) {
+		const content = await readIfPresent(join(fullPath, candidate));
+		if (!content) continue;
+		for (const [, key, url] of content.matchAll(/^\s*([A-Z0-9_]+)\s*=\s*["']?(https?:\/\/\S+?)["']?\s*$/gm)) {
+			if (SITE_URL_KEY.test(key)) found.push(url);
+		}
 	}
 
 	return mergeDomains(found);

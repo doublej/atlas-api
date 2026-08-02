@@ -501,6 +501,19 @@
 				</div>
 			{/if}
 
+			{#if project.domains?.length || project.umami}
+				<div class="web-links">
+					{#each project.domains ?? [] as domain}
+						<a href="https://{domain}" target="_blank" rel="noreferrer" class="domain">{domain}</a>
+					{/each}
+					{#if project.umami?.instance}
+						{#each project.umami.websiteIds as websiteId}
+							<a href="{project.umami.instance}/websites/{websiteId}" target="_blank" rel="noreferrer" class="umami" title="Umami · {websiteId}">umami</a>
+						{/each}
+					{/if}
+				</div>
+			{/if}
+
 			<div class="actions">
 				{#each svelteActions as action (action.id)}
 					{#if action.id === 'run-dev' && project.devCommand}
@@ -1300,6 +1313,32 @@
 	}
 
 	/* === RUNNING STATUS === */
+	.web-links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+		margin-top: 0.5rem;
+	}
+
+	.web-links a {
+		padding: 0.125rem 0.375rem;
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--color-muted);
+		text-decoration: none;
+	}
+
+	.web-links a:hover {
+		color: var(--color-fg);
+		border-color: var(--color-border-strong);
+	}
+
+	.web-links .umami {
+		color: var(--color-accent);
+	}
+
 	.running {
 		display: inline-flex;
 		align-items: center;
