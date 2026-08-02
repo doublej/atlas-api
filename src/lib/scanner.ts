@@ -2,6 +2,8 @@ import { readdir, readFile, stat, writeFile, open } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
+import { detectDomains, mergeDomains } from './domains';
+import { attachUmami, type UmamiInfo } from './umami';
 
 const execAsync = promisify(exec);
 
@@ -57,7 +59,11 @@ export interface Project {
 	promotion?: PromotionStatus;
 	archived?: boolean;
 	port?: number;
+	domains?: string[];
+	umami?: UmamiInfo;
 }
+
+export type { UmamiInfo };
 
 export interface ProjectAtlas {
 	baseDir: string;
@@ -274,13 +280,31 @@ async function detectPythonFramework(fullPath: string): Promise<Framework> {
 	return 'unknown';
 }
 
+/** `.atlas` accepts `umami: "<id>"`, `["<id>", …]` or `{ websiteIds, instance }`. */
+function parseAtlasUmami(value: unknown): UmamiInfo | undefined {
+	if (typeof value === 'string') return { websiteIds: [value] };
+	if (Array.isArray(value)) return { websiteIds: value.filter((v): v is string => typeof v === 'string') };
+	if (value && typeof value === 'object') {
+		const { websiteIds, instance } = value as { websiteIds?: unknown; instance?: unknown };
+		if (Array.isArray(websiteIds)) {
+			return {
+				websiteIds: websiteIds.filter((v): v is string => typeof v === 'string'),
+				instance: typeof instance === 'string' ? instance : undefined
+			};
+		}
+	}
+	return undefined;
+}
+
 async function getProjectInfo(fullPath: string, skipGit: boolean = false): Promise<Partial<Project>> {
 	const info: Partial<Project> = {};
+	let homepage: string | undefined;
 
 	// Node.js project
 	try {
 		const pkg = JSON.parse(await readFile(join(fullPath, 'package.json'), 'utf-8'));
 		info.description = pkg.description;
+		if (typeof pkg.homepage === 'string') homepage = pkg.homepage;
 		info.type = 'node';
 		info.scripts = pkg.scripts;
 		info.framework = detectFrameworkFromPkg(pkg);
@@ -339,6 +363,11 @@ async function getProjectInfo(fullPath: string, skipGit: boolean = false): Promi
 		const meta = JSON.parse(raw);
 		if (meta.archived) info.archived = true;
 		if (meta.port) info.port = meta.port;
+		// Manual overrides — listed before anything detected from the project's files.
+		const atlasDomains = mergeDomains(typeof meta.domain === 'string' ? [meta.domain] : undefined, meta.domains);
+		if (atlasDomains.length > 0) info.domains = atlasDomains;
+		const atlasUmami = parseAtlasUmami(meta.umami);
+		if (atlasUmami && atlasUmami.websiteIds.length > 0) info.umami = atlasUmami;
 		// Presence of .atlas marks the folder as an intentional project.
 		if (!info.type) {
 			info.type = meta.type ?? 'generic';
@@ -364,14 +393,17 @@ async function getProjectInfo(fullPath: string, skipGit: boolean = false): Promi
 		}
 	} catch { /* no readme */ }
 
-	const [runner, justfileInfo, deployInfo, beadsInfo] = await Promise.all([
+	const [runner, justfileInfo, deployInfo, beadsInfo, domains] = await Promise.all([
 		detectRunner(fullPath),
 		detectJustfile(fullPath),
 		detectDeploy(fullPath),
 		detectBeads(fullPath),
+		detectDomains(fullPath, { homepage }),
 	]);
 
 	info.runner = runner;
+	const allDomains = mergeDomains(info.domains, domains);
+	if (allDomains.length > 0) info.domains = allDomains;
 	if (beadsInfo) info.beads = beadsInfo;
 	if (justfileInfo.hasJustfile) {
 		info.hasJustfile = true;
@@ -506,6 +538,7 @@ export interface ScanResult extends ProjectAtlas {
 async function performScan(baseDir: string, skipGit: boolean): Promise<ProjectAtlas> {
 	const folders: string[] = [];
 	const projects = await scanFolder(baseDir, baseDir, 0, skipGit, folders);
+	await attachUmami(baseDir, projects);
 	projects.sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
 
 	const frameworks = [...new Set(projects.map(p => p.framework).filter(Boolean))] as Framework[];
