@@ -243,15 +243,76 @@ async function detectClaudeSessions(fullPath: string): Promise<ClaudeSessionsInf
 	if (files.length === 0) return undefined;
 
 	let lastAt = 0;
+	let newest = '';
 	for (const file of files) {
 		try {
 			const stats = await stat(join(dir, file.name));
-			if (stats.mtimeMs > lastAt) lastAt = stats.mtimeMs;
+			if (stats.mtimeMs > lastAt) {
+				lastAt = stats.mtimeMs;
+				newest = join(dir, file.name);
+			}
 		} catch { /* vanished mid-scan */ }
 	}
 	if (lastAt === 0) return undefined;
 
-	return { lastAt: new Date(lastAt).toISOString(), count: files.length };
+	const info: ClaudeSessionsInfo = { lastAt: new Date(lastAt).toISOString(), count: files.length };
+	const summary = await detectSessionSummary(newest);
+	if (summary) info.summary = summary;
+	return info;
+}
+
+const SUMMARY_TAIL_BYTES = 64 * 1024;
+
+/**
+ * Last-session gist from the tail of the newest transcript, scanned newest-first:
+ * a `summary` line (older transcript format), else the generated `ai-title`, else
+ * the last assistant text. Best-effort — undefined on any failure.
+ */
+async function detectSessionSummary(file: string): Promise<string | undefined> {
+	let lines: string[];
+	try {
+		const fh = await open(file, 'r');
+		try {
+			const { size } = await fh.stat();
+			const start = Math.max(0, size - SUMMARY_TAIL_BYTES);
+			const buf = Buffer.alloc(size - start);
+			await fh.read(buf, 0, buf.length, start);
+			lines = buf.toString('utf-8').split('\n');
+			if (start > 0) lines.shift(); // first line may be cut mid-record
+		} finally {
+			await fh.close();
+		}
+	} catch {
+		return undefined;
+	}
+
+	let title: string | undefined;
+	let assistant: string | undefined;
+	for (let i = lines.length - 1; i >= 0; i--) {
+		const line = lines[i].trim();
+		if (!line) continue;
+		let parsed: Record<string, unknown>;
+		try {
+			parsed = JSON.parse(line);
+		} catch {
+			continue;
+		}
+		if (parsed.type === 'summary' && typeof parsed.summary === 'string') return parsed.summary;
+		if (!title && parsed.type === 'ai-title' && typeof parsed.aiTitle === 'string') {
+			title = parsed.aiTitle;
+		}
+		if (!assistant && parsed.type === 'assistant') {
+			const content = (parsed.message as { content?: unknown } | undefined)?.content;
+			if (Array.isArray(content)) {
+				const block = content.find((b) => (b as { type?: string }).type === 'text') as
+					| { text?: string }
+					| undefined;
+				const text = block?.text?.replace(/\s+/g, ' ').trim();
+				if (text) assistant = text.slice(0, 120);
+			}
+		}
+	}
+	return title ?? assistant;
 }
 
 async function detectAgentFiles(fullPath: string): Promise<AgentFilesInfo | undefined> {
