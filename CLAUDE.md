@@ -31,6 +31,15 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 - Implements stale-while-revalidate caching (`.atlas-cache.json`, 60s TTL)
 - Ignores: node_modules, .git, dist, build, .svelte-kit, __pycache__, .venv, .cache, .beads
 
+**Domains (`src/lib/domains.ts`)**
+- `detectDomains()` collects a project's production domains from its own files: CNAME, `vercel.json` alias, `.vercel/project.json` (`<projectName>.vercel.app`), wrangler routes and `<name>.pages.dev`, `package.json` homepage, `og:url`/canonical in the HTML entry point, robots.txt `Sitemap:` lines, and `SITE_URL`/`ORIGIN`-style env keys
+- `normalizeDomain()` reduces any of those to a bare host and drops placeholders (localhost, `*.local`, code hosts like github.com)
+
+**Umami (`src/lib/umami.ts`)**
+- One ripgrep pass over the dev root finds files carrying a `data-website-id` snippet; each file's ids are attached to the deepest project containing it, and any `og:url`/canonical in that same file feeds `domains`
+- ripgrep is resolved by absolute path as well (`/opt/homebrew/bin/rg`) because launchd runs atlas-api with a minimal PATH; without it, detection is skipped with a warning and the rest of the scan is unaffected
+- `.atlas` overrides both fields: `umami` (id string, array, or `{ websiteIds, instance }`) and `domain`/`domains`
+
 **Main UI (`src/routes/+page.svelte`)**
 - Single-page app with filter chips (type, framework, runner, tools)
 - Flat and nested view modes
@@ -86,6 +95,8 @@ interface Project {
   scripts?: Record<string, string>;
   hasJustfile?: boolean;
   justRecipes?: string[];
+  domains?: string[];                 // production domains detected from project files
+  umami?: { websiteIds: string[]; instance?: string };
   // ...
 }
 ```
