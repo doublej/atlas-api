@@ -1,10 +1,12 @@
 import { readdir, readFile, stat, writeFile, open } from 'node:fs/promises';
-import type { Stats } from 'node:fs';
+import type { Dirent, Stats } from 'node:fs';
+import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { detectDomains, mergeDomains } from './domains';
 import { attachUmami, type UmamiInfo } from './umami';
+import { estimateTokens } from './claude-tree';
 
 const execAsync = promisify(exec);
 
@@ -31,6 +33,17 @@ export interface BeadsInfo {
 	open: number;
 	inProgress: number;
 	closed: number;
+}
+
+export interface ClaudeSessionsInfo {
+	lastAt: string;
+	count: number;
+	summary?: string;
+}
+
+export interface AgentFilesInfo {
+	claude?: { tokens: number };
+	agents?: { tokens: number };
 }
 
 export interface PromotionStatus {
@@ -62,6 +75,8 @@ export interface Project {
 	port?: number;
 	domains?: string[];
 	umami?: UmamiInfo;
+	claudeSessions?: ClaudeSessionsInfo;
+	agentFiles?: AgentFilesInfo;
 }
 
 export type { UmamiInfo };
@@ -204,6 +219,50 @@ async function detectBeads(fullPath: string): Promise<BeadsInfo | undefined> {
 		} catch { /* malformed line */ }
 	}
 	return counts;
+}
+
+const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects');
+
+/**
+ * Claude Code encodes a project path as its session folder name by replacing every
+ * non-alphanumeric byte with '-'. Known ambiguity: `/a/b-c` and `/a/b/c` collide.
+ */
+function claudeSessionDir(projectPath: string): string {
+	return join(CLAUDE_PROJECTS_DIR, projectPath.replace(/[^a-zA-Z0-9]/g, '-'));
+}
+
+async function detectClaudeSessions(fullPath: string): Promise<ClaudeSessionsInfo | undefined> {
+	const dir = claudeSessionDir(fullPath);
+	let entries: Dirent[];
+	try {
+		entries = await readdir(dir, { withFileTypes: true });
+	} catch {
+		return undefined;
+	}
+	const files = entries.filter((e) => e.isFile() && e.name.endsWith('.jsonl'));
+	if (files.length === 0) return undefined;
+
+	let lastAt = 0;
+	for (const file of files) {
+		try {
+			const stats = await stat(join(dir, file.name));
+			if (stats.mtimeMs > lastAt) lastAt = stats.mtimeMs;
+		} catch { /* vanished mid-scan */ }
+	}
+	if (lastAt === 0) return undefined;
+
+	return { lastAt: new Date(lastAt).toISOString(), count: files.length };
+}
+
+async function detectAgentFiles(fullPath: string): Promise<AgentFilesInfo | undefined> {
+	const info: AgentFilesInfo = {};
+	try {
+		info.claude = { tokens: estimateTokens(await readFile(join(fullPath, 'CLAUDE.md'), 'utf-8')) };
+	} catch { /* no CLAUDE.md */ }
+	try {
+		info.agents = { tokens: estimateTokens(await readFile(join(fullPath, 'AGENTS.md'), 'utf-8')) };
+	} catch { /* no AGENTS.md */ }
+	return info.claude || info.agents ? info : undefined;
 }
 
 async function detectGitStatus(fullPath: string): Promise<{ status: GitStatus; branch?: string }> {
@@ -394,18 +453,22 @@ async function getProjectInfo(fullPath: string, skipGit: boolean = false): Promi
 		}
 	} catch { /* no readme */ }
 
-	const [runner, justfileInfo, deployInfo, beadsInfo, domains] = await Promise.all([
+	const [runner, justfileInfo, deployInfo, beadsInfo, domains, claudeSessions, agentFiles] = await Promise.all([
 		detectRunner(fullPath),
 		detectJustfile(fullPath),
 		detectDeploy(fullPath),
 		detectBeads(fullPath),
 		detectDomains(fullPath, { homepage }),
+		detectClaudeSessions(fullPath),
+		detectAgentFiles(fullPath),
 	]);
 
 	info.runner = runner;
 	const allDomains = mergeDomains(info.domains, domains);
 	if (allDomains.length > 0) info.domains = allDomains;
 	if (beadsInfo) info.beads = beadsInfo;
+	if (claudeSessions) info.claudeSessions = claudeSessions;
+	if (agentFiles) info.agentFiles = agentFiles;
 	if (justfileInfo.hasJustfile) {
 		info.hasJustfile = true;
 		info.justRecipes = justfileInfo.recipes;
@@ -526,9 +589,12 @@ async function collectFolders(baseDir: string, dir: string, depth: number = 0): 
 
 const CACHE_FILE = '.atlas-cache.json';
 const CACHE_TTL = 60 * 1000; // 1 minute before considered stale
+/** Bump when the cached Project shape changes — a mismatch forces a full rescan. */
+const CACHE_SHAPE_VERSION = 2;
 
 interface CachedIndex extends ProjectAtlas {
 	cachedAt: number;
+	shapeVersion: number;
 }
 
 export interface ScanResult extends ProjectAtlas {
@@ -563,14 +629,16 @@ export async function scan(baseDir: string, options: { skipGit?: boolean; useCac
 			const cached: CachedIndex = JSON.parse(await readFile(cachePath, 'utf-8'));
 			const age = Date.now() - cached.cachedAt;
 			// Always return cache - let client decide to refresh in background
-			return { ...cached, fromCache: true, stale: age > CACHE_TTL };
+			if (cached.shapeVersion === CACHE_SHAPE_VERSION) {
+				return { ...cached, fromCache: true, stale: age > CACHE_TTL };
+			}
 		} catch { /* no cache or invalid */ }
 	}
 
 	const result = await performScan(baseDir, skipGit);
 
 	// Save to cache (fire and forget)
-	const cacheData: CachedIndex = { ...result, cachedAt: Date.now() };
+	const cacheData: CachedIndex = { ...result, cachedAt: Date.now(), shapeVersion: CACHE_SHAPE_VERSION };
 	writeFile(cachePath, JSON.stringify(cacheData)).catch(() => {});
 
 	return { ...result, fromCache: false, stale: false };
@@ -666,7 +734,7 @@ export async function enrichCacheWithGit(cachePath: string, atlas: ProjectAtlas)
 		}
 	}
 
-	const cacheData: CachedIndex = { ...atlas, cachedAt: Date.now() };
+	const cacheData: CachedIndex = { ...atlas, cachedAt: Date.now(), shapeVersion: CACHE_SHAPE_VERSION };
 	await writeFile(cachePath, JSON.stringify(cacheData));
 }
 
