@@ -73,13 +73,19 @@ const modified = $derived(new Date(project.modifiedAt).toLocaleDateString())
     transition: background var(--duration-fast) var(--ease-out);
   }
 
-  /* Fade-out divider: rules never quite touch the surface edges. */
-  .row + .row::before {
+  /* Fade-out divider: rules never quite touch the surface edges. Each row is
+     its own component, so the separator is drawn on every row's top edge and
+     suppressed on whichever row opens a list. */
+  .row::before {
     content: '';
     position: absolute;
     inset: 0 0 auto;
     height: var(--hairline);
     background: var(--grad-divider);
+  }
+
+  :global(.rows > li:first-child)::before {
+    display: none;
   }
 
   .row:hover {

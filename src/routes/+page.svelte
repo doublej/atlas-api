@@ -8,12 +8,7 @@ import {
   type PromotionFilter,
   toggleSet,
 } from '$lib/browser/filters'
-import {
-  buildFolderTree,
-  collectFolderPaths,
-  countProjects,
-  type FolderNode,
-} from '$lib/browser/tree'
+import { buildFolderTree, collectFolderPaths } from '$lib/browser/tree'
 import BrowserHeader from '$lib/components/browser/BrowserHeader.svelte'
 import FilterPanel from '$lib/components/browser/FilterPanel.svelte'
 import FolderTree from '$lib/components/browser/FolderTree.svelte'
@@ -21,10 +16,9 @@ import MoveDialog from '$lib/components/browser/MoveDialog.svelte'
 import RenameDialog from '$lib/components/browser/RenameDialog.svelte'
 import Toolbar from '$lib/components/browser/Toolbar.svelte'
 import ProjectRow from '$lib/components/project/ProjectRow.svelte'
+import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { Framework, GitStatus, Project } from '$lib/scanner'
-import { theme, toggleTheme } from '$lib/theme.svelte'
-import { getActions, getDynamicActions } from '$shared/actions'
 
 type ViewMode = 'flat' | 'nested'
 
@@ -49,14 +43,7 @@ let onlyWithDev = $state(false)
 let onlyWithReadme = $state(false)
 let selectedPromotion = $state<PromotionFilter | null>(null)
 let runningPorts = $state<Record<string, string>>({})
-let editing = $state<string | null>(null)
-let editValue = $state('')
-let expandedReadme = $state<string | null>(null)
-let readmeContent = $state<Record<string, string>>({})
-let loadingReadme = $state<string | null>(null)
 let showFilters = $state(true)
-let openMenu = $state<string | null>(null)
-let openRunnerMenu = $state<string | null>(null)
 let renaming = $state<Project | null>(null)
 let moving = $state<Project | null>(null)
 let viewMode = $state<ViewMode>('flat')
@@ -79,8 +66,9 @@ const runners = $derived([...new Set(projects.map((p) => p.runner).filter(Boolea
 const filtered = $derived(projects.filter((p) => matchesFilters(p, criteria)))
 const activeFilterCount = $derived(countActiveFilters(criteria))
 const nestedProjects = $derived(buildFolderTree(filtered))
+const hasJust = $derived(projects.some((p) => p.hasJustfile))
 
-async function refreshInBackground() {
+async function refreshInBackground(): Promise<void> {
   if (isRefreshing) return
   isRefreshing = true
   const result = await api.refreshProjects()
@@ -88,14 +76,6 @@ async function refreshInBackground() {
   frameworks = result.frameworks
   folders = result.folders
   isRefreshing = false
-}
-
-async function loadReadme(path: string) {
-  if (readmeContent[path]) return
-  loadingReadme = path
-  const readme = await api.fetchReadme(path)
-  if (readme) readmeContent[path] = readme
-  loadingReadme = null
 }
 
 onMount(() => {
@@ -108,19 +88,19 @@ onMount(() => {
   )
 })
 
-function toggleFolder(path: string) {
+function toggleFolder(path: string): void {
   expandedFolders = toggleSet(expandedFolders, path)
 }
 
-function expandAllFolders() {
+function expandAllFolders(): void {
   expandedFolders = collectFolderPaths(nestedProjects)
 }
 
-function collapseAllFolders() {
+function collapseAllFolders(): void {
   expandedFolders = new Set()
 }
 
-function clearFilters() {
+function clearFilters(): void {
   selectedFrameworks = new Set()
   selectedTypes = new Set()
   selectedRunners = new Set()
@@ -130,92 +110,30 @@ function clearFilters() {
   selectedPromotion = null
 }
 
-const typeColors: Record<string, string> = {
-  node: '#4ade80',
-  python: '#60a5fa',
-  swift: '#fb923c',
-  rust: '#fbbf24',
-  go: '#22d3ee',
-  folder: '#71717a',
-}
-
-const frameworkColors: Record<string, string> = {
-  sveltekit: '#ff3e00',
-  svelte: '#ff3e00',
-  next: '#a1a1aa',
-  nuxt: '#4ade80',
-  astro: '#c084fc',
-  remix: '#a1a1aa',
-  react: '#38bdf8',
-  vue: '#4ade80',
-  angular: '#f87171',
-  vite: '#a78bfa',
-  express: '#71717a',
-  fastify: '#71717a',
-  hono: '#fb923c',
-  elysia: '#a78bfa',
-  vapor: '#a78bfa',
-  fastapi: '#2dd4bf',
-  flask: '#71717a',
-  django: '#4ade80',
-  streamlit: '#f87171',
-  tauri: '#fbbf24',
-  electron: '#38bdf8',
-  unknown: '#52525b',
-}
-
-async function runDev(project: Project) {
+async function runDev(project: Project): Promise<void> {
   const url = await api.runDevServer(project)
-  if (url) {
-    runningPorts[project.path] = url
-    setTimeout(() => window.open(url, '_blank'), 2000)
-  }
+  if (!url) return
+  runningPorts[project.path] = url
+  setTimeout(() => window.open(url, '_blank'), 2000)
 }
 
-async function runJust(project: Project, recipe: string) {
-  const url = await api.runJustRecipe(project, recipe)
-  if (url) runningPorts[project.path] = url
-}
-
-async function runScript(project: Project, script: string) {
+async function runScript(project: Project, script: string): Promise<void> {
   const url = await api.runScript(project, script)
   if (url) runningPorts[project.path] = url
 }
 
-async function openITerm(path: string) {
-  await api.openInITerm(path)
+async function runJust(project: Project, recipe: string): Promise<void> {
+  const url = await api.runJustRecipe(project, recipe)
+  if (url) runningPorts[project.path] = url
 }
 
-async function openFinder(path: string) {
-  await api.openInFinder(path)
-}
-
-function startEdit(project: Project) {
-  editing = project.path
-  editValue = project.description || ''
-}
-
-async function saveDescription(project: Project) {
-  await api.saveDescription(project.path, editValue)
-  project.description = editValue
-  editing = null
-}
-
-function startRename(project: Project) {
-  renaming = project
-}
-
-async function doRename(newName: string) {
+async function doRename(newName: string): Promise<void> {
   if (!renaming) return
   await api.renameProject(renaming.path, newName)
   location.reload()
 }
 
-function startMove(project: Project) {
-  moving = project
-}
-
-async function doMove(targetFolder: string) {
+async function doMove(targetFolder: string): Promise<void> {
   if (!moving) return
   await api.moveProject(moving.path, `${data.baseDir}/${targetFolder}`)
   location.reload()
@@ -225,6 +143,21 @@ async function doMove(targetFolder: string) {
 <svelte:head>
 	<title>Projects ({filtered.length})</title>
 </svelte:head>
+
+{#snippet projectItem(project: Project)}
+	<ProjectRow
+		{project}
+		git={gitStatus[project.path]}
+		runningUrl={runningPorts[project.path]}
+		onRunDev={runDev}
+		onRunScript={runScript}
+		onRunJust={runJust}
+		onIterm={api.openInITerm}
+		onFinder={api.openInFinder}
+		onRename={(project) => (renaming = project)}
+		onMove={(project) => (moving = project)}
+	/>
+{/snippet}
 
 <main>
 	<div class="topbar">
@@ -250,7 +183,7 @@ async function doMove(targetFolder: string) {
 				{types}
 				{frameworks}
 				{runners}
-				showTools={projects.some((p) => p.hasJustfile)}
+				showTools={hasJust}
 				bind:selectedTypes
 				bind:selectedFrameworks
 				bind:selectedRunners
@@ -262,22 +195,15 @@ async function doMove(targetFolder: string) {
 		</div>
 	{/if}
 
-	{#snippet projectItem(project: Project)}
-		<ProjectRow
-			{project}
-			git={gitStatus[project.path]}
-			runningUrl={runningPorts[project.path]}
-			onRunDev={runDev}
-			onRunScript={runScript}
-			onRunJust={runJust}
-			onIterm={openITerm}
-			onFinder={openFinder}
-			onRename={startRename}
-			onMove={startMove}
-		/>
-	{/snippet}
-
-	{#if viewMode === 'flat'}
+	{#if filtered.length === 0}
+		<Card>
+			<div class="empty">
+				<p class="t-h3">No projects</p>
+				<p class="t-small muted">No project matches the current search and filters.</p>
+				<Button variant="primary" onclick={clearFilters}>Clear filters</Button>
+			</div>
+		</Card>
+	{:else if viewMode === 'flat'}
 		<Card flush>
 			<ul class="rows">
 				{#each filtered as project (project.path)}
@@ -305,54 +231,17 @@ async function doMove(targetFolder: string) {
 	{/if}
 </main>
 
-<RenameDialog
-	project={renaming}
-	onCancel={() => (renaming = null)}
-	onConfirm={doRename}
-/>
+<RenameDialog project={renaming} onCancel={() => (renaming = null)} onConfirm={doRename} />
 
-<MoveDialog
-	project={moving}
-	{folders}
-	onCancel={() => (moving = null)}
-	onConfirm={doMove}
-/>
-
+<MoveDialog project={moving} {folders} onCancel={() => (moving = null)} onConfirm={doMove} />
 
 <style>
-	/* === DESIGN TOKENS === */
 	main {
-		--bg-base: var(--color-bg);
-		--bg-elevated: var(--color-bg-elev);
-		--bg-surface: var(--color-card-2);
-		--bg-hover: var(--color-card);
-		--border: var(--color-border);
-		--border-hover: var(--color-border-strong);
-		--text-primary: var(--color-fg);
-		--text-secondary: var(--color-fg-2);
-		--text-muted: var(--color-muted);
-		--accent-cyan: var(--color-accent);
-		--accent-green: var(--color-pos);
-		--accent-amber: var(--color-warn);
-		--accent-red: var(--color-neg);
-		--accent-purple: var(--chart-6);
-
 		width: 100%;
 		max-width: var(--col-max);
 		min-height: 100vh;
 		margin: 0 auto;
 		padding: 0 var(--page-pad) var(--space-16);
-		position: relative;
-	}
-
-	.rows {
-		margin: 0;
-		padding: 0;
-		list-style: none;
-	}
-
-	.filter-region {
-		margin-bottom: var(--section-gap);
 	}
 
 	/* Header and toolbar travel together as one sticky band. */
@@ -373,869 +262,36 @@ async function doMove(targetFolder: string) {
 		background: var(--grad-divider);
 	}
 
+	.filter-region {
+		margin-bottom: var(--section-gap);
+	}
+
+	.rows {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-10) var(--space-4);
+		text-align: center;
+	}
+
+	.empty p {
+		margin: 0;
+	}
+
+	.empty :global(button) {
+		margin-top: var(--space-2);
+	}
+
 	@media (max-width: 768px) {
 		main {
 			padding: 0 var(--space-4) var(--space-12);
 		}
-	}
-
-	/* === HEADER === */
-	header {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		margin: -1.5rem -2rem 1.5rem;
-		padding: 1rem 2rem;
-		background: var(--bg-elevated);
-		border-bottom: 1px solid var(--border);
-		position: sticky;
-		top: 0;
-		z-index: 50;
-	}
-
-	h1 {
-		font-family: var(--font-sans);
-		font-size: 1.25rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		letter-spacing: -0.02em;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	h1::before {
-		content: '';
-		width: 8px;
-		height: 8px;
-		border-radius: 2px;
-		background: var(--color-accent);
-		transform: rotate(45deg);
-	}
-
-	.refreshing {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		color: var(--accent-cyan);
-		animation: pulse-loading 1s ease-in-out infinite;
-	}
-
-	.count {
-		font-family: var(--font-display);
-		font-size: 1.5rem;
-		line-height: 1;
-		color: var(--text-primary);
-		padding: 0 0.25rem;
-	}
-
-	.count .total {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: var(--text-muted);
-	}
-
-	.theme-toggle {
-		margin-left: auto;
-		width: 32px;
-		padding: 0.5rem;
-		font-size: 0.875rem;
-	}
-
-	/* === SEARCH ROW === */
-	.search-row {
-		display: flex;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
-		flex-wrap: wrap;
-		position: sticky;
-		top: 52px;
-		z-index: 40;
-		background: var(--bg-base);
-		margin-left: -2rem;
-		margin-right: -2rem;
-		padding: 0.75rem 2rem;
-		border-bottom: 1px solid var(--border);
-	}
-
-	input[type="search"] {
-		flex: 1;
-		min-width: 200px;
-		padding: 0.625rem 0.875rem;
-		font-family: var(--font-mono);
-		font-size: 0.875rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		color: var(--text-primary);
-		outline: none;
-		transition: border-color 0.15s, box-shadow 0.15s;
-	}
-
-	input[type="search"]::placeholder {
-		color: var(--text-muted);
-	}
-
-	input[type="search"]:focus {
-		border-color: var(--color-ring);
-		box-shadow: 0 0 0 3px var(--color-accent-soft);
-	}
-
-	/* === BUTTONS === */
-	button {
-		font-family: var(--font-sans);
-		font-size: 0.75rem;
-		font-weight: 500;
-		padding: 0.5rem 0.875rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		color: var(--text-secondary);
-		cursor: pointer;
-		transition: all 0.15s;
-	}
-
-	button:hover {
-		background: var(--bg-hover);
-		border-color: var(--border-hover);
-		color: var(--text-primary);
-	}
-
-	.toggle-filters {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.badge {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		background: var(--color-accent);
-		color: var(--color-accent-fg);
-		padding: 0.125rem 0.375rem;
-		border-radius: var(--radius-full);
-		font-weight: 600;
-	}
-
-	.clear {
-		border-color: var(--accent-red);
-		color: var(--accent-red);
-	}
-
-	.clear:hover {
-		background: var(--accent-red);
-		color: var(--bg-base);
-	}
-
-	/* === VIEW TOGGLE === */
-	.view-toggle {
-		display: flex;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		overflow: hidden;
-	}
-
-	.view-toggle button {
-		border: none;
-		border-radius: 0;
-		padding: 0.5rem 0.75rem;
-	}
-
-	.view-toggle button:first-child {
-		border-right: 1px solid var(--border);
-	}
-
-	.view-toggle button.active {
-		background: var(--color-accent);
-		color: var(--color-accent-fg);
-	}
-
-	/* === FILTERS === */
-	.filters {
-		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-lg);
-		padding: 1rem;
-		margin-bottom: 1.5rem;
-		display: grid;
-		gap: 1rem;
-	}
-
-	.filter-label {
-		display: block;
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		margin-bottom: 0.5rem;
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-	}
-
-	.chips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
-	}
-
-	.chip {
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		padding: 0.25rem 0.625rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-full);
-		color: var(--text-secondary);
-		cursor: pointer;
-		transition: all 0.15s;
-	}
-
-	.chip:hover {
-		border-color: var(--border-hover);
-		color: var(--text-primary);
-	}
-
-	.chip.active {
-		background: var(--color, var(--color-accent));
-		color: #ffffff;
-		border-color: transparent;
-	}
-
-	/* === PROJECT LIST === */
-	.projects {
-		list-style: none;
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(410px, 1fr));
-		gap: 0.75rem;
-	}
-
-	li {
-		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-lg);
-		padding: 1rem 1.25rem;
-		position: relative;
-		transition: all 0.2s;
-		height: 300px;
-		display: flex;
-		flex-direction: column;
-	}
-
-	li::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		width: 3px;
-		border-top-left-radius: var(--radius-lg);
-		border-bottom-left-radius: var(--radius-lg);
-		background: var(--color-accent);
-		opacity: 0;
-		transition: opacity 0.2s;
-	}
-
-	li:hover {
-		border-color: var(--border-hover);
-		background: var(--color-card);
-	}
-
-	li:hover::before {
-		opacity: 1;
-	}
-
-	.header {
-		display: flex;
-		gap: 0.375rem;
-		justify-content: flex-end;
-		margin-bottom: 0.5rem;
-	}
-
-	.type, .runner, .framework {
-		font-family: var(--font-mono);
-		font-size: 0.5625rem;
-		font-weight: 600;
-		padding: 0.1875rem 0.375rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		border: 1px solid transparent;
-		border-radius: var(--radius-xs);
-	}
-
-	.type {
-		color: #ffffff;
-	}
-
-	.framework {
-		color: #ffffff;
-	}
-
-	.runner {
-		background: transparent;
-		border-color: var(--text-muted);
-		color: var(--text-muted);
-	}
-
-	/* === PROMOTION BADGE === */
-	.promotion-badge {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		flex-shrink: 0;
-		margin-right: auto;
-	}
-
-	.promotion-badge[data-status="published"] {
-		background: var(--color-pos);
-	}
-
-	.promotion-badge[data-status="ready"] {
-		background: var(--color-pos);
-	}
-
-	.promotion-badge[data-status="in-progress"] {
-		background: var(--color-warn);
-	}
-
-	.promotion-badge[data-status="draft"] {
-		background: var(--chart-6);
-	}
-
-	.promotion-badge[data-status="none"] {
-		background: var(--text-muted);
-		opacity: 0.5;
-	}
-
-	strong {
-		font-family: var(--font-sans);
-		font-size: 0.9375rem;
-		font-weight: 600;
-		color: var(--text-primary);
-	}
-
-	/* === GIT STATUS === */
-	.project-title {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.git-status {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		flex-shrink: 0;
-	}
-
-	.git-status[data-status="clean"] {
-		background: var(--status-clean);
-	}
-
-	.git-status[data-status="dirty"] {
-		background: var(--status-dirty);
-	}
-
-	.git-status[data-status="no-repo"] {
-		background: var(--text-muted);
-		opacity: 0.5;
-	}
-
-	.git-status[data-status="error"] {
-		background: var(--status-error);
-	}
-
-	.git-status[data-status="loading"] {
-		background: var(--text-muted);
-		opacity: 0.3;
-		animation: pulse-loading 1s ease-in-out infinite;
-	}
-
-	@keyframes pulse-loading {
-		0%, 100% { opacity: 0.3; }
-		50% { opacity: 0.6; }
-	}
-
-	.git-branch {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		color: var(--text-muted);
-		background: var(--bg-surface);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		padding: 0.125rem 0.375rem;
-		margin-left: auto;
-	}
-
-	/* Dirty project cards get an amber left border */
-	.project-card[data-git="dirty"]::before {
-		background: var(--status-dirty);
-		opacity: 1;
-	}
-
-	.path {
-		display: block;
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		color: var(--text-muted);
-		margin: 0.25rem 0 0.5rem;
-	}
-
-	.desc {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-		margin: 0 0 0.75rem;
-		cursor: pointer;
-		padding: 0.25rem 0;
-		flex: 1;
-		overflow: hidden;
-	}
-
-	.desc:hover {
-		color: var(--text-primary);
-	}
-
-	.edit-desc {
-		display: flex;
-		gap: 0.5rem;
-		margin: 0.5rem 0;
-	}
-
-	.edit-desc input {
-		flex: 1;
-		padding: 0.375rem 0.5rem;
-		font-family: var(--font-mono);
-		font-size: 0.8125rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		color: var(--text-primary);
-		outline: none;
-	}
-
-	.edit-desc input:focus {
-		border-color: var(--color-ring);
-		box-shadow: 0 0 0 3px var(--color-accent-soft);
-	}
-
-	/* === README === */
-	.readme-toggle {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		padding: 0.25rem 0.5rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		color: var(--text-muted);
-	}
-
-	.readme-toggle:hover {
-		color: var(--color-accent);
-		border-color: var(--color-accent);
-	}
-
-	.readme {
-		margin: 0.75rem 0;
-		padding: 1rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: var(--text-secondary);
-		max-height: 300px;
-		overflow: auto;
-		white-space: pre-wrap;
-		line-height: 1.6;
-	}
-
-
-	/* === RUNNER DROPDOWNS === */
-	.runner-dropdown {
-		position: relative;
-		display: inline-block;
-		margin: 0.375rem 0.25rem 0.375rem 0;
-	}
-
-	.runner-trigger {
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		padding: 0.25rem 0.5rem;
-		cursor: pointer;
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		background: var(--bg-surface);
-		color: var(--text-secondary);
-		transition: all 0.15s;
-	}
-
-	.script-trigger {
-		color: var(--color-pos);
-		border-color: var(--color-pos);
-	}
-
-	.script-trigger:hover {
-		background: var(--color-pos);
-		color: #ffffff;
-		border-color: var(--color-pos);
-	}
-
-	.just-trigger {
-		color: var(--color-warn);
-		border-color: var(--color-warn);
-	}
-
-	.just-trigger:hover {
-		background: var(--color-warn);
-		color: #ffffff;
-		border-color: var(--color-warn);
-	}
-
-	.runner-count {
-		font-size: 0.5625rem;
-		opacity: 0.7;
-	}
-
-	.runner-menu {
-		position: absolute;
-		bottom: 100%;
-		left: 0;
-		margin-bottom: 0.25rem;
-		background: var(--color-bg-elev);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		box-shadow: var(--shadow-md);
-		min-width: 140px;
-		max-height: 200px;
-		overflow-y: auto;
-		z-index: 20;
-	}
-
-	.runner-item {
-		display: block;
-		width: 100%;
-		text-align: left;
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		padding: 0.375rem 0.625rem;
-		border: none;
-		border-radius: 0;
-		border-bottom: 1px solid var(--border);
-		background: transparent;
-		cursor: pointer;
-		text-transform: none;
-		letter-spacing: normal;
-	}
-
-	.runner-item:last-child {
-		border-bottom: none;
-	}
-
-	.runner-item:hover {
-		background: var(--bg-hover);
-	}
-
-	.runner-item.script {
-		color: var(--color-pos);
-	}
-
-	.runner-item.script:hover {
-		background: var(--color-pos);
-		color: #ffffff;
-	}
-
-	.runner-item.recipe {
-		color: var(--color-warn);
-	}
-
-	.runner-item.recipe:hover {
-		background: var(--color-warn);
-		color: #ffffff;
-	}
-
-	/* === ACTIONS === */
-	.actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
-		margin-top: auto;
-		padding-top: 0.75rem;
-		border-top: 1px solid var(--border);
-	}
-
-	.actions button:first-child {
-		background: var(--color-accent);
-		border-color: var(--color-accent);
-		color: var(--color-accent-fg);
-	}
-
-	.actions button:first-child:hover {
-		background: var(--color-accent);
-		border-color: var(--color-accent);
-		filter: brightness(1.08);
-	}
-
-	/* === THREE DOT MENU === */
-	.menu-container {
-		position: relative;
-		margin-left: auto;
-	}
-
-	.menu-trigger {
-		width: 32px;
-		padding: 0.5rem;
-		font-size: 1rem;
-		letter-spacing: 0.1em;
-	}
-
-	.menu-dropdown {
-		position: absolute;
-		bottom: 100%;
-		right: 0;
-		margin-bottom: 0.25rem;
-		background: var(--color-bg-elev);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		box-shadow: var(--shadow-md);
-		min-width: 100px;
-		z-index: 20;
-	}
-
-	.menu-dropdown button {
-		display: block;
-		width: 100%;
-		text-align: left;
-		border: none;
-		border-radius: 0;
-		border-bottom: 1px solid var(--border);
-	}
-
-	.menu-dropdown button:last-child {
-		border-bottom: none;
-	}
-
-	/* === RUNNING STATUS === */
-	.web-links {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
-		margin-top: 0.5rem;
-	}
-
-	.web-links a {
-		padding: 0.125rem 0.375rem;
-		border: 1px solid var(--color-border);
-		border-radius: 4px;
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: var(--color-muted);
-		text-decoration: none;
-	}
-
-	.web-links a:hover {
-		color: var(--color-fg);
-		border-color: var(--color-border-strong);
-	}
-
-	.web-links .umami {
-		color: var(--color-accent);
-	}
-
-	.running {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-top: 0.5rem;
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: var(--color-pos);
-		text-decoration: none;
-	}
-
-	.running::before {
-		content: '';
-		width: 6px;
-		height: 6px;
-		background: var(--color-pos);
-		border-radius: 50%;
-		animation: pulse 1.5s ease-in-out infinite;
-	}
-
-	@keyframes pulse {
-		0%, 100% { opacity: 1; transform: scale(1); }
-		50% { opacity: 0.5; transform: scale(1.2); }
-	}
-
-	time {
-		position: absolute;
-		bottom: 0.625rem;
-		right: 0.75rem;
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		color: var(--text-muted);
-	}
-
-	/* === MODALS === */
-	.modal-backdrop {
-		position: fixed;
-		inset: 0;
-		background: var(--color-overlay);
-		backdrop-filter: blur(4px);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 100;
-	}
-
-	.modal {
-		background: var(--color-bg-elev);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-lg);
-		padding: 1.5rem;
-		min-width: 340px;
-		max-width: 420px;
-		box-shadow: var(--shadow-lg);
-	}
-
-	.modal h3 {
-		font-family: var(--font-sans);
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0 0 1rem;
-	}
-
-	.modal input, .modal select {
-		width: 100%;
-		padding: 0.625rem 0.75rem;
-		font-family: var(--font-mono);
-		font-size: 0.875rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		color: var(--text-primary);
-		margin-bottom: 1rem;
-		outline: none;
-	}
-
-	.modal input:focus, .modal select:focus {
-		border-color: var(--color-ring);
-		box-shadow: 0 0 0 3px var(--color-accent-soft);
-	}
-
-	.modal select {
-		cursor: pointer;
-	}
-
-	.modal select option {
-		background: var(--color-bg-elev);
-		color: var(--text-primary);
-	}
-
-	.modal-actions {
-		display: flex;
-		gap: 0.5rem;
-		justify-content: flex-end;
-	}
-
-	.modal-actions button:first-child {
-		background: var(--color-accent);
-		border-color: var(--color-accent);
-		color: var(--color-accent-fg);
-	}
-
-	.modal-actions button:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-
-	/* === NESTED VIEW === */
-	.nested-view {
-		display: grid;
-		gap: 0.5rem;
-	}
-
-	.folder {
-		margin-left: calc(var(--depth) * 1.25rem);
-	}
-
-	.folder-toggle {
-		display: flex;
-		align-items: center;
-		gap: 0.625rem;
-		padding: 0.5rem 0.75rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		cursor: pointer;
-		width: 100%;
-		text-align: left;
-		transition: all 0.15s;
-	}
-
-	.folder-toggle:hover {
-		background: var(--bg-hover);
-		border-color: var(--border-hover);
-	}
-
-	.folder-icon {
-		font-size: 0.875rem;
-		filter: grayscale(1);
-		opacity: 0.7;
-	}
-
-	.folder-name {
-		font-family: var(--font-mono);
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--text-primary);
-		flex: 1;
-	}
-
-	.folder-count {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		color: var(--text-muted);
-		background: var(--color-bg);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-full);
-		padding: 0.125rem 0.375rem;
-	}
-
-	.projects.nested {
-		margin-left: calc(var(--depth, 0) * 1.25rem + 1.25rem);
-		margin-top: 0.5rem;
-		margin-bottom: 0.5rem;
-		border-left: 1px solid var(--border);
-		padding-left: 0.75rem;
-	}
-
-	.projects.nested.root-projects {
-		margin-left: 0;
-		border-left: none;
-		padding-left: 0;
-	}
-
-	/* === SCROLLBAR === */
-	::-webkit-scrollbar {
-		width: 8px;
-		height: 8px;
-	}
-
-	::-webkit-scrollbar-track {
-		background: var(--color-bg);
-	}
-
-	::-webkit-scrollbar-thumb {
-		background: var(--color-border);
-		border-radius: var(--radius-full);
-	}
-
-	::-webkit-scrollbar-thumb:hover {
-		background: var(--color-border-strong);
 	}
 </style>
