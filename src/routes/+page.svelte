@@ -15,6 +15,7 @@ import {
   type FolderNode,
 } from '$lib/browser/tree'
 import BrowserHeader from '$lib/components/browser/BrowserHeader.svelte'
+import FilterPanel from '$lib/components/browser/FilterPanel.svelte'
 import Toolbar from '$lib/components/browser/Toolbar.svelte'
 import type { Framework, GitStatus, Project } from '$lib/scanner'
 import { theme, toggleTheme } from '$lib/theme.svelte'
@@ -243,78 +244,20 @@ async function doMove() {
 	</div>
 
 	{#if showFilters}
-		<div class="filters">
-			<div class="filter-group">
-				<div class="filter-label">Type</div>
-				<div class="chips">
-					{#each types as type}
-						<button
-							class="chip"
-							class:active={selectedTypes.has(type)}
-							style="--color: {typeColors[type] || '#888'}"
-							onclick={() => selectedTypes = toggleSet(selectedTypes, type)}
-						>{type}</button>
-					{/each}
-				</div>
-			</div>
-
-			<div class="filter-group">
-				<div class="filter-label">Framework</div>
-				<div class="chips">
-					{#each frameworks.filter(f => f !== 'unknown') as fw}
-						<button
-							class="chip"
-							class:active={selectedFrameworks.has(fw)}
-							style="--color: {frameworkColors[fw] || '#888'}"
-							onclick={() => selectedFrameworks = toggleSet(selectedFrameworks, fw)}
-						>{fw}</button>
-					{/each}
-				</div>
-			</div>
-
-			<div class="filter-group">
-				<div class="filter-label">Runner</div>
-				<div class="chips">
-					{#each runners as runner}
-						<button
-							class="chip"
-							class:active={selectedRunners.has(runner)}
-							onclick={() => selectedRunners = toggleSet(selectedRunners, runner)}
-						>{runner}</button>
-					{/each}
-				</div>
-			</div>
-
-			{#if projects.some(p => p.hasJustfile)}
-				<div class="filter-group">
-					<div class="filter-label">Tools</div>
-					<div class="chips">
-						<button
-							class="chip"
-							class:active={selectedTools.has('just')}
-							style="--color: #fbbf24"
-							onclick={() => selectedTools = toggleSet(selectedTools, 'just')}
-						>just</button>
-					</div>
-				</div>
-			{/if}
-
-			<div class="filter-group">
-				<div class="filter-label">Features</div>
-				<div class="chips">
-					<button class="chip" class:active={onlyWithDev} onclick={() => onlyWithDev = !onlyWithDev}>Has dev command</button>
-					<button class="chip" class:active={onlyWithReadme} onclick={() => onlyWithReadme = !onlyWithReadme}>Has README</button>
-				</div>
-			</div>
-
-			<div class="filter-group">
-				<div class="filter-label">Promotion</div>
-				<div class="chips">
-					<button class="chip" class:active={selectedPromotion === 'promoted'} style="--color: #4ade80" onclick={() => selectedPromotion = selectedPromotion === 'promoted' ? null : 'promoted'}>Promoted</button>
-					<button class="chip" class:active={selectedPromotion === 'unpromoted'} style="--color: #71717a" onclick={() => selectedPromotion = selectedPromotion === 'unpromoted' ? null : 'unpromoted'}>Unpromoted</button>
-					<button class="chip" class:active={selectedPromotion === 'in-progress'} style="--color: #fbbf24" onclick={() => selectedPromotion = selectedPromotion === 'in-progress' ? null : 'in-progress'}>In Progress</button>
-				</div>
-			</div>
+		<div class="filter-region">
+			<FilterPanel
+				{types}
+				{frameworks}
+				{runners}
+				showTools={projects.some((p) => p.hasJustfile)}
+				bind:selectedTypes
+				bind:selectedFrameworks
+				bind:selectedRunners
+				bind:selectedTools
+				bind:onlyWithDev
+				bind:onlyWithReadme
+				bind:promotion={selectedPromotion}
+			/>
 		</div>
 	{/if}
 
