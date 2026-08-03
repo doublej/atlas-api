@@ -17,6 +17,8 @@ import {
 import BrowserHeader from '$lib/components/browser/BrowserHeader.svelte'
 import FilterPanel from '$lib/components/browser/FilterPanel.svelte'
 import FolderTree from '$lib/components/browser/FolderTree.svelte'
+import MoveDialog from '$lib/components/browser/MoveDialog.svelte'
+import RenameDialog from '$lib/components/browser/RenameDialog.svelte'
 import Toolbar from '$lib/components/browser/Toolbar.svelte'
 import ProjectRow from '$lib/components/project/ProjectRow.svelte'
 import Card from '$lib/components/ui/Card.svelte'
@@ -56,9 +58,7 @@ let showFilters = $state(true)
 let openMenu = $state<string | null>(null)
 let openRunnerMenu = $state<string | null>(null)
 let renaming = $state<Project | null>(null)
-let renameValue = $state('')
 let moving = $state<Project | null>(null)
-let moveTarget = $state('')
 let viewMode = $state<ViewMode>('flat')
 let expandedFolders = $state<Set<string>>(new Set())
 let gitStatus = $state<Record<string, { status: GitStatus; branch?: string }>>({})
@@ -203,23 +203,21 @@ async function saveDescription(project: Project) {
 
 function startRename(project: Project) {
   renaming = project
-  renameValue = project.name
 }
 
-async function doRename() {
-  if (!renaming || !renameValue) return
-  await api.renameProject(renaming.path, renameValue)
+async function doRename(newName: string) {
+  if (!renaming) return
+  await api.renameProject(renaming.path, newName)
   location.reload()
 }
 
 function startMove(project: Project) {
   moving = project
-  moveTarget = ''
 }
 
-async function doMove() {
-  if (!moving || !moveTarget) return
-  await api.moveProject(moving.path, `${data.baseDir}/${moveTarget}`)
+async function doMove(targetFolder: string) {
+  if (!moving) return
+  await api.moveProject(moving.path, `${data.baseDir}/${targetFolder}`)
   location.reload()
 }
 </script>
@@ -307,58 +305,19 @@ async function doMove() {
 	{/if}
 </main>
 
-{#if renaming}
-	<div
-		class="modal-backdrop"
-		role="presentation"
-		onclick={() => renaming = null}
-		onkeydown={(e) => e.key === 'Escape' && (renaming = null)}
-	>
-		<div
-			class="modal"
-			role="dialog"
-			aria-modal="true"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
-		>
-			<h3>Rename "{renaming.name}"</h3>
-			<input type="text" bind:value={renameValue} onkeydown={(e) => e.key === 'Enter' && doRename()} />
-			<div class="modal-actions">
-				<button onclick={doRename}>Rename</button>
-				<button onclick={() => renaming = null}>Cancel</button>
-			</div>
-		</div>
-	</div>
-{/if}
+<RenameDialog
+	project={renaming}
+	onCancel={() => (renaming = null)}
+	onConfirm={doRename}
+/>
 
-{#if moving}
-	<div
-		class="modal-backdrop"
-		role="presentation"
-		onclick={() => moving = null}
-		onkeydown={(e) => e.key === 'Escape' && (moving = null)}
-	>
-		<div
-			class="modal"
-			role="dialog"
-			aria-modal="true"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
-		>
-			<h3>Move "{moving.name}" to</h3>
-			<select bind:value={moveTarget}>
-				<option value="">Select folder...</option>
-				{#each folders as folder}
-					<option value={folder}>{folder}</option>
-				{/each}
-			</select>
-			<div class="modal-actions">
-				<button onclick={doMove} disabled={!moveTarget}>Move</button>
-				<button onclick={() => moving = null}>Cancel</button>
-			</div>
-		</div>
-	</div>
-{/if}
+<MoveDialog
+	project={moving}
+	{folders}
+	onCancel={() => (moving = null)}
+	onConfirm={doMove}
+/>
+
 
 <style>
 	/* === DESIGN TOKENS === */
