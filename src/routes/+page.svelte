@@ -16,6 +16,7 @@ import {
 } from '$lib/browser/tree'
 import BrowserHeader from '$lib/components/browser/BrowserHeader.svelte'
 import FilterPanel from '$lib/components/browser/FilterPanel.svelte'
+import FolderTree from '$lib/components/browser/FolderTree.svelte'
 import Toolbar from '$lib/components/browser/Toolbar.svelte'
 import ProjectRow from '$lib/components/project/ProjectRow.svelte'
 import Card from '$lib/components/ui/Card.svelte'
@@ -278,26 +279,6 @@ async function doMove() {
 		/>
 	{/snippet}
 
-	{#snippet folderTree(node: FolderNode, depth: number)}
-		{#each [...node.children.entries()].sort((a, b) => a[0].localeCompare(b[0])) as [name, child]}
-			<div class="folder" style="--depth: {depth}">
-				<button class="folder-toggle" onclick={() => toggleFolder(child.path)}>
-					<span class="folder-icon">{expandedFolders.has(child.path) ? '📂' : '📁'}</span>
-					<span class="folder-name">{name}</span>
-					<span class="folder-count">{countProjects(child)}</span>
-				</button>
-				{#if expandedFolders.has(child.path)}
-					<ul class="projects nested">
-						{#each child.projects as project}
-							{@render projectItem(project)}
-						{/each}
-					</ul>
-					{@render folderTree(child, depth + 1)}
-				{/if}
-			</div>
-		{/each}
-	{/snippet}
-
 	{#if viewMode === 'flat'}
 		<Card flush>
 			<ul class="rows">
@@ -307,14 +288,22 @@ async function doMove() {
 			</ul>
 		</Card>
 	{:else}
-		<div class="nested-view">
-			<ul class="projects nested root-projects">
-				{#each nestedProjects.projects as project}
-					{@render projectItem(project)}
-				{/each}
-			</ul>
-			{@render folderTree(nestedProjects, 0)}
-		</div>
+		<Card flush>
+			{#if nestedProjects.projects.length > 0}
+				<ul class="rows">
+					{#each nestedProjects.projects as project (project.path)}
+						{@render projectItem(project)}
+					{/each}
+				</ul>
+			{/if}
+			<FolderTree
+				node={nestedProjects}
+				depth={0}
+				expanded={expandedFolders}
+				onToggle={toggleFolder}
+				row={projectItem}
+			/>
+		</Card>
 	{/if}
 </main>
 
