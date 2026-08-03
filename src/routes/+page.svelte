@@ -1,17 +1,24 @@
 <script lang="ts">
 import { onMount } from 'svelte'
-import type { Framework, GitStatus, Project, PromotionStatus } from '$lib/scanner'
+import * as api from '$lib/browser/api'
+import {
+  countActiveFilters,
+  type FilterCriteria,
+  matchesFilters,
+  type PromotionFilter,
+  toggleSet,
+} from '$lib/browser/filters'
+import {
+  buildFolderTree,
+  collectFolderPaths,
+  countProjects,
+  type FolderNode,
+} from '$lib/browser/tree'
+import type { Framework, GitStatus, Project } from '$lib/scanner'
 import { theme, toggleTheme } from '$lib/theme.svelte'
-import type { ActionDef } from '$shared/actions'
-import { getActions, getDynamicActions, registry } from '$shared/actions'
+import { getActions, getDynamicActions } from '$shared/actions'
 
 type ViewMode = 'flat' | 'nested'
-interface FolderNode {
-  name: string
-  path: string
-  projects: Project[]
-  children: Map<string, FolderNode>
-}
 
 let { data } = $props()
 let projects = $state<Project[]>([])
@@ -24,6 +31,7 @@ $effect(() => {
   frameworks = data.frameworks
   folders = data.folders
 })
+
 let search = $state('')
 let selectedFrameworks = $state<Set<Framework>>(new Set())
 let selectedTypes = $state<Set<string>>(new Set())
@@ -31,7 +39,7 @@ let selectedRunners = $state<Set<string>>(new Set())
 let selectedTools = $state<Set<string>>(new Set())
 let onlyWithDev = $state(false)
 let onlyWithReadme = $state(false)
-let selectedPromotion = $state<string | null>(null)
+let selectedPromotion = $state<PromotionFilter | null>(null)
 let runningPorts = $state<Record<string, string>>({})
 let editing = $state<string | null>(null)
 let editValue = $state('')
@@ -49,11 +57,27 @@ let viewMode = $state<ViewMode>('flat')
 let expandedFolders = $state<Set<string>>(new Set())
 let gitStatus = $state<Record<string, { status: GitStatus; branch?: string }>>({})
 
+const criteria = $derived<FilterCriteria>({
+  search,
+  frameworks: selectedFrameworks,
+  types: selectedTypes,
+  runners: selectedRunners,
+  tools: selectedTools,
+  onlyWithDev,
+  onlyWithReadme,
+  promotion: selectedPromotion,
+})
+
+const types = $derived([...new Set(projects.map((p) => p.type).filter(Boolean))] as string[])
+const runners = $derived([...new Set(projects.map((p) => p.runner).filter(Boolean))] as string[])
+const filtered = $derived(projects.filter((p) => matchesFilters(p, criteria)))
+const activeFilterCount = $derived(countActiveFilters(criteria))
+const nestedProjects = $derived(buildFolderTree(filtered))
+
 async function refreshInBackground() {
   if (isRefreshing) return
   isRefreshing = true
-  const res = await fetch('/api/refresh', { method: 'POST' })
-  const result = await res.json()
+  const result = await api.refreshProjects()
   projects = result.projects
   frameworks = result.frameworks
   folders = result.folders
@@ -63,145 +87,31 @@ async function refreshInBackground() {
 async function loadReadme(path: string) {
   if (readmeContent[path]) return
   loadingReadme = path
-  const res = await fetch('/api/readme', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path }),
-  })
-  const { readme } = await res.json()
+  const readme = await api.fetchReadme(path)
   if (readme) readmeContent[path] = readme
   loadingReadme = null
 }
 
 onMount(() => {
-  // If data is stale, refresh in background
-  if (data.stale) {
-    refreshInBackground()
-  }
-
-  const paths = projects.map((p) => p.path)
-  const BATCH_SIZE = 20
-
-  async function loadBatch(batch: string[]) {
-    const res = await fetch('/api/git', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paths: batch }),
-    })
-    const results = await res.json()
-    for (const r of results) {
-      gitStatus[r.path] = { status: r.status, branch: r.branch }
-    }
-  }
-
-  for (let i = 0; i < paths.length; i += BATCH_SIZE) {
-    loadBatch(paths.slice(i, i + BATCH_SIZE))
-  }
-})
-
-const types = $derived([...new Set(projects.map((p) => p.type).filter(Boolean))] as string[])
-const runners = $derived([...new Set(projects.map((p) => p.runner).filter(Boolean))] as string[])
-
-const filtered = $derived(
-  projects.filter((p) => {
-    if (
-      search &&
-      !p.name.toLowerCase().includes(search.toLowerCase()) &&
-      !p.relativePath.toLowerCase().includes(search.toLowerCase()) &&
-      !p.description?.toLowerCase().includes(search.toLowerCase())
-    )
-      return false
-
-    if (selectedFrameworks.size > 0 && (!p.framework || !selectedFrameworks.has(p.framework)))
-      return false
-    if (selectedTypes.size > 0 && (!p.type || !selectedTypes.has(p.type))) return false
-    if (selectedRunners.size > 0 && (!p.runner || !selectedRunners.has(p.runner))) return false
-    if (selectedTools.has('just') && !p.hasJustfile) return false
-    if (onlyWithDev && !p.devCommand) return false
-    if (onlyWithReadme && !p.readme) return false
-
-    if (selectedPromotion === 'promoted' && !p.promotion) return false
-    if (selectedPromotion === 'unpromoted' && p.promotion) return false
-    if (selectedPromotion === 'in-progress' && p.promotion?.status !== 'in-progress') return false
-
-    return true
-  }),
-)
-
-const activeFilterCount = $derived(
-  selectedFrameworks.size +
-    selectedTypes.size +
-    selectedRunners.size +
-    selectedTools.size +
-    (onlyWithDev ? 1 : 0) +
-    (onlyWithReadme ? 1 : 0) +
-    (selectedPromotion ? 1 : 0),
-)
-
-const nestedProjects = $derived.by(() => {
-  const root: FolderNode = { name: '', path: '', projects: [], children: new Map() }
-
-  for (const project of filtered) {
-    const parts = project.relativePath.split('/')
-    const projectName = parts.pop()!
-    let current = root
-
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i]
-      const folderPath = parts.slice(0, i + 1).join('/')
-      if (!current.children.has(part)) {
-        current.children.set(part, {
-          name: part,
-          path: folderPath,
-          projects: [],
-          children: new Map(),
-        })
-      }
-      current = current.children.get(part)!
-    }
-    current.projects.push(project)
-  }
-
-  return root
+  if (data.stale) refreshInBackground()
+  api.loadGitStatuses(
+    projects.map((p) => p.path),
+    (results) => {
+      for (const r of results) gitStatus[r.path] = { status: r.status, branch: r.branch }
+    },
+  )
 })
 
 function toggleFolder(path: string) {
-  const newSet = new Set(expandedFolders)
-  if (newSet.has(path)) newSet.delete(path)
-  else newSet.add(path)
-  expandedFolders = newSet
+  expandedFolders = toggleSet(expandedFolders, path)
 }
 
 function expandAllFolders() {
-  const paths = new Set<string>()
-  function collectPaths(node: FolderNode, prefix: string) {
-    for (const [name, child] of node.children) {
-      const path = prefix ? `${prefix}/${name}` : name
-      paths.add(path)
-      collectPaths(child, path)
-    }
-  }
-  collectPaths(nestedProjects, '')
-  expandedFolders = paths
+  expandedFolders = collectFolderPaths(nestedProjects)
 }
 
 function collapseAllFolders() {
   expandedFolders = new Set()
-}
-
-function countProjects(node: FolderNode): number {
-  let count = node.projects.length
-  for (const child of node.children.values()) {
-    count += countProjects(child)
-  }
-  return count
-}
-
-function toggleSet<T>(set: Set<T>, value: T): Set<T> {
-  const newSet = new Set(set)
-  if (newSet.has(value)) newSet.delete(value)
-  else newSet.add(value)
-  return newSet
 }
 
 function clearFilters() {
@@ -249,61 +159,29 @@ const frameworkColors: Record<string, string> = {
 }
 
 async function runDev(project: Project) {
-  if (!project.devCommand) return
-  const res = await fetch('/api/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      path: project.path,
-      command: project.devCommand,
-      runner: project.runner || 'npm',
-    }),
-  })
-  const result = await res.json()
-  if (result.url) {
-    runningPorts[project.path] = result.url
-    setTimeout(() => window.open(result.url, '_blank'), 2000)
+  const url = await api.runDevServer(project)
+  if (url) {
+    runningPorts[project.path] = url
+    setTimeout(() => window.open(url, '_blank'), 2000)
   }
 }
 
 async function runJust(project: Project, recipe: string) {
-  const res = await fetch('/api/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: project.path, command: recipe, type: 'just' }),
-  })
-  const result = await res.json()
-  if (result.url) {
-    runningPorts[project.path] = result.url
-  }
+  const url = await api.runJustRecipe(project, recipe)
+  if (url) runningPorts[project.path] = url
 }
 
 async function runScript(project: Project, script: string) {
-  const res = await fetch('/api/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: project.path, command: script, runner: project.runner || 'npm' }),
-  })
-  const result = await res.json()
-  if (result.url) {
-    runningPorts[project.path] = result.url
-  }
+  const url = await api.runScript(project, script)
+  if (url) runningPorts[project.path] = url
 }
 
 async function openITerm(path: string) {
-  await fetch('/api/iterm', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path }),
-  })
+  await api.openInITerm(path)
 }
 
 async function openFinder(path: string) {
-  await fetch('/api/finder', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path }),
-  })
+  await api.openInFinder(path)
 }
 
 function startEdit(project: Project) {
@@ -312,11 +190,7 @@ function startEdit(project: Project) {
 }
 
 async function saveDescription(project: Project) {
-  await fetch('/api/description', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: project.path, description: editValue }),
-  })
+  await api.saveDescription(project.path, editValue)
   project.description = editValue
   editing = null
 }
@@ -328,11 +202,7 @@ function startRename(project: Project) {
 
 async function doRename() {
   if (!renaming || !renameValue) return
-  await fetch('/api/rename', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: renaming.path, newName: renameValue }),
-  })
+  await api.renameProject(renaming.path, renameValue)
   location.reload()
 }
 
@@ -343,11 +213,7 @@ function startMove(project: Project) {
 
 async function doMove() {
   if (!moving || !moveTarget) return
-  await fetch('/api/move', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sourcePath: moving.path, targetDir: `${data.baseDir}/${moveTarget}` }),
-  })
+  await api.moveProject(moving.path, `${data.baseDir}/${moveTarget}`)
   location.reload()
 }
 </script>
