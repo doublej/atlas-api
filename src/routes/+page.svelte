@@ -14,6 +14,8 @@ import {
   countProjects,
   type FolderNode,
 } from '$lib/browser/tree'
+import BrowserHeader from '$lib/components/browser/BrowserHeader.svelte'
+import Toolbar from '$lib/components/browser/Toolbar.svelte'
 import type { Framework, GitStatus, Project } from '$lib/scanner'
 import { theme, toggleTheme } from '$lib/theme.svelte'
 import { getActions, getDynamicActions } from '$shared/actions'
@@ -223,31 +225,21 @@ async function doMove() {
 </svelte:head>
 
 <main>
-	<header>
-		<h1>Projects</h1>
-		<span class="count">{filtered.length} <span class="total">/ {projects.length}</span></span>
-		{#if isRefreshing}
-			<span class="refreshing">Refreshing...</span>
-		{/if}
-		<button class="theme-toggle" onclick={toggleTheme} aria-label="Toggle theme" title="Toggle light / dark">{theme.mode === 'dark' ? '☀' : '☾'}</button>
-	</header>
-
-	<div class="search-row">
-		<input type="search" bind:value={search} placeholder="Search projects..." />
-		<div class="view-toggle">
-			<button class:active={viewMode === 'flat'} onclick={() => viewMode = 'flat'}>Flat</button>
-			<button class:active={viewMode === 'nested'} onclick={() => viewMode = 'nested'}>Nested</button>
-		</div>
-		{#if viewMode === 'nested'}
-			<button onclick={expandAllFolders}>Expand all</button>
-			<button onclick={collapseAllFolders}>Collapse all</button>
-		{/if}
-		<button class="toggle-filters" onclick={() => showFilters = !showFilters}>
-			Filters {#if activeFilterCount > 0}<span class="badge">{activeFilterCount}</span>{/if}
-		</button>
-		{#if activeFilterCount > 0}
-			<button class="clear" onclick={clearFilters}>Clear all</button>
-		{/if}
+	<div class="topbar">
+		<BrowserHeader
+			filteredCount={filtered.length}
+			totalCount={projects.length}
+			refreshing={isRefreshing}
+		/>
+		<Toolbar
+			bind:search
+			bind:viewMode
+			bind:showFilters
+			{activeFilterCount}
+			onExpandAll={expandAllFolders}
+			onCollapseAll={collapseAllFolders}
+			onClearFilters={clearFilters}
+		/>
 	</div>
 
 	{#if showFilters}
@@ -582,9 +574,35 @@ async function doMove() {
 		--accent-purple: var(--chart-6);
 
 		width: 100%;
+		max-width: var(--col-max);
 		min-height: 100vh;
-		padding: 1.5rem 2rem;
+		margin: 0 auto;
+		padding: 0 var(--page-pad) var(--space-16);
 		position: relative;
+	}
+
+	/* Header and toolbar travel together as one sticky band. */
+	.topbar {
+		position: sticky;
+		top: 0;
+		z-index: 50;
+		background: var(--color-bg);
+		padding-bottom: var(--space-2);
+		margin-bottom: var(--section-gap);
+	}
+
+	.topbar::after {
+		content: '';
+		position: absolute;
+		inset: auto 0 0;
+		height: var(--hairline);
+		background: var(--grad-divider);
+	}
+
+	@media (max-width: 768px) {
+		main {
+			padding: 0 var(--space-4) var(--space-12);
+		}
 	}
 
 	/* === HEADER === */
