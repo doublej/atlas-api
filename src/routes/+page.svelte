@@ -17,6 +17,8 @@ import {
 import BrowserHeader from '$lib/components/browser/BrowserHeader.svelte'
 import FilterPanel from '$lib/components/browser/FilterPanel.svelte'
 import Toolbar from '$lib/components/browser/Toolbar.svelte'
+import ProjectRow from '$lib/components/project/ProjectRow.svelte'
+import Card from '$lib/components/ui/Card.svelte'
 import type { Framework, GitStatus, Project } from '$lib/scanner'
 import { theme, toggleTheme } from '$lib/theme.svelte'
 import { getActions, getDynamicActions } from '$shared/actions'
@@ -262,149 +264,18 @@ async function doMove() {
 	{/if}
 
 	{#snippet projectItem(project: Project)}
-		{@const git = gitStatus[project.path]}
-		{@const svelteActions = getActions(project, 'svelte')}
-		<li class="project-card" data-git={git?.status}>
-			<div class="header">
-				{#if project.promotion}
-					<span class="promotion-badge" data-status={project.promotion.status} title="Promotion: {project.promotion.status}"></span>
-				{/if}
-				<span class="type" style="background: {typeColors[project.type ?? 'folder']}">{project.type}</span>
-				{#if project.framework && project.framework !== 'unknown'}
-					<span class="framework" style="background: {frameworkColors[project.framework]}">{project.framework}</span>
-				{/if}
-				{#if project.runner}
-					<span class="runner">{project.runner}</span>
-				{/if}
-			</div>
-
-			<div class="project-title">
-				<span class="git-status" data-status={git?.status ?? 'loading'} title={git?.status === 'dirty' ? 'Uncommitted changes' : git?.status === 'clean' ? 'Clean working tree' : git?.status === 'no-repo' ? 'Not a git repository' : git?.status === 'error' ? 'Git error' : 'Loading...'}></span>
-				<strong>{project.name}</strong>
-				{#if git?.branch}
-					<span class="git-branch">{git.branch}</span>
-				{/if}
-			</div>
-			<code class="path">{project.relativePath}</code>
-
-			{#if editing === project.path}
-				<div class="edit-desc">
-					<input type="text" bind:value={editValue} onkeydown={(e) => e.key === 'Enter' && saveDescription(project)} />
-					<button onclick={() => saveDescription(project)}>Save</button>
-					<button onclick={() => editing = null}>Cancel</button>
-				</div>
-			{:else}
-				<p class="desc" ondblclick={() => startEdit(project)}>
-					{project.description || 'No description'}
-				</p>
-			{/if}
-
-			{#if project.readme}
-				<button class="readme-toggle" onclick={() => {
-					if (expandedReadme === project.path) {
-						expandedReadme = null;
-					} else {
-						expandedReadme = project.path;
-						loadReadme(project.path);
-					}
-				}}>
-					{expandedReadme === project.path ? 'Hide' : 'Show'} README
-				</button>
-				{#if expandedReadme === project.path}
-					{#if loadingReadme === project.path}
-						<pre class="readme">Loading...</pre>
-					{:else if readmeContent[project.path]}
-						<pre class="readme">{readmeContent[project.path]}</pre>
-					{/if}
-				{/if}
-			{/if}
-
-			{#if project.scripts && Object.keys(project.scripts).length > 0}
-				<div class="runner-dropdown">
-					<button class="runner-trigger script-trigger" onclick={() => openRunnerMenu = openRunnerMenu === `scripts:${project.path}` ? null : `scripts:${project.path}`}>
-						{project.runner || 'npm'} <span class="runner-count">{Object.keys(project.scripts).length}</span>
-					</button>
-					{#if openRunnerMenu === `scripts:${project.path}`}
-						<div class="runner-menu">
-							{#each Object.keys(project.scripts) as script}
-								<button class="runner-item script" onclick={() => { runScript(project, script); openRunnerMenu = null; }}>{script}</button>
-							{/each}
-						</div>
-					{/if}
-				</div>
-			{/if}
-
-			{#if project.justRecipes?.length}
-				<div class="runner-dropdown">
-					<button class="runner-trigger just-trigger" onclick={() => openRunnerMenu = openRunnerMenu === `just:${project.path}` ? null : `just:${project.path}`}>
-						just <span class="runner-count">{project.justRecipes.length}</span>
-					</button>
-					{#if openRunnerMenu === `just:${project.path}`}
-						<div class="runner-menu">
-							{#each project.justRecipes as recipe}
-								<button class="runner-item recipe" onclick={() => { runJust(project, recipe); openRunnerMenu = null; }}>{recipe}</button>
-							{/each}
-						</div>
-					{/if}
-				</div>
-			{/if}
-
-			{#if project.domains?.length || project.umami}
-				<div class="web-links">
-					{#each project.domains ?? [] as domain}
-						<a href="https://{domain}" target="_blank" rel="noreferrer" class="domain">{domain}</a>
-					{/each}
-					{#if project.umami?.instance}
-						{#each project.umami.websiteIds as websiteId}
-							<a href="{project.umami.instance}/websites/{websiteId}" target="_blank" rel="noreferrer" class="umami" title="Umami · {websiteId}">umami</a>
-						{/each}
-					{/if}
-				</div>
-			{/if}
-
-			<div class="actions">
-				{#each svelteActions as action (action.id)}
-					{#if action.id === 'run-dev' && project.devCommand}
-						<button onclick={() => runDev(project)}>Run {project.devCommand}</button>
-					{:else if action.id === 'open-iterm'}
-						<button onclick={() => openITerm(project.path)}>{action.label.replace('Open in ', '')}</button>
-					{:else if action.id === 'open-finder'}
-						<button onclick={() => openFinder(project.path)}>{action.label.replace('Open in ', '')}</button>
-					{:else if action.id === 'rename'}
-						<!-- rendered in menu below -->
-					{:else if action.id === 'move'}
-						<!-- rendered in menu below -->
-					{:else if action.id === 'refresh'}
-						<!-- handled at page level -->
-					{:else if action.id === 'claude-tree-view'}
-						<button
-							class="tree-btn"
-							title="View the CLAUDE.md tree for this project"
-							onclick={() => window.open(`/claude-tree?root=${encodeURIComponent(project.path)}`, '_blank')}
-						>Tree</button>
-					{/if}
-				{/each}
-				<div class="menu-container">
-					<button class="menu-trigger" onclick={() => openMenu = openMenu === project.path ? null : project.path}>⋯</button>
-					{#if openMenu === project.path}
-						<div class="menu-dropdown">
-							{#if svelteActions.some(a => a.id === 'rename')}
-								<button onclick={() => { startRename(project); openMenu = null; }}>Rename</button>
-							{/if}
-							{#if svelteActions.some(a => a.id === 'move')}
-								<button onclick={() => { startMove(project); openMenu = null; }}>Move</button>
-							{/if}
-						</div>
-					{/if}
-				</div>
-			</div>
-
-			{#if runningPorts[project.path]}
-				<a href={runningPorts[project.path]} target="_blank" class="running">{runningPorts[project.path]}</a>
-			{/if}
-
-			<time>{new Date(project.modifiedAt).toLocaleDateString()}</time>
-		</li>
+		<ProjectRow
+			{project}
+			git={gitStatus[project.path]}
+			runningUrl={runningPorts[project.path]}
+			onRunDev={runDev}
+			onRunScript={runScript}
+			onRunJust={runJust}
+			onIterm={openITerm}
+			onFinder={openFinder}
+			onRename={startRename}
+			onMove={startMove}
+		/>
 	{/snippet}
 
 	{#snippet folderTree(node: FolderNode, depth: number)}
@@ -428,11 +299,13 @@ async function doMove() {
 	{/snippet}
 
 	{#if viewMode === 'flat'}
-		<ul class="projects">
-			{#each filtered as project}
-				{@render projectItem(project)}
-			{/each}
-		</ul>
+		<Card flush>
+			<ul class="rows">
+				{#each filtered as project (project.path)}
+					{@render projectItem(project)}
+				{/each}
+			</ul>
+		</Card>
 	{:else}
 		<div class="nested-view">
 			<ul class="projects nested root-projects">
@@ -522,6 +395,16 @@ async function doMove() {
 		margin: 0 auto;
 		padding: 0 var(--page-pad) var(--space-16);
 		position: relative;
+	}
+
+	.rows {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.filter-region {
+		margin-bottom: var(--section-gap);
 	}
 
 	/* Header and toolbar travel together as one sticky band. */
