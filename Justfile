@@ -1,0 +1,134 @@
+set shell := ["zsh", "-uo", "pipefail", "-c"]
+set unstable := true
+
+default:
+    @just --list
+    @echo ''
+    @echo "branch: $(git branch --show-current 2>/dev/null || echo 'n/a')"
+
+[group('setup')]
+install:
+    bun install
+
+[group('develop')]
+dev:
+    bun run dev
+
+[group('develop')]
+preview:
+    bun run preview
+
+[group('develop')]
+sync:
+    bunx svelte-kit sync
+
+[group('quality')]
+lint:
+    bun run lint
+
+[group('quality')]
+lint-fix:
+    bun run lint:fix
+
+[group('quality')]
+typecheck:
+    bun run check
+
+[group('quality')]
+test:
+    bun run test
+
+[group('quality')]
+loc-check:
+    #!/usr/bin/env zsh
+    setopt null_glob
+    eval "$(python3 -c "
+    import json, shlex
+    c = json.load(open('.quality.json'))
+    print(f'WARN={c[\"loc\"][\"warn\"]}')
+    print(f'ERROR={c[\"loc\"][\"error\"]}')
+    g = c['globs']
+    print(f'GLOBS=({shlex.join(g)})')
+    ")"
+    err=0
+    for pattern in $GLOBS; do
+        for f in ${~pattern}; do
+            lines=$(wc -l < "$f")
+            if (( lines > ERROR )); then echo "error: $f ($lines lines, max $ERROR)"; err=1
+            elif (( lines > WARN )); then echo "warn: $f ($lines lines, target ≤$WARN — don't trim, split the file!)"; fi
+        done
+    done
+    exit $err
+
+[group('quality')]
+dir-check:
+    #!/usr/bin/env zsh
+    setopt null_glob
+    eval "$(python3 -c "
+    import json, shlex
+    c = json.load(open('.quality.json'))
+    print(f'MAX={c[\"dir\"][\"max_files\"]}')
+    g = c['globs']
+    print(f'GLOBS=({shlex.join(g)})')
+    ")"
+    err=0
+    typeset -A counts
+    for pattern in $GLOBS; do
+        for f in ${~pattern}; do
+            dir=${f:h}
+            counts[$dir]=$(( ${counts[$dir]:-0} + 1 ))
+        done
+    done
+    for dir count in ${(kv)counts}; do
+        if (( count > MAX )); then
+            echo "error: $dir ($count files, max $MAX)"
+            err=1
+        fi
+    done
+    exit $err
+
+[group('quality')]
+just-fmt-check:
+    just --fmt --check
+
+[group('quality')]
+check:
+    @echo '→ Checking Justfile format...'
+    just just-fmt-check
+    @echo '→ Checking file lengths...'
+    just loc-check
+    @echo '→ Checking directory sizes...'
+    just dir-check
+    @echo '→ Running lint...'
+    just lint
+    @echo '→ Running typecheck...'
+    just typecheck
+    @echo '→ Running tests...'
+    just test
+
+[group('build')]
+build:
+    bun run build
+
+[group('cleanup')]
+clean:
+    rm -rf .svelte-kit/ build/ node_modules/.cache/
+
+# Open this project's CLAUDE.md tree in the project-atlas viewer (via the global `atlas` CLI)
+[group('docs')]
+claude-tree:
+    atlas tree
+
+[group('scaffold')]
+update-scaffold *ARGS:
+    #!/usr/bin/env zsh
+    set -euo pipefail
+    repo="${COOKIECUTTER_TEMPLATES:-}"
+    if [[ -z "$repo" && -f .template-meta.json ]]; then
+        repo=$(python3 -c "import json; print(json.load(open('.template-meta.json'))['template_source']['path'])" 2>/dev/null || true)
+    fi
+    if [[ -z "$repo" || ! -d "$repo" ]]; then
+        echo "error: cookiecutter-templates repo not found — set \$COOKIECUTTER_TEMPLATES or fix template_source.path in .template-meta.json" >&2
+        exit 1
+    fi
+    python3 "$repo/tools/update_scaffold.py" {{ ARGS }}
