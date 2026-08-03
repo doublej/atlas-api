@@ -1,48 +1,48 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
-	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
-	import type { NodeKind, Preview } from '$lib/claude-tree';
-	import { RECOMMENDED_TOKENS } from '$lib/tree-layout';
+import { Handle, type NodeProps, Position } from '@xyflow/svelte'
+import { getContext } from 'svelte'
+import type { NodeKind, Preview } from '$lib/claude-tree'
+import { RECOMMENDED_TOKENS } from '$lib/tree-layout'
 
-	// Zoomed-out level-of-detail: below this zoom, render a title-only card.
-	const getZoom = getContext<() => number>('atlas-zoom');
-	const compact = $derived((getZoom?.() ?? 1) < 0.5);
+// Zoomed-out level-of-detail: below this zoom, render a title-only card.
+const getZoom = getContext<() => number>('atlas-zoom')
+const compact = $derived((getZoom?.() ?? 1) < 0.5)
 
-	type CardData = {
-		label: string;
-		kind: NodeKind;
-		preview: Preview;
-		tokensAccumulated: number;
-		collapsed?: boolean;
-		hidden?: number;
-		hasAgents?: boolean; // folder also has an AGENTS.md sibling
-		globs?: string[]; // a rule's `paths:` attach globs
-		refs?: number; // count of distinct context files this node references
-		height?: number; // layout height — compact LOD reuses it for a same-size container
-	};
+type CardData = {
+  label: string
+  kind: NodeKind
+  preview: Preview
+  tokensAccumulated: number
+  collapsed?: boolean
+  hidden?: number
+  hasAgents?: boolean // folder also has an AGENTS.md sibling
+  globs?: string[] // a rule's `paths:` attach globs
+  refs?: number // count of distinct context files this node references
+  height?: number // layout height — compact LOD reuses it for a same-size container
+}
 
-	let { data, selected }: NodeProps = $props();
-	const card = $derived(data as CardData);
-	const empty = $derived(!card.preview.h1 && !card.preview.blurb && !card.preview.sections.length);
-	const over = $derived(card.preview.tokens > RECOMMENDED_TOKENS);
+let { data, selected }: NodeProps = $props()
+const card = $derived(data as CardData)
+const empty = $derived(!card.preview.h1 && !card.preview.blurb && !card.preview.sections.length)
+const over = $derived(card.preview.tokens > RECOMMENDED_TOKENS)
 
-	// "CLAUDE.md" / "AGENTS.md" headings say nothing — never use them as a title.
-	const isGenericName = (s: string) => /^(claude|agents)\.md$/i.test(s.trim());
-	const h1Title = $derived(card.preview.h1 && !isGenericName(card.preview.h1) ? card.preview.h1 : '');
-	// Display title: the meaningful H1, else the deepest folder segment of the label.
-	const titleText = $derived(h1Title || (card.label.split('/').filter(Boolean).pop() ?? card.label));
+// "CLAUDE.md" / "AGENTS.md" headings say nothing — never use them as a title.
+const isGenericName = (s: string) => /^(claude|agents)\.md$/i.test(s.trim())
+const h1Title = $derived(card.preview.h1 && !isGenericName(card.preview.h1) ? card.preview.h1 : '')
+// Display title: the meaningful H1, else the deepest folder segment of the label.
+const titleText = $derived(h1Title || (card.label.split('/').filter(Boolean).pop() ?? card.label))
 
-	// Monospace label: clip the START so the most-specific folder stays visible; never wrap.
-	const MAX_LABEL = 26;
-	const displayLabel = $derived(
-		card.label.length <= MAX_LABEL ? card.label : '…' + card.label.slice(-(MAX_LABEL - 1))
-	);
+// Monospace label: clip the START so the most-specific folder stays visible; never wrap.
+const MAX_LABEL = 26
+const displayLabel = $derived(
+  card.label.length <= MAX_LABEL ? card.label : '…' + card.label.slice(-(MAX_LABEL - 1)),
+)
 
-	function fmt(n: number): string {
-		if (n < 1000) return String(n);
-		const k = n / 1000;
-		return (k >= 10 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, '')) + 'k';
-	}
+function fmt(n: number): string {
+  if (n < 1000) return String(n)
+  const k = n / 1000
+  return (k >= 10 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, '')) + 'k'
+}
 </script>
 
 <!-- tree edges enter top (t) / leave bottom (b); reference edges enter left (l) / leave right (r) -->

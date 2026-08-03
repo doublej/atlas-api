@@ -1,0 +1,12 @@
+{
+  "ignoreFiles": ["node_modules/**", ".svelte-kit/**", "build/**"],
+  "overrides": [
+    {
+      "files": ["**/*.svelte"],
+      "customSyntax": "postcss-html"
+    }
+  ],
+  "rules": {
+    "declaration-no-important": true
+  }
+}

@@ -1,51 +1,51 @@
 <script lang="ts">
-	import type { Entity } from '$lib/claude-tree-entities';
-	import { ENTITY_ACTIONS, type AgentAction, type AgentEngine } from '$lib/claude-tree-actions';
+import { type AgentAction, type AgentEngine, ENTITY_ACTIONS } from '$lib/claude-tree-actions'
+import type { Entity } from '$lib/claude-tree-entities'
 
-	let {
-		entity,
-		pos,
-		engine,
-		busy = false,
-		onRun,
-		onEngineChange,
-		onClose
-	}: {
-		entity: Entity;
-		pos: { x: number; y: number };
-		engine: AgentEngine;
-		busy?: boolean;
-		onRun: (p: { actionId: string; locked: boolean; question?: string }) => void;
-		onEngineChange: (e: AgentEngine) => void;
-		onClose: () => void;
-	} = $props();
+let {
+  entity,
+  pos,
+  engine,
+  busy = false,
+  onRun,
+  onEngineChange,
+  onClose,
+}: {
+  entity: Entity
+  pos: { x: number; y: number }
+  engine: AgentEngine
+  busy?: boolean
+  onRun: (p: { actionId: string; locked: boolean; question?: string }) => void
+  onEngineChange: (e: AgentEngine) => void
+  onClose: () => void
+} = $props()
 
-	// Auto-checked: by default the agent may only rewrite this one item.
-	// For the whole-file action the lock is moot — the file is always the scope.
-	let locked = $state(true);
-	let asking = $state<AgentAction | null>(null); // the input-collecting action awaiting text
-	let question = $state('');
+// Auto-checked: by default the agent may only rewrite this one item.
+// For the whole-file action the lock is moot — the file is always the scope.
+let locked = $state(true)
+let asking = $state<AgentAction | null>(null) // the input-collecting action awaiting text
+let question = $state('')
 
-	const isFile = $derived(entity.kind === 'file');
-	const effectiveLocked = $derived(isFile ? false : locked);
+const isFile = $derived(entity.kind === 'file')
+const effectiveLocked = $derived(isFile ? false : locked)
 
-	const MENU_W = 248;
-	const left = $derived(Math.min(pos.x, (globalThis.innerWidth ?? 1280) - MENU_W - 8));
+const MENU_W = 248
+const left = $derived(Math.min(pos.x, (globalThis.innerWidth ?? 1280) - MENU_W - 8))
 
-	function pick(action: AgentAction) {
-		if (busy) return;
-		if (action.needsInput) {
-			asking = action;
-			question = '';
-			return;
-		}
-		onRun({ actionId: action.id, locked: effectiveLocked });
-	}
+function pick(action: AgentAction) {
+  if (busy) return
+  if (action.needsInput) {
+    asking = action
+    question = ''
+    return
+  }
+  onRun({ actionId: action.id, locked: effectiveLocked })
+}
 
-	function submitInput() {
-		if (busy || !asking || !question.trim()) return;
-		onRun({ actionId: asking.id, locked: effectiveLocked, question });
-	}
+function submitInput() {
+  if (busy || !asking || !question.trim()) return
+  onRun({ actionId: asking.id, locked: effectiveLocked, question })
+}
 </script>
 
 <div class="entity-menu" style="left: {left}px; top: {pos.y}px; width: {MENU_W}px;" role="menu" tabindex="-1">

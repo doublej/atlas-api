@@ -1,308 +1,355 @@
 <script lang="ts">
-	import type { Project, Framework, GitStatus, PromotionStatus } from '$lib/scanner';
-	import { registry, getActions, getDynamicActions } from '$shared/actions';
-	import type { ActionDef } from '$shared/actions';
-	import { theme, toggleTheme } from '$lib/theme.svelte';
-	import { onMount } from 'svelte';
+import { onMount } from 'svelte'
+import type { Framework, GitStatus, Project, PromotionStatus } from '$lib/scanner'
+import { theme, toggleTheme } from '$lib/theme.svelte'
+import type { ActionDef } from '$shared/actions'
+import { getActions, getDynamicActions, registry } from '$shared/actions'
 
-	type ViewMode = 'flat' | 'nested';
-	interface FolderNode {
-		name: string;
-		path: string;
-		projects: Project[];
-		children: Map<string, FolderNode>;
-	}
+type ViewMode = 'flat' | 'nested'
+interface FolderNode {
+  name: string
+  path: string
+  projects: Project[]
+  children: Map<string, FolderNode>
+}
 
-	let { data } = $props();
-	let projects = $state<Project[]>([]);
-	let frameworks = $state<Framework[]>([]);
-	let folders = $state<string[]>([]);
-	let isRefreshing = $state(false);
+let { data } = $props()
+let projects = $state<Project[]>([])
+let frameworks = $state<Framework[]>([])
+let folders = $state<string[]>([])
+let isRefreshing = $state(false)
 
-	$effect(() => {
-		projects = data.projects;
-		frameworks = data.frameworks;
-		folders = data.folders;
-	});
-	let search = $state('');
-	let selectedFrameworks = $state<Set<Framework>>(new Set());
-	let selectedTypes = $state<Set<string>>(new Set());
-	let selectedRunners = $state<Set<string>>(new Set());
-	let selectedTools = $state<Set<string>>(new Set());
-	let onlyWithDev = $state(false);
-	let onlyWithReadme = $state(false);
-	let selectedPromotion = $state<string | null>(null);
-	let runningPorts = $state<Record<string, string>>({});
-	let editing = $state<string | null>(null);
-	let editValue = $state('');
-	let expandedReadme = $state<string | null>(null);
-	let readmeContent = $state<Record<string, string>>({});
-	let loadingReadme = $state<string | null>(null);
-	let showFilters = $state(true);
-	let openMenu = $state<string | null>(null);
-	let openRunnerMenu = $state<string | null>(null);
-	let renaming = $state<Project | null>(null);
-	let renameValue = $state('');
-	let moving = $state<Project | null>(null);
-	let moveTarget = $state('');
-	let viewMode = $state<ViewMode>('flat');
-	let expandedFolders = $state<Set<string>>(new Set());
-	let gitStatus = $state<Record<string, { status: GitStatus; branch?: string }>>({});
+$effect(() => {
+  projects = data.projects
+  frameworks = data.frameworks
+  folders = data.folders
+})
+let search = $state('')
+let selectedFrameworks = $state<Set<Framework>>(new Set())
+let selectedTypes = $state<Set<string>>(new Set())
+let selectedRunners = $state<Set<string>>(new Set())
+let selectedTools = $state<Set<string>>(new Set())
+let onlyWithDev = $state(false)
+let onlyWithReadme = $state(false)
+let selectedPromotion = $state<string | null>(null)
+let runningPorts = $state<Record<string, string>>({})
+let editing = $state<string | null>(null)
+let editValue = $state('')
+let expandedReadme = $state<string | null>(null)
+let readmeContent = $state<Record<string, string>>({})
+let loadingReadme = $state<string | null>(null)
+let showFilters = $state(true)
+let openMenu = $state<string | null>(null)
+let openRunnerMenu = $state<string | null>(null)
+let renaming = $state<Project | null>(null)
+let renameValue = $state('')
+let moving = $state<Project | null>(null)
+let moveTarget = $state('')
+let viewMode = $state<ViewMode>('flat')
+let expandedFolders = $state<Set<string>>(new Set())
+let gitStatus = $state<Record<string, { status: GitStatus; branch?: string }>>({})
 
-	async function refreshInBackground() {
-		if (isRefreshing) return;
-		isRefreshing = true;
-		const res = await fetch('/api/refresh', { method: 'POST' });
-		const result = await res.json();
-		projects = result.projects;
-		frameworks = result.frameworks;
-		folders = result.folders;
-		isRefreshing = false;
-	}
+async function refreshInBackground() {
+  if (isRefreshing) return
+  isRefreshing = true
+  const res = await fetch('/api/refresh', { method: 'POST' })
+  const result = await res.json()
+  projects = result.projects
+  frameworks = result.frameworks
+  folders = result.folders
+  isRefreshing = false
+}
 
-	async function loadReadme(path: string) {
-		if (readmeContent[path]) return;
-		loadingReadme = path;
-		const res = await fetch('/api/readme', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ path })
-		});
-		const { readme } = await res.json();
-		if (readme) readmeContent[path] = readme;
-		loadingReadme = null;
-	}
+async function loadReadme(path: string) {
+  if (readmeContent[path]) return
+  loadingReadme = path
+  const res = await fetch('/api/readme', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  })
+  const { readme } = await res.json()
+  if (readme) readmeContent[path] = readme
+  loadingReadme = null
+}
 
-	onMount(() => {
-		// If data is stale, refresh in background
-		if (data.stale) {
-			refreshInBackground();
-		}
+onMount(() => {
+  // If data is stale, refresh in background
+  if (data.stale) {
+    refreshInBackground()
+  }
 
-		const paths = projects.map(p => p.path);
-		const BATCH_SIZE = 20;
+  const paths = projects.map((p) => p.path)
+  const BATCH_SIZE = 20
 
-		async function loadBatch(batch: string[]) {
-			const res = await fetch('/api/git', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ paths: batch })
-			});
-			const results = await res.json();
-			for (const r of results) {
-				gitStatus[r.path] = { status: r.status, branch: r.branch };
-			}
-		}
+  async function loadBatch(batch: string[]) {
+    const res = await fetch('/api/git', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths: batch }),
+    })
+    const results = await res.json()
+    for (const r of results) {
+      gitStatus[r.path] = { status: r.status, branch: r.branch }
+    }
+  }
 
-		for (let i = 0; i < paths.length; i += BATCH_SIZE) {
-			loadBatch(paths.slice(i, i + BATCH_SIZE));
-		}
-	});
+  for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+    loadBatch(paths.slice(i, i + BATCH_SIZE))
+  }
+})
 
-	const types = $derived([...new Set(projects.map(p => p.type).filter(Boolean))] as string[]);
-	const runners = $derived([...new Set(projects.map(p => p.runner).filter(Boolean))] as string[]);
+const types = $derived([...new Set(projects.map((p) => p.type).filter(Boolean))] as string[])
+const runners = $derived([...new Set(projects.map((p) => p.runner).filter(Boolean))] as string[])
 
-	const filtered = $derived(
-		projects.filter(p => {
-			if (search && !p.name.toLowerCase().includes(search.toLowerCase()) &&
-				!p.relativePath.toLowerCase().includes(search.toLowerCase()) &&
-				!p.description?.toLowerCase().includes(search.toLowerCase())) return false;
+const filtered = $derived(
+  projects.filter((p) => {
+    if (
+      search &&
+      !p.name.toLowerCase().includes(search.toLowerCase()) &&
+      !p.relativePath.toLowerCase().includes(search.toLowerCase()) &&
+      !p.description?.toLowerCase().includes(search.toLowerCase())
+    )
+      return false
 
-			if (selectedFrameworks.size > 0 && (!p.framework || !selectedFrameworks.has(p.framework))) return false;
-			if (selectedTypes.size > 0 && (!p.type || !selectedTypes.has(p.type))) return false;
-			if (selectedRunners.size > 0 && (!p.runner || !selectedRunners.has(p.runner))) return false;
-			if (selectedTools.has('just') && !p.hasJustfile) return false;
-			if (onlyWithDev && !p.devCommand) return false;
-			if (onlyWithReadme && !p.readme) return false;
+    if (selectedFrameworks.size > 0 && (!p.framework || !selectedFrameworks.has(p.framework)))
+      return false
+    if (selectedTypes.size > 0 && (!p.type || !selectedTypes.has(p.type))) return false
+    if (selectedRunners.size > 0 && (!p.runner || !selectedRunners.has(p.runner))) return false
+    if (selectedTools.has('just') && !p.hasJustfile) return false
+    if (onlyWithDev && !p.devCommand) return false
+    if (onlyWithReadme && !p.readme) return false
 
-			if (selectedPromotion === 'promoted' && !p.promotion) return false;
-			if (selectedPromotion === 'unpromoted' && p.promotion) return false;
-			if (selectedPromotion === 'in-progress' && p.promotion?.status !== 'in-progress') return false;
+    if (selectedPromotion === 'promoted' && !p.promotion) return false
+    if (selectedPromotion === 'unpromoted' && p.promotion) return false
+    if (selectedPromotion === 'in-progress' && p.promotion?.status !== 'in-progress') return false
 
-			return true;
-		})
-	);
+    return true
+  }),
+)
 
-	const activeFilterCount = $derived(
-		selectedFrameworks.size + selectedTypes.size + selectedRunners.size + selectedTools.size +
-		(onlyWithDev ? 1 : 0) + (onlyWithReadme ? 1 : 0) + (selectedPromotion ? 1 : 0)
-	);
+const activeFilterCount = $derived(
+  selectedFrameworks.size +
+    selectedTypes.size +
+    selectedRunners.size +
+    selectedTools.size +
+    (onlyWithDev ? 1 : 0) +
+    (onlyWithReadme ? 1 : 0) +
+    (selectedPromotion ? 1 : 0),
+)
 
-	const nestedProjects = $derived.by(() => {
-		const root: FolderNode = { name: '', path: '', projects: [], children: new Map() };
+const nestedProjects = $derived.by(() => {
+  const root: FolderNode = { name: '', path: '', projects: [], children: new Map() }
 
-		for (const project of filtered) {
-			const parts = project.relativePath.split('/');
-			const projectName = parts.pop()!;
-			let current = root;
+  for (const project of filtered) {
+    const parts = project.relativePath.split('/')
+    const projectName = parts.pop()!
+    let current = root
 
-			for (let i = 0; i < parts.length; i++) {
-				const part = parts[i];
-				const folderPath = parts.slice(0, i + 1).join('/');
-				if (!current.children.has(part)) {
-					current.children.set(part, { name: part, path: folderPath, projects: [], children: new Map() });
-				}
-				current = current.children.get(part)!;
-			}
-			current.projects.push(project);
-		}
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]
+      const folderPath = parts.slice(0, i + 1).join('/')
+      if (!current.children.has(part)) {
+        current.children.set(part, {
+          name: part,
+          path: folderPath,
+          projects: [],
+          children: new Map(),
+        })
+      }
+      current = current.children.get(part)!
+    }
+    current.projects.push(project)
+  }
 
-		return root;
-	});
+  return root
+})
 
-	function toggleFolder(path: string) {
-		const newSet = new Set(expandedFolders);
-		if (newSet.has(path)) newSet.delete(path);
-		else newSet.add(path);
-		expandedFolders = newSet;
-	}
+function toggleFolder(path: string) {
+  const newSet = new Set(expandedFolders)
+  if (newSet.has(path)) newSet.delete(path)
+  else newSet.add(path)
+  expandedFolders = newSet
+}
 
-	function expandAllFolders() {
-		const paths = new Set<string>();
-		function collectPaths(node: FolderNode, prefix: string) {
-			for (const [name, child] of node.children) {
-				const path = prefix ? `${prefix}/${name}` : name;
-				paths.add(path);
-				collectPaths(child, path);
-			}
-		}
-		collectPaths(nestedProjects, '');
-		expandedFolders = paths;
-	}
+function expandAllFolders() {
+  const paths = new Set<string>()
+  function collectPaths(node: FolderNode, prefix: string) {
+    for (const [name, child] of node.children) {
+      const path = prefix ? `${prefix}/${name}` : name
+      paths.add(path)
+      collectPaths(child, path)
+    }
+  }
+  collectPaths(nestedProjects, '')
+  expandedFolders = paths
+}
 
-	function collapseAllFolders() {
-		expandedFolders = new Set();
-	}
+function collapseAllFolders() {
+  expandedFolders = new Set()
+}
 
-	function countProjects(node: FolderNode): number {
-		let count = node.projects.length;
-		for (const child of node.children.values()) {
-			count += countProjects(child);
-		}
-		return count;
-	}
+function countProjects(node: FolderNode): number {
+  let count = node.projects.length
+  for (const child of node.children.values()) {
+    count += countProjects(child)
+  }
+  return count
+}
 
-	function toggleSet<T>(set: Set<T>, value: T): Set<T> {
-		const newSet = new Set(set);
-		if (newSet.has(value)) newSet.delete(value);
-		else newSet.add(value);
-		return newSet;
-	}
+function toggleSet<T>(set: Set<T>, value: T): Set<T> {
+  const newSet = new Set(set)
+  if (newSet.has(value)) newSet.delete(value)
+  else newSet.add(value)
+  return newSet
+}
 
-	function clearFilters() {
-		selectedFrameworks = new Set();
-		selectedTypes = new Set();
-		selectedRunners = new Set();
-		selectedTools = new Set();
-		onlyWithDev = false;
-		onlyWithReadme = false;
-		selectedPromotion = null;
-	}
+function clearFilters() {
+  selectedFrameworks = new Set()
+  selectedTypes = new Set()
+  selectedRunners = new Set()
+  selectedTools = new Set()
+  onlyWithDev = false
+  onlyWithReadme = false
+  selectedPromotion = null
+}
 
-	const typeColors: Record<string, string> = {
-		node: '#4ade80', python: '#60a5fa', swift: '#fb923c',
-		rust: '#fbbf24', go: '#22d3ee', folder: '#71717a'
-	};
+const typeColors: Record<string, string> = {
+  node: '#4ade80',
+  python: '#60a5fa',
+  swift: '#fb923c',
+  rust: '#fbbf24',
+  go: '#22d3ee',
+  folder: '#71717a',
+}
 
-	const frameworkColors: Record<string, string> = {
-		sveltekit: '#ff3e00', svelte: '#ff3e00', next: '#a1a1aa', nuxt: '#4ade80',
-		astro: '#c084fc', remix: '#a1a1aa', react: '#38bdf8', vue: '#4ade80',
-		angular: '#f87171', vite: '#a78bfa', express: '#71717a', fastify: '#71717a',
-		hono: '#fb923c', elysia: '#a78bfa', vapor: '#a78bfa', fastapi: '#2dd4bf', flask: '#71717a',
-		django: '#4ade80', streamlit: '#f87171', tauri: '#fbbf24', electron: '#38bdf8',
-		unknown: '#52525b'
-	};
+const frameworkColors: Record<string, string> = {
+  sveltekit: '#ff3e00',
+  svelte: '#ff3e00',
+  next: '#a1a1aa',
+  nuxt: '#4ade80',
+  astro: '#c084fc',
+  remix: '#a1a1aa',
+  react: '#38bdf8',
+  vue: '#4ade80',
+  angular: '#f87171',
+  vite: '#a78bfa',
+  express: '#71717a',
+  fastify: '#71717a',
+  hono: '#fb923c',
+  elysia: '#a78bfa',
+  vapor: '#a78bfa',
+  fastapi: '#2dd4bf',
+  flask: '#71717a',
+  django: '#4ade80',
+  streamlit: '#f87171',
+  tauri: '#fbbf24',
+  electron: '#38bdf8',
+  unknown: '#52525b',
+}
 
-	async function runDev(project: Project) {
-		if (!project.devCommand) return;
-		const res = await fetch('/api/run', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ path: project.path, command: project.devCommand, runner: project.runner || 'npm' })
-		});
-		const result = await res.json();
-		if (result.url) {
-			runningPorts[project.path] = result.url;
-			setTimeout(() => window.open(result.url, '_blank'), 2000);
-		}
-	}
+async function runDev(project: Project) {
+  if (!project.devCommand) return
+  const res = await fetch('/api/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      path: project.path,
+      command: project.devCommand,
+      runner: project.runner || 'npm',
+    }),
+  })
+  const result = await res.json()
+  if (result.url) {
+    runningPorts[project.path] = result.url
+    setTimeout(() => window.open(result.url, '_blank'), 2000)
+  }
+}
 
-	async function runJust(project: Project, recipe: string) {
-		const res = await fetch('/api/run', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ path: project.path, command: recipe, type: 'just' })
-		});
-		const result = await res.json();
-		if (result.url) {
-			runningPorts[project.path] = result.url;
-		}
-	}
+async function runJust(project: Project, recipe: string) {
+  const res = await fetch('/api/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: project.path, command: recipe, type: 'just' }),
+  })
+  const result = await res.json()
+  if (result.url) {
+    runningPorts[project.path] = result.url
+  }
+}
 
-	async function runScript(project: Project, script: string) {
-		const res = await fetch('/api/run', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ path: project.path, command: script, runner: project.runner || 'npm' })
-		});
-		const result = await res.json();
-		if (result.url) {
-			runningPorts[project.path] = result.url;
-		}
-	}
+async function runScript(project: Project, script: string) {
+  const res = await fetch('/api/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: project.path, command: script, runner: project.runner || 'npm' }),
+  })
+  const result = await res.json()
+  if (result.url) {
+    runningPorts[project.path] = result.url
+  }
+}
 
-	async function openITerm(path: string) {
-		await fetch('/api/iterm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
-	}
+async function openITerm(path: string) {
+  await fetch('/api/iterm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  })
+}
 
-	async function openFinder(path: string) {
-		await fetch('/api/finder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
-	}
+async function openFinder(path: string) {
+  await fetch('/api/finder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  })
+}
 
-	function startEdit(project: Project) {
-		editing = project.path;
-		editValue = project.description || '';
-	}
+function startEdit(project: Project) {
+  editing = project.path
+  editValue = project.description || ''
+}
 
-	async function saveDescription(project: Project) {
-		await fetch('/api/description', {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ path: project.path, description: editValue })
-		});
-		project.description = editValue;
-		editing = null;
-	}
+async function saveDescription(project: Project) {
+  await fetch('/api/description', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: project.path, description: editValue }),
+  })
+  project.description = editValue
+  editing = null
+}
 
-	function startRename(project: Project) {
-		renaming = project;
-		renameValue = project.name;
-	}
+function startRename(project: Project) {
+  renaming = project
+  renameValue = project.name
+}
 
-	async function doRename() {
-		if (!renaming || !renameValue) return;
-		await fetch('/api/rename', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ path: renaming.path, newName: renameValue })
-		});
-		location.reload();
-	}
+async function doRename() {
+  if (!renaming || !renameValue) return
+  await fetch('/api/rename', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: renaming.path, newName: renameValue }),
+  })
+  location.reload()
+}
 
-	function startMove(project: Project) {
-		moving = project;
-		moveTarget = '';
-	}
+function startMove(project: Project) {
+  moving = project
+  moveTarget = ''
+}
 
-	async function doMove() {
-		if (!moving || !moveTarget) return;
-		await fetch('/api/move', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ sourcePath: moving.path, targetDir: `${data.baseDir}/${moveTarget}` })
-		});
-		location.reload();
-	}
+async function doMove() {
+  if (!moving || !moveTarget) return
+  await fetch('/api/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sourcePath: moving.path, targetDir: `${data.baseDir}/${moveTarget}` }),
+  })
+  location.reload()
+}
 </script>
 
 <svelte:head>
@@ -1062,8 +1109,8 @@
 
 	/* Dirty project cards get an amber left border */
 	.project-card[data-git="dirty"]::before {
-		background: var(--status-dirty) !important;
-		opacity: 1 !important;
+		background: var(--status-dirty);
+		opacity: 1;
 	}
 
 	.path {

@@ -1,12 +1,12 @@
 <script lang="ts">
-	import '$lib/styles/tokens.css';
-	import favicon from '$lib/assets/favicon.svg';
-	import { onMount } from 'svelte';
-	import { initTheme } from '$lib/theme.svelte';
+import '$lib/styles/tokens.css'
+import { onMount } from 'svelte'
+import favicon from '$lib/assets/favicon.svg'
+import { initTheme } from '$lib/theme.svelte'
 
-	let { children } = $props();
+let { children } = $props()
 
-	onMount(initTheme);
+onMount(initTheme)
 </script>
 
 <svelte:head>

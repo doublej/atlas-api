@@ -1,29 +1,29 @@
 <script lang="ts">
-	import type { AgentEngine } from '$lib/claude-tree-actions';
+import type { AgentEngine } from '$lib/claude-tree-actions'
 
-	let {
-		title,
-		engine,
-		busy = false,
-		text = '',
-		error = null,
-		onClose
-	}: {
-		title: string;
-		engine: AgentEngine;
-		busy?: boolean;
-		text?: string;
-		error?: string | null;
-		onClose: () => void;
-	} = $props();
+let {
+  title,
+  engine,
+  busy = false,
+  text = '',
+  error = null,
+  onClose,
+}: {
+  title: string
+  engine: AgentEngine
+  busy?: boolean
+  text?: string
+  error?: string | null
+  onClose: () => void
+} = $props()
 
-	let copied = $state(false);
+let copied = $state(false)
 
-	async function copy() {
-		await navigator.clipboard.writeText(text);
-		copied = true;
-		setTimeout(() => (copied = false), 1400);
-	}
+async function copy() {
+  await navigator.clipboard.writeText(text)
+  copied = true
+  setTimeout(() => (copied = false), 1400)
+}
 </script>
 
 <aside class="agent-panel" aria-label="Agent answer">
