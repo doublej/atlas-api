@@ -284,7 +284,7 @@ const baseTheme = (isDark: boolean) =>
       '.cm-foldPlaceholder': {
         backgroundColor: 'var(--color-card-2)',
         color: 'var(--color-muted)',
-        border: '1px solid var(--color-border)',
+        border: 'var(--hairline) solid var(--color-border)',
         borderRadius: '4px',
         margin: '0 4px',
         padding: '0 6px',
@@ -306,7 +306,7 @@ const baseTheme = (isDark: boolean) =>
         lineHeight: '1',
         color: 'var(--color-accent)',
         background: 'var(--color-accent-soft)',
-        border: '1px solid var(--color-accent-soft)',
+        border: 'var(--hairline) solid var(--color-accent-soft)',
         opacity: '0',
         userSelect: 'none',
         transition: 'opacity 120ms ease, transform 120ms ease',

@@ -1061,12 +1061,20 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		color: var(--text);
 	}
 	.topbar {
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 0.7rem;
 		padding: 0.55rem 1rem;
 		background: var(--surface);
-		border-bottom: 1px solid var(--border);
+	}
+	/* Fade-out divider — rules never quite touch the surface edges. */
+	.topbar::after {
+		content: '';
+		position: absolute;
+		inset: auto 0 0;
+		height: var(--hairline);
+		background: var(--grad-divider);
 	}
 	.topbar h1 {
 		font-size: 0.92rem;
@@ -1081,7 +1089,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		content: '';
 		width: 8px;
 		height: 8px;
-		border-radius: 2px;
+		border-radius: var(--radius-xs);
 		background: var(--accent);
 		transform: rotate(45deg);
 	}
@@ -1098,8 +1106,8 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 	.topbar kbd {
 		font: 500 0.68rem var(--font-mono);
 		background: var(--control);
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--hairline) solid var(--border);
+		border-radius: var(--radius-xs);
 		padding: 1px 5px;
 		color: var(--text-dim);
 	}
@@ -1124,7 +1132,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		max-width: 70%;
 		overflow: hidden;
 		resize: horizontal;
-		border-right: 1px solid var(--border);
+		border-right: var(--hairline) solid var(--border);
 		position: relative;
 	}
 	/* editor closed → graph takes the whole width */
@@ -1145,7 +1153,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 	}
 	.graphpane :global(.svelte-flow__controls-button) {
 		background: var(--control);
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--hairline) solid var(--border);
 		fill: var(--text-dim);
 	}
 	.graphpane :global(.svelte-flow__controls-button:hover) {
@@ -1191,7 +1199,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		align-items: baseline;
 		gap: 0.6rem;
 		padding: 0.7rem 1rem;
-		border-bottom: 1px solid var(--border-soft);
+		border-bottom: var(--hairline) solid var(--border-soft);
 		flex-wrap: wrap;
 	}
 	.ed-label {
@@ -1206,7 +1214,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 	.ed-tab {
 		padding: 0.22rem 0.6rem;
 		font: 600 0.72rem var(--font-mono);
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		color: var(--text-dim);
 	}
 	.ed-tab.on {
@@ -1232,10 +1240,10 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		display: inline-flex;
 		align-items: center;
 		gap: 0.3rem;
-		border: 1px solid var(--accent);
+		border: var(--hairline) solid var(--accent);
 		background: var(--accent-bg);
 		color: var(--accent);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		padding: 2px 11px;
 		font: 600 0.72rem var(--font-mono);
 		cursor: pointer;
@@ -1251,7 +1259,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 	.badge {
 		font: 500 0.66rem var(--font-mono);
 		padding: 2px 8px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--accent-bg);
 		color: var(--accent);
 		white-space: nowrap;
@@ -1265,7 +1273,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		gap: 0.5rem;
 		align-items: center;
 		padding: 0.6rem 1rem;
-		border-top: 1px solid var(--border-soft);
+		border-top: var(--hairline) solid var(--border-soft);
 		font-size: 0.76rem;
 		background: var(--surface);
 	}
@@ -1281,8 +1289,8 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 	button {
 		font: 500 0.76rem var(--font-sans);
 		padding: 0.36rem 0.85rem;
-		border-radius: 7px;
-		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		border: var(--hairline) solid var(--border);
 		background: var(--control);
 		color: var(--text);
 		cursor: pointer;
@@ -1306,8 +1314,8 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 	select {
 		font: 500 0.72rem var(--font-mono);
 		padding: 0.3rem 0.45rem;
-		border-radius: 6px;
-		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		border: var(--hairline) solid var(--border);
 		background: var(--control);
 		color: var(--text);
 	}
@@ -1320,7 +1328,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		z-index: 1000;
 		min-width: 200px;
 		background: var(--color-bg-elev);
-		border: 1px solid var(--color-border);
+		border: var(--hairline) solid var(--color-border);
 		border-radius: var(--radius-md);
 		padding: 4px;
 		box-shadow: var(--shadow-lg);
@@ -1329,7 +1337,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		padding: 5px 8px 6px;
 		font: 400 0.66rem var(--font-mono);
 		color: var(--color-muted);
-		border-bottom: 1px solid var(--color-border-soft);
+		border-bottom: var(--hairline) solid var(--color-border-soft);
 		margin-bottom: 4px;
 		overflow-wrap: anywhere;
 	}
@@ -1359,7 +1367,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		right: 1.1rem;
 		z-index: 1001;
 		background: var(--color-bg-elev);
-		border: 1px solid var(--color-border);
+		border: var(--hairline) solid var(--color-border);
 		color: var(--color-fg);
 		padding: 0.55rem 0.85rem;
 		border-radius: var(--radius-md);
@@ -1379,8 +1387,8 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		flex-direction: column;
 		max-height: calc(100% - 1.2rem);
 		background: var(--surface);
-		border: 1px solid var(--border);
-		border-radius: 10px;
+		border: var(--hairline) solid var(--border);
+		border-radius: var(--radius-md);
 		box-shadow: 0 10px 30px var(--shadow);
 		overflow: hidden;
 	}
@@ -1389,12 +1397,12 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		align-items: center;
 		gap: 0.3rem;
 		padding: 0.45rem 0.5rem 0.4rem;
-		border-bottom: 1px solid var(--border-soft);
+		border-bottom: var(--hairline) solid var(--border-soft);
 	}
 	.findscope button {
 		padding: 0.22rem 0.6rem;
 		font: 600 0.7rem var(--font-sans);
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 	}
 	.findscope button.on {
 		border-color: var(--accent);
@@ -1417,8 +1425,8 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		margin: 0.5rem 0.5rem 0;
 		padding: 0.4rem 0.55rem;
 		font: 400 0.78rem var(--font-mono);
-		border: 1px solid var(--border);
-		border-radius: 7px;
+		border: var(--hairline) solid var(--border);
+		border-radius: var(--radius-sm);
 		background: var(--control);
 		color: var(--text);
 		outline: 0;
@@ -1466,7 +1474,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		text-align: left;
 		border: 0;
 		background: transparent;
-		border-radius: 5px;
+		border-radius: var(--radius-sm);
 		padding: 0.22rem 0.4rem;
 		color: var(--text-dim);
 		font: 400 0.7rem/1.4 var(--font-mono);
@@ -1490,7 +1498,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 	.findsnip mark {
 		background: var(--accent-bg-hover);
 		color: var(--accent-text);
-		border-radius: 2px;
+		border-radius: var(--radius-xs);
 	}
 	.findempty {
 		padding: 0.6rem 0.5rem;
@@ -1504,7 +1512,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		align-items: center;
 		gap: 0.3rem;
 		padding: 0.45rem 1rem;
-		border-bottom: 1px solid var(--border-soft);
+		border-bottom: var(--hairline) solid var(--border-soft);
 		overflow-x: auto;
 		white-space: nowrap;
 	}
@@ -1522,7 +1530,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		gap: 0.3rem;
 		max-width: 16rem;
 		padding: 0.2rem 0.5rem;
-		border: 1px solid var(--border);
+		border: var(--hairline) solid var(--border);
 		border-radius: var(--radius-full);
 		background: var(--control);
 		color: var(--text-dim);

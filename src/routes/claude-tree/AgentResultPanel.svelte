@@ -57,8 +57,8 @@ async function copy() {
 		display: flex;
 		flex-direction: column;
 		background: var(--color-bg-elev);
-		border: 1px solid var(--color-border);
-		border-radius: 12px;
+		border: var(--hairline) solid var(--color-border);
+		border-radius: var(--radius-lg);
 		box-shadow: 0 16px 40px var(--color-overlay);
 		overflow: hidden;
 		color: var(--color-fg);
@@ -68,7 +68,7 @@ async function copy() {
 		align-items: center;
 		gap: 0.5rem;
 		padding: 8px 10px;
-		border-bottom: 1px solid var(--color-border-soft);
+		border-bottom: var(--hairline) solid var(--color-border-soft);
 		background: var(--color-card-2);
 	}
 	.ap-engine {
@@ -76,7 +76,7 @@ async function copy() {
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
 		padding: 2px 6px;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		background: var(--color-accent-soft);
 		color: var(--color-accent-soft-fg);
 	}
@@ -89,10 +89,10 @@ async function copy() {
 		color: var(--color-fg-2);
 	}
 	.ap-btn {
-		border: 1px solid var(--color-border);
+		border: var(--hairline) solid var(--color-border);
 		background: var(--color-bg);
 		color: var(--color-fg-2);
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		padding: 2px 7px;
 		cursor: pointer;
 		font: 500 0.68rem var(--font-mono);

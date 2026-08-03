@@ -110,8 +110,8 @@ function submitInput() {
 		position: fixed;
 		z-index: 60;
 		background: var(--color-bg-elev);
-		border: 1px solid var(--color-border);
-		border-radius: 10px;
+		border: var(--hairline) solid var(--color-border);
+		border-radius: var(--radius-md);
 		box-shadow: 0 12px 32px var(--color-overlay);
 		padding: 6px;
 		font-size: 0.78rem;
@@ -122,14 +122,14 @@ function submitInput() {
 		align-items: center;
 		gap: 0.4rem;
 		padding: 2px 4px 6px;
-		border-bottom: 1px solid var(--color-border-soft);
+		border-bottom: var(--hairline) solid var(--color-border-soft);
 	}
 	.em-kind {
 		font: 600 0.6rem/1 var(--font-mono);
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
 		padding: 2px 5px;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		background: var(--color-card-2);
 		color: var(--color-fg-2);
 	}
@@ -160,7 +160,7 @@ function submitInput() {
 		gap: 2px;
 		margin: 6px 2px;
 		background: var(--color-card-2);
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		padding: 2px;
 	}
 	.em-engine button {
@@ -168,7 +168,7 @@ function submitInput() {
 		border: none;
 		background: none;
 		color: var(--color-fg-2);
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		padding: 3px 0;
 		cursor: pointer;
 		font: 600 0.72rem var(--font-mono);
@@ -193,7 +193,7 @@ function submitInput() {
 		background: none;
 		color: var(--color-fg);
 		padding: 6px 6px;
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		cursor: pointer;
 	}
 	.em-action:hover:not(:disabled) {
@@ -225,8 +225,8 @@ function submitInput() {
 		flex: 1;
 		min-width: 0;
 		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: 6px;
+		border: var(--hairline) solid var(--color-border);
+		border-radius: var(--radius-sm);
 		padding: 4px 6px;
 		color: var(--color-fg);
 		font-size: 0.76rem;
@@ -235,7 +235,7 @@ function submitInput() {
 		border: none;
 		background: var(--color-accent);
 		color: var(--color-accent-fg, #fff);
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		padding: 0 10px;
 		cursor: pointer;
 		font-weight: 600;
@@ -250,7 +250,7 @@ function submitInput() {
 		gap: 0.45rem;
 		margin: 6px 4px 2px;
 		padding-top: 6px;
-		border-top: 1px solid var(--color-border-soft);
+		border-top: var(--hairline) solid var(--color-border-soft);
 		color: var(--color-fg-2);
 		cursor: pointer;
 		font-size: 0.74rem;

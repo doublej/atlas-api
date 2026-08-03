@@ -123,10 +123,12 @@ function fmt(n: number): string {
 		width: 240px;
 		text-align: left;
 		background: var(--card-bg);
-		border: 1px solid var(--border);
-		border-radius: 9px;
+		border: var(--hairline) solid var(--border);
+		border-radius: var(--radius-md);
 		overflow: hidden;
-		transition: border-color 0.12s, box-shadow 0.12s;
+		transition:
+			border-color var(--duration-fast) var(--ease-out),
+			box-shadow var(--duration-fast) var(--ease-out);
 	}
 	.cmcard.sel {
 		border-color: var(--accent);
@@ -153,7 +155,7 @@ function fmt(n: number): string {
 		gap: 6px;
 		padding: 7px 10px;
 		background: var(--card-head);
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--hairline) solid var(--border);
 	}
 	/* one --kind-color per node kind drives the icon, the badge chip, and the compact bar */
 	.cmcard[data-kind='root'] {
@@ -192,7 +194,7 @@ function fmt(n: number): string {
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
 		padding: 2px 6px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		color: var(--kind-color, var(--text-dimmer));
 		background: color-mix(in srgb, var(--kind-color, var(--text-faint)) 16%, transparent);
 	}
@@ -220,7 +222,7 @@ function fmt(n: number): string {
 		flex: none;
 		font: 600 8px/1 var(--font-mono);
 		padding: 2px 6px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		color: var(--color-warn);
 		background: color-mix(in srgb, var(--color-warn) 16%, transparent);
 	}
@@ -229,7 +231,7 @@ function fmt(n: number): string {
 		flex: none;
 		font: 600 8px/1 var(--font-mono);
 		padding: 2px 5px;
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 	}
 	.cmagents {
 		color: var(--color-pos);
@@ -245,8 +247,8 @@ function fmt(n: number): string {
 		margin: 10px;
 		padding: 9px 10px;
 		background: var(--card-view);
-		border: 1px solid var(--border-faint);
-		border-radius: 6px;
+		border: var(--hairline) solid var(--border-faint);
+		border-radius: var(--radius-sm);
 	}
 	.cmtitle {
 		font: 600 11px/1.3 var(--font-sans);
@@ -293,7 +295,7 @@ function fmt(n: number): string {
 		gap: 6px;
 		padding: 6px 10px;
 		background: var(--card-head);
-		border-top: 1px solid var(--border);
+		border-top: var(--hairline) solid var(--border);
 		font: 400 9px/1.2 var(--font-mono);
 		color: var(--text-dimmer);
 	}
