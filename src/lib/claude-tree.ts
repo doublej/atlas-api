@@ -103,8 +103,13 @@ export function shortLabel(p: string): string {
   return p.startsWith(home) ? '~' + p.slice(home.length) : p
 }
 
-/** Rough token estimate (~4 chars/token) — an indicator, not a precise count. */
-export const estimateTokens = (text: string): number => Math.round(text.length / 4)
+/**
+ * Rough token estimate — an indicator, not a precise count.
+ * ~2.5 chars/token, calibrated against Claude Code's /context figures for
+ * markdown-heavy CLAUDE.md files (paths, punctuation and tags tokenize densely;
+ * the classic 4 chars/token prose rule ran ~1.6x low).
+ */
+export const estimateTokens = (text: string): number => Math.round(text.length / 2.5)
 
 /**
  * Card label: the containing folder (the filename is redundant — the card's kind says which file).
