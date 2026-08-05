@@ -368,7 +368,7 @@ export function extractReferences(text: string): Reference[] {
   const rank: Record<RefKind, number> = { link: 0, import: 1, wikilink: 2, 'code-path': 3 }
   const best = new Map<string, Reference>()
   for (const r of refs) {
-    const key = `${r.rawPath} ${r.line}`
+    const key = `${r.rawPath}\0${r.line}`
     const cur = best.get(key)
     if (!cur || rank[r.kind] < rank[cur.kind]) best.set(key, r)
   }
