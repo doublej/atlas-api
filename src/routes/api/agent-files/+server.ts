@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { json } from '@sveltejs/kit'
-import { resolveInCatalog } from '$lib/claude-tree'
+import { clearTreeCache, resolveInCatalog } from '$lib/claude-tree'
 import { DEV_FOLDER } from '$lib/config'
 import type { RequestHandler } from './$types'
 
@@ -72,6 +72,8 @@ export const POST: RequestHandler = async ({ request }) => {
     }
   }
 
+  clearTreeCache() // a new/edited CLAUDE.md changes the tree graph
+
   // Open in default editor
   if (shouldOpen) {
     execFile('open', [filePath])
@@ -102,5 +104,6 @@ export const PUT: RequestHandler = async ({ request }) => {
   }
 
   await writeFile(toPath, content)
+  clearTreeCache()
   return json({ copied: true, from: FILES[from], to: FILES[to] })
 }

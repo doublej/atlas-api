@@ -389,17 +389,22 @@ async function resolveRefPath(rawPath: string, baseDir: string): Promise<string 
   return (await isFile(abs)) ? abs : null
 }
 
+export interface BuildOptions {
+  /** Only the chain towards the root (ancestors + the project's own CLAUDE.md) — no descendant walk. */
+  ancestorsOnly?: boolean
+}
+
 /**
  * Build the node list with parent wiring: ancestor chain (shallowest → deepest)
  * → project → descendants attached to their nearest CLAUDE.md-bearing ancestor dir.
  * A GLOSSARY.md is a 'glossary' node hanging off the CLAUDE.md in its own folder;
  * a .claude/rules/*.md is a 'rule' node hanging off the CLAUDE.md that owns the .claude dir.
  */
-export async function buildTree(root: string): Promise<TreeNode[]> {
+export async function buildTree(root: string, opts: BuildOptions = {}): Promise<TreeNode[]> {
   const rootResolved = resolve(root)
   const ancestors = await findAncestors(rootResolved)
-  const contextFiles = await findContextFiles(rootResolved)
-  const ruleFiles = await findRuleFiles(rootResolved)
+  const contextFiles = opts.ancestorsOnly ? [] : await findContextFiles(rootResolved)
+  const ruleFiles = opts.ancestorsOnly ? [] : await findRuleFiles(rootResolved)
   const claudeDescendants = contextFiles.filter((p) => basename(p) === PRIMARY)
   const agentsDescendants = contextFiles.filter((p) => basename(p) === AGENTS)
   const glossaryDescendants = contextFiles.filter((p) => isGlossary(basename(p)))
@@ -542,6 +547,25 @@ export async function buildTree(root: string): Promise<TreeNode[]> {
     }
   }
 
+  return nodes
+}
+
+// The recursive walk + read of every CLAUDE.md is the expensive half of a tree request,
+// and the graph only moves when a context file is written (POST clears the cache) or the
+// TTL lapses — same stale-while-you-work bargain as the scanner's .atlas-cache.json.
+const TREE_TTL_MS = 60_000
+const treeCache = new Map<string, { at: number; nodes: TreeNode[] }>()
+
+/** Drop every memoized tree — called after any write to a context file. */
+export const clearTreeCache = (): void => treeCache.clear()
+
+/** `buildTree` behind a 60s memo, keyed by resolved root + options. */
+export async function buildTreeCached(root: string, opts: BuildOptions = {}): Promise<TreeNode[]> {
+  const key = `${resolve(root)}|${opts.ancestorsOnly ? 'up' : 'full'}`
+  const hit = treeCache.get(key)
+  if (hit && Date.now() - hit.at < TREE_TTL_MS) return hit.nodes
+  const nodes = await buildTree(root, opts)
+  treeCache.set(key, { at: Date.now(), nodes })
   return nodes
 }
 

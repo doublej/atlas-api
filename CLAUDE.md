@@ -49,6 +49,10 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 - ripgrep is resolved by absolute path as well (`/opt/homebrew/bin/rg`) because launchd runs atlas-api with a minimal PATH; without it, detection is skipped with a warning and the rest of the scan is unaffected
 - `.atlas` overrides both fields: `umami` (id string, array, or `{ websiteIds, instance }`) and `domain`/`domains`
 
+**CLAUDE.md tree (`src/lib/claude-tree.ts`)**
+- `buildTree(root, { ancestorsOnly })` walks up to the ancestors and (unless `ancestorsOnly`) down through descendants/glossaries/rules. `?up=1` on `GET /api/claude-tree` sets `ancestorsOnly` — the chain towards the root only, and no recursive walk
+- `buildTreeCached()` memoizes that per root+option for 60s (same bargain as the scanner cache). Every route that writes a context file (`POST /api/claude-tree`, `POST`/`PUT /api/agent-files`) calls `clearTreeCache()`; edits made outside atlas show up within the TTL
+
 **Main UI (`src/routes/+page.svelte`)**
 - A ~300-line composition root: state, derived values, and callbacks only. All markup and CSS
   live in components; the page has no presentational styling beyond page layout.

@@ -3,7 +3,8 @@ import { dirname, join } from 'node:path'
 import { json } from '@sveltejs/kit'
 import {
   appendHistory,
-  buildTree,
+  buildTreeCached,
+  clearTreeCache,
   extractPreview,
   popHistory,
   readHistory,
@@ -69,9 +70,11 @@ export const GET: RequestHandler = async ({ url }) => {
   }
 
   // Default request: the graph for ?root (falls back to the whole catalog).
+  // ?up=1 keeps only the chain towards the root — no descendant walk.
   const root = url.searchParams.get('root') || BASE_DIR
   const safe = resolveInCatalog(root, BASE_DIR)
-  return safe ? json(await buildTree(safe)) : deny()
+  const ancestorsOnly = url.searchParams.get('up') === '1'
+  return safe ? json(await buildTreeCached(safe, { ancestorsOnly })) : deny()
 }
 
 type SaveBody = { op: 'save'; path: string; content: string; expectedSha?: string; force?: boolean }
@@ -83,6 +86,7 @@ export const POST: RequestHandler = async ({ request }) => {
   const body = (await request.json()) as SaveBody | RevertBody | SyncBody
   const safe = resolveInCatalog(body.path, BASE_DIR)
   if (!safe) return deny()
+  clearTreeCache() // every op below writes a context file — the memoized graphs are stale
 
   if (body.op === 'sync') {
     let claude: string
