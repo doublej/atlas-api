@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite'
 import { execFile } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { json } from '@sveltejs/kit'
@@ -28,6 +29,20 @@ type ParsedEvent = Omit<EventRow, 'scopes' | 'detail'> & {
   detail: Record<string, unknown>
 }
 
+type CoordinationRow = {
+  session_id: string
+  actor: string
+  parent_id: string | null
+  started_at: number
+  closed_at: number | null
+  scope: string
+  task_id: string | null
+  generation: number
+  expires_ms: number
+  worktree: string | null
+  title: string | null
+}
+
 const EMPTY = { events: [], activeIntents: 0, latestHandoff: null }
 const SINCE_MS = 30 * 60 * 1000
 
@@ -54,6 +69,78 @@ function visibleRows(rows: EventRow[]): EventRow[] {
     if (row.kind === 'handoff') return row === latestHandoff || row.at_ms >= since
     return row.kind === 'end' ? row.at_ms >= since : (row.expires_ms ?? 0) >= now
   })
+}
+
+function workspaceMode(root: string): string {
+  try {
+    if (!existsSync(join(root, '.atlas'))) return 'off'
+    const config = JSON.parse(readFileSync(join(root, '.atlas'), 'utf8')) as {
+      'agent-log'?: { mode?: string }
+    }
+    return config['agent-log']?.mode ?? 'off'
+  } catch {
+    return 'off'
+  }
+}
+
+// Read-only snapshot of the coordination state (sessions, leases, tasks) — the
+// v2 model's live view for dashboards and pickers. Never writes; a missing or
+// locked journal reads as an empty block, never an error.
+function coordinationBlock(commonDir: string, root: string): Record<string, unknown> {
+  let rows: CoordinationRow[]
+  try {
+    const db = new Database(join(commonDir, 'agent-log.sqlite'), { readonly: true })
+    try {
+rows = db
+        .query(
+          `SELECT s.id AS session_id, s.actor, s.parent_id, s.started_at, s.closed_at,
+            l.scope, l.task_id, l.generation, l.expires_ms, l.worktree,
+            t.id AS task_id, t.title
+          FROM sessions s
+          LEFT JOIN leases l ON l.session_id = s.id AND l.expires_ms > $now
+          LEFT JOIN tasks t ON t.id = l.task_id AND t.session_id = s.id
+          WHERE s.closed_at IS NULL
+          ORDER BY s.started_at
+          LIMIT 20`
+        )
+        .all({ $now: Date.now() }) as CoordinationRow[]
+    } finally {
+      db.close()
+    }
+  } catch {
+    return {}
+  }
+  const sessions: Record<string, unknown>[] = []
+  const leases: Record<string, unknown>[] = []
+  const tasks = new Map<string, string>()
+  for (const row of rows) {
+    if (!row.scope) continue
+    leases.push({
+      scope: row.scope,
+      sessionId: row.session_id,
+      taskId: row.task_id,
+      generation: row.generation,
+      expiresMs: row.expires_ms,
+      worktree: row.worktree ?? 'main',
+    })
+    if (row.task_id && row.title) tasks.set(row.task_id, row.title)
+  }
+  for (const row of rows) {
+    sessions.push({
+      sessionId: row.session_id,
+      actor: row.actor,
+      parentId: row.parent_id,
+      startedAt: row.started_at,
+      leases: leases.filter((lease) => lease.sessionId === row.session_id),
+    })
+  }
+  return {
+    schemaVersion: 3,
+    mode: workspaceMode(root),
+    sessions,
+    leases,
+    tasks: [...tasks].map(([taskId, title]) => ({ taskId, title })),
+  }
 }
 
 export const GET: RequestHandler = async ({ url }) => {
@@ -94,5 +181,6 @@ export const GET: RequestHandler = async ({ url }) => {
     events,
     activeIntents: events.filter((event) => event.kind === 'intent').length,
     latestHandoff: handoff ? parseRow(handoff) : null,
+    coordination: coordinationBlock(commonDir, safe),
   })
 }

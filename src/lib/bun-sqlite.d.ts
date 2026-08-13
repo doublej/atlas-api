@@ -3,7 +3,7 @@
 declare module 'bun:sqlite' {
   export class Database {
     constructor(filename: string, options?: { readonly?: boolean; create?: boolean })
-    query(sql: string): { all(): unknown[] }
+    query(sql: string): { all(...params: (unknown[] | Record<string, unknown>)[]): unknown[] }
     close(): void
   }
 }
