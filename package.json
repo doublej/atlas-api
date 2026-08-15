@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite dev",
     "build": "bun --bun vite build",
+    "start": "bun build/index.js",
+    "daemon:reload": "bun run build && launchctl kickstart -k gui/$(id -u)/com.jurrejan.atlas-api",
     "preview": "vite preview",
     "scan": "bun src/lib/scanner.ts",
     "prepare": "svelte-kit sync || echo ''",
@@ -19,6 +21,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",
     "@sveltejs/adapter-auto": "^7.0.1",
+    "@sveltejs/adapter-node": "^5.5.7",
     "@sveltejs/kit": "^2.48.5",
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
     "@types/dagre": "^0.7.54",
