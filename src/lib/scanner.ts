@@ -51,6 +51,27 @@ export type Framework =
   | 'unknown'
 
 export type GitStatus = 'clean' | 'dirty' | 'no-repo' | 'error'
+
+/**
+ * Branch-flow policy. Derived per repo unless `.atlas` declares one.
+ * - `gitflow`  — feature/* → develop → trunk → tag. Opted in (has a develop branch).
+ * - `trunk`    — own repo, single line of work. The default for most projects.
+ * - `external` — clone of someone else's repo. Never flagged, never migrated.
+ * - `local`    — no remote. Scratch/local-only, no flow to enforce.
+ */
+export type FlowPolicy = 'gitflow' | 'trunk' | 'external' | 'local'
+
+export interface GitFlow {
+  policy: FlowPolicy
+  /** The main branch of this repo — `main`, `master`, or whatever `.atlas` declares. */
+  trunk: string
+  /** The integration branch, when the repo has one. */
+  integration?: string
+  /** Owner of the main repository (origin), e.g. `doublej`. */
+  owner?: string
+  /** One-line reason the current branch is off-flow. Only set under `gitflow`. */
+  drift?: string
+}
 export type DeployPlatform = 'vercel' | 'render' | 'netlify' | 'docker' | 'github-actions'
 
 export interface DeployInfo {
@@ -95,6 +116,7 @@ export interface Project {
   runner?: 'bun' | 'npm' | 'yarn' | 'pnpm' | 'uv'
   git?: GitStatus
   gitBranch?: string
+  flow?: GitFlow
   hasJustfile?: boolean
   justRecipes?: string[]
   deploy?: DeployInfo[]
@@ -385,7 +407,54 @@ async function detectAgentFiles(fullPath: string): Promise<AgentFilesInfo | unde
   return info.claude || info.agents ? info : undefined
 }
 
-async function detectGitStatus(fullPath: string): Promise<{ status: GitStatus; branch?: string }> {
+/** Owner of the "main repository" — repos under another owner are clones, not ours. */
+const GIT_OWNER = process.env.ATLAS_GIT_OWNER ?? 'doublej'
+
+/** One spawn per repo: branch, flow refs, origin url and dirty state, `---`-separated. */
+const GIT_PROBE = [
+  'git rev-parse --abbrev-ref HEAD',
+  'echo ---',
+  "git for-each-ref --format='%(refname:short)' refs/heads/develop refs/heads/main refs/heads/master",
+  'echo ---',
+  'git config --get remote.origin.url',
+  'echo ---',
+  'git status --porcelain',
+].join('; ')
+
+/** `git@github.com:doublej/x.git` / `https://github.com/doublej/x` → `doublej`. */
+function parseRemoteOwner(url: string): string | undefined {
+  return /[:/]([^/:]+)\/[^/]+?(?:\.git)?\/?$/.exec(url.trim())?.[1]
+}
+
+function buildFlow(
+  refs: string[],
+  remoteUrl: string,
+  branch: string,
+  meta: Partial<GitFlow> | undefined,
+): GitFlow {
+  const trunk = meta?.trunk ?? (refs.includes('main') ? 'main' : refs.includes('master') ? 'master' : branch)
+  const integration = meta?.integration ?? (refs.includes('develop') ? 'develop' : undefined)
+  const owner = remoteUrl ? parseRemoteOwner(remoteUrl) : undefined
+  const policy: FlowPolicy =
+    meta?.policy ??
+    (!remoteUrl ? 'local' : owner !== GIT_OWNER ? 'external' : integration ? 'gitflow' : 'trunk')
+
+  const flow: GitFlow = { policy, trunk }
+  if (integration) flow.integration = integration
+  if (owner) flow.owner = owner
+
+  // Drift is only meaningful once a repo has opted into the flow.
+  if (policy === 'gitflow') {
+    if (!integration) flow.drift = 'no develop branch'
+    else if (branch !== trunk && branch !== integration && !branch.startsWith('feature/'))
+      flow.drift = `${branch} is not feature/*`
+  }
+  return flow
+}
+
+async function detectGitStatus(
+  fullPath: string,
+): Promise<{ status: GitStatus; branch?: string; flow?: GitFlow }> {
   try {
     await stat(join(fullPath, '.git'))
   } catch {
@@ -393,17 +462,29 @@ async function detectGitStatus(fullPath: string): Promise<{ status: GitStatus; b
   }
 
   try {
-    const { stdout: branchOut } = await execAsync('git rev-parse --abbrev-ref HEAD', {
-      cwd: fullPath,
-    })
+    const { stdout } = await execAsync(GIT_PROBE, { cwd: fullPath })
+    // Split on the marker line, not '\n---\n' — an empty section would swallow a separator.
+    const [branchOut = '', refsOut = '', remoteOut = '', statusOut = ''] = stdout.split(/^---$/m)
     const branch = branchOut.trim()
+    if (!branch) return { status: 'error' }
 
-    const { stdout: statusOut } = await execAsync('git status --porcelain', { cwd: fullPath })
     const status: GitStatus = statusOut.trim() === '' ? 'clean' : 'dirty'
+    const refs = refsOut.trim().split('\n').filter(Boolean)
+    const meta = await readAtlasFlow(fullPath)
 
-    return { status, branch }
+    return { status, branch, flow: buildFlow(refs, remoteOut.trim(), branch, meta) }
   } catch {
     return { status: 'error' }
+  }
+}
+
+/** The `flow` block of `.atlas`, when the project declares one. */
+async function readAtlasFlow(fullPath: string): Promise<Partial<GitFlow> | undefined> {
+  try {
+    const meta = JSON.parse(await readFile(join(fullPath, '.atlas'), 'utf-8'))
+    return typeof meta.flow === 'object' && meta.flow ? meta.flow : undefined
+  } catch {
+    return undefined
   }
 }
 
@@ -633,6 +714,7 @@ async function getProjectInfo(
     const gitInfo = await detectGitStatus(fullPath)
     info.git = gitInfo.status
     info.gitBranch = gitInfo.branch
+    info.flow = gitInfo.flow
   }
 
   return info
@@ -752,7 +834,7 @@ async function collectFolders(baseDir: string, dir: string, depth: number = 0): 
 const CACHE_FILE = '.atlas-cache.json'
 const CACHE_TTL = 60 * 1000 // 1 minute before considered stale
 /** Bump when the cached Project shape changes — a mismatch forces a full rescan. */
-const CACHE_SHAPE_VERSION = 2
+const CACHE_SHAPE_VERSION = 3
 
 interface CachedIndex extends ProjectAtlas {
   cachedAt: number
@@ -817,7 +899,7 @@ export async function scan(
 
 export async function getGitStatus(
   projectPath: string,
-): Promise<{ status: GitStatus; branch?: string }> {
+): Promise<{ status: GitStatus; branch?: string; flow?: GitFlow }> {
   return detectGitStatus(projectPath)
 }
 
@@ -912,6 +994,7 @@ export async function enrichCacheWithGit(cachePath: string, atlas: ProjectAtlas)
     for (let j = 0; j < batch.length; j++) {
       batch[j].git = results[j].status
       batch[j].gitBranch = results[j].branch
+      batch[j].flow = results[j].flow
     }
   }
 

@@ -42,6 +42,11 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 - Implements stale-while-revalidate caching (`.atlas-cache.json`, 60s TTL)
 - Ignores: node_modules, .git, dist, build, .svelte-kit, __pycache__, .venv, .cache, .beads
 
+**Branch flow (`detectGitStatus` in `scanner.ts`)**
+- One `git` spawn per repo (`GIT_PROBE`, `---`-separated sections) yields branch, trunk/develop refs, origin url and dirty state — the same spawn budget as before the `flow` field existed
+- `Project.flow` derives a `FlowPolicy`: no remote → `local`, origin owner ≠ `ATLAS_GIT_OWNER` (default `doublej`) → `external`, a `develop` branch → `gitflow`, otherwise → `trunk`. Only `gitflow` repos get a `drift` string, so the other ~450 stay silent
+- `.atlas` may declare `flow: { policy, trunk, integration }`; the declared block wins over detection. `atlas flow init` writes it
+
 **Domains (`src/lib/domains.ts`)**
 - `detectDomains()` collects a project's production domains from its own files: CNAME, `vercel.json` alias, `.vercel/project.json` (`<projectName>.vercel.app`), wrangler routes and `<name>.pages.dev`, `package.json` homepage, `og:url`/canonical in the HTML entry point, robots.txt `Sitemap:` lines, and `SITE_URL`/`ORIGIN`-style env keys
 - `normalizeDomain()` reduces any of those to a bare host and drops placeholders (localhost, `*.local`, code hosts like github.com)
