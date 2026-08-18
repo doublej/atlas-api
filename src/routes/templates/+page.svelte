@@ -1,14 +1,24 @@
 <script lang="ts">
+import type { TemplateAdoption } from '$lib/adoption'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import Chip from '$lib/components/ui/Chip.svelte'
 import type { LintEntry } from '$lib/template-lint'
 import type { DiscoveredTemplate, TemplateError, VariableReference } from '$lib/templates'
 
-let { data }: { data: { templates: DiscoveredTemplate[]; errors: TemplateError[]; lint: LintEntry[] } } =
-  $props()
+let {
+  data,
+}: {
+  data: {
+    templates: DiscoveredTemplate[]
+    errors: TemplateError[]
+    lint: LintEntry[]
+    adoption: Record<string, TemplateAdoption>
+    updateScaffoldTool: string
+  }
+} = $props()
 
-type Tab = 'effects' | 'schema' | 'consistency'
+type Tab = 'effects' | 'schema' | 'consistency' | 'adoption'
 
 interface RailItem {
   id: string
@@ -59,6 +69,11 @@ let tab = $state<Tab>('effects')
 const selectedLint = $derived(
   selected ? data.lint.filter((l) => l.template === selected.id) : [],
 )
+const selectedAdoption = $derived(selected ? (data.adoption[selected.id] ?? null) : null)
+
+function updateCommand(projectPath: string): string {
+  return `python3 ${data.updateScaffoldTool} ${projectPath} --apply`
+}
 
 const externalSideEffect: Record<string, string> = {
   include_tracking: 'creates a website record on the live Umami instance when set to "y"',
@@ -103,6 +118,9 @@ function referencesByFile(refs: VariableReference[]): Map<string, VariableRefere
           >
             <span class="dot" data-status={item.status}></span>
             {item.name}
+            {#if data.adoption[item.id]?.behindCount}
+              <span class="behind-count">{data.adoption[item.id].behindCount} behind</span>
+            {/if}
           </button>
         {/each}
       </div>
@@ -133,6 +151,10 @@ function referencesByFile(refs: VariableReference[]): Map<string, VariableRefere
         <Chip pressed={tab === 'consistency'} onclick={() => (tab = 'consistency')}>
           Consistency
           {#if selectedLint.length > 0}<span class="badge-count">{selectedLint.length}</span>{/if}
+        </Chip>
+        <Chip pressed={tab === 'adoption'} onclick={() => (tab = 'adoption')}>
+          Adoption
+          {#if selectedAdoption}<span class="badge-count">{selectedAdoption.totalCount}</span>{/if}
         </Chip>
       </div>
 
@@ -203,6 +225,30 @@ function referencesByFile(refs: VariableReference[]): Map<string, VariableRefere
                 <span class="lint-code">{l.code}</span>
                 <span class="lint-message">{l.message}</span>
               </div>
+            {/each}
+          {/if}
+        </div>
+      {:else if tab === 'adoption'}
+        <div class="adoption-list">
+          {#if !selectedAdoption || selectedAdoption.totalCount === 0}
+            <p class="note muted">No adopters yet.</p>
+          {:else}
+            <p class="note">
+              current version {selectedAdoption.currentVersion || '—'} · {selectedAdoption.totalCount}
+              adopter{selectedAdoption.totalCount === 1 ? '' : 's'}
+              {#if selectedAdoption.behindCount > 0}· {selectedAdoption.behindCount} behind{/if}
+            </p>
+            {#each selectedAdoption.projects as p (p.path)}
+              <Card>
+                <div class="adopter-head">
+                  <span class="var-name">{p.name}</span>
+                  <Badge tone="neutral">v{p.version || '—'}</Badge>
+                  {#if p.behind}<Badge tone="warn">behind</Badge>{/if}
+                </div>
+                {#if p.behind}
+                  <code class="update-cmd">{updateCommand(p.path)}</code>
+                {/if}
+              </Card>
             {/each}
           {/if}
         </div>
@@ -408,5 +454,32 @@ function referencesByFile(refs: VariableReference[]): Map<string, VariableRefere
 
   .empty {
     color: var(--color-muted);
+  }
+
+  .behind-count {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--color-warn);
+  }
+
+  .adoption-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .adopter-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+  }
+  .update-cmd {
+    display: block;
+    font-size: 12px;
+    padding: var(--space-2);
+    background: var(--color-card-2);
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    white-space: pre;
   }
 </style>
