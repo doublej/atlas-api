@@ -1,11 +1,18 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { dirname, join, relative, sep } from 'node:path'
 
+export interface VariableReference {
+  file: string
+  kind: 'hook' | 'conditional' | 'interpolation'
+}
+
 export interface TemplateVariable {
   name: string
   default: string | boolean
   isChoice: boolean
   choices?: string[]
+  isDerived: boolean
+  references: VariableReference[]
 }
 
 export interface DiscoveredTemplate {
@@ -16,6 +23,28 @@ export interface DiscoveredTemplate {
   path: string
   variables: TemplateVariable[]
 }
+
+export interface TemplateError {
+  path: string
+  family: string
+  name: string
+  message: string
+}
+
+const BINARY_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.ico',
+  '.woff',
+  '.woff2',
+  '.ttf',
+  '.otf',
+  '.zip',
+  '.pdf',
+  '.pyc',
+])
 
 /** Find each `cookiecutter.json`, stopping at the first hit per branch (don't descend into the rendered body). */
 async function findCookiecutters(dir: string, depth = 0): Promise<string[]> {
@@ -41,44 +70,126 @@ function describe(c: Record<string, unknown>): string {
   return (c.description as string) || (c.project_description as string) || 'No description'
 }
 
-function extractVariables(c: Record<string, unknown>): TemplateVariable[] {
+function isJinjaExpr(value: unknown): boolean {
+  return typeof value === 'string' && (value.includes('{{') || value.includes('{%'))
+}
+
+function extractVariables(c: Record<string, unknown>): Omit<TemplateVariable, 'references'>[] {
   return Object.entries(c)
     .filter(([k]) => !k.startsWith('_'))
     .map(([name, value]) => {
       const isChoice = Array.isArray(value)
       const choices = isChoice ? (value as string[]) : undefined
+      const def = (isChoice ? choices![0] : value) as string | boolean
       return {
         name,
-        default: (isChoice ? choices![0] : value) as string | boolean,
+        default: def,
         isChoice,
         choices,
+        isDerived: isJinjaExpr(isChoice ? choices?.[0] : def),
       }
     })
 }
 
-async function parseTemplate(ccPath: string, root: string): Promise<DiscoveredTemplate | null> {
+/** Walk every non-binary file under the template dir (excluding cookiecutter.json), returning [relPath, lines]. */
+async function readTemplateFiles(root: string, dir = root): Promise<Array<[string, string[]]>> {
+  let entries
   try {
-    const content = JSON.parse(await readFile(ccPath, 'utf-8')) as Record<string, unknown>
-    const dir = dirname(ccPath)
-    const parts = relative(root, dir).split(sep)
+    entries = await readdir(dir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+  const files: Array<[string, string[]]> = []
+  for (const e of entries) {
+    const full = join(dir, e.name)
+    if (e.isDirectory()) {
+      if (e.name === '__pycache__') continue
+      files.push(...(await readTemplateFiles(root, full)))
+      continue
+    }
+    if (!e.isFile() || full === join(root, 'cookiecutter.json')) continue
+    const ext = e.name.slice(e.name.lastIndexOf('.')).toLowerCase()
+    if (BINARY_EXTENSIONS.has(ext)) continue
+    let content: string
+    try {
+      content = await readFile(full, 'utf-8')
+    } catch {
+      continue
+    }
+    files.push([relative(root, full), content.split('\n')])
+  }
+  return files
+}
+
+/** Line-based scan (no Jinja parser) for where each variable is referenced across the template dir. */
+async function scanReferences(
+  templateDir: string,
+  variableNames: string[],
+): Promise<Map<string, VariableReference[]>> {
+  const refs = new Map<string, VariableReference[]>(variableNames.map((n) => [n, []]))
+  const files = await readTemplateFiles(templateDir)
+  for (const [relPath, lines] of files) {
+    const isHook = relPath.split(sep)[0] === 'hooks'
+    for (const line of lines) {
+      for (const name of variableNames) {
+        if (!line.includes(name)) continue
+        const kind: VariableReference['kind'] = isHook
+          ? 'hook'
+          : line.includes('{% if') || line.includes('{%if')
+            ? 'conditional'
+            : 'interpolation'
+        refs.get(name)!.push({ file: relPath, kind })
+      }
+    }
+  }
+  return refs
+}
+
+async function parseTemplate(
+  ccPath: string,
+  root: string,
+): Promise<{ template: DiscoveredTemplate } | { error: TemplateError }> {
+  const dir = dirname(ccPath)
+  const parts = relative(root, dir).split(sep)
+  const family = parts.length > 1 ? parts[0] : 'root'
+  const name = parts[parts.length - 1]
+  let content: Record<string, unknown>
+  try {
+    content = JSON.parse(await readFile(ccPath, 'utf-8')) as Record<string, unknown>
+  } catch (err) {
     return {
-      family: parts.length > 1 ? parts[0] : 'root',
-      name: parts[parts.length - 1],
+      error: { path: ccPath, family, name, message: err instanceof Error ? err.message : String(err) },
+    }
+  }
+  const variables = extractVariables(content)
+  const refs = await scanReferences(
+    dir,
+    variables.map((v) => v.name),
+  )
+  return {
+    template: {
+      family,
+      name,
       description: describe(content),
       version: (content._version as string) ?? null,
       path: dir,
-      variables: extractVariables(content),
-    }
-  } catch {
-    return null
+      variables: variables.map((v) => ({ ...v, references: refs.get(v.name) ?? [] })),
+    },
   }
 }
 
 /** Discover cookiecutter templates under `root` (the authoritative `ATLAS_TEMPLATES_DIR`). */
-export async function discoverTemplates(root: string): Promise<DiscoveredTemplate[]> {
+export async function discoverTemplates(
+  root: string,
+): Promise<{ templates: DiscoveredTemplate[]; errors: TemplateError[] }> {
   const paths = await findCookiecutters(root)
   const parsed = await Promise.all(paths.map((p) => parseTemplate(p, root)))
-  return parsed
-    .filter((t): t is DiscoveredTemplate => t !== null)
+  const templates = parsed
+    .filter((r): r is { template: DiscoveredTemplate } => 'template' in r)
+    .map((r) => r.template)
     .sort((a, b) => a.family.localeCompare(b.family) || a.name.localeCompare(b.name))
+  const errors = parsed
+    .filter((r): r is { error: TemplateError } => 'error' in r)
+    .map((r) => r.error)
+  return { templates, errors }
 }
