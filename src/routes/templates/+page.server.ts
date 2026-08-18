@@ -1,11 +1,9 @@
-import { json } from '@sveltejs/kit'
 import { ATLAS_TEMPLATES_DIR } from '$lib/config'
 import { lintTemplates } from '$lib/template-lint'
 import { discoverTemplates } from '$lib/templates'
-import type { RequestHandler } from './$types'
 
-export const GET: RequestHandler = async () => {
+export async function load() {
   const { templates, errors } = await discoverTemplates(ATLAS_TEMPLATES_DIR)
   const lint = lintTemplates(templates, errors)
-  return json({ templates, errors, lint })
+  return { templates, errors, lint }
 }
