@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onMount } from 'svelte'
+import { page } from '$app/state'
 import * as api from '$lib/browser/api'
 import {
   countActiveFilters,
@@ -34,7 +35,7 @@ $effect(() => {
   folders = data.folders
 })
 
-let search = $state('')
+let search = $state(page.url.searchParams.get('q') ?? '')
 let selectedFrameworks = $state<Set<Framework>>(new Set())
 let selectedTypes = $state<Set<string>>(new Set())
 let selectedRunners = $state<Set<string>>(new Set())

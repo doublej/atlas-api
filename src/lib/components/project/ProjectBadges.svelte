@@ -47,6 +47,17 @@ const promotionStatus = $derived(project.promotion?.status)
   </span>
 {/if}
 
+{#if project.template}
+  {@const shortName = project.template.name.split('/').pop() ?? project.template.name}
+  <a
+    class="template-link"
+    href="/templates?t={encodeURIComponent(project.template.name)}"
+    title="Scaffold: {project.template.name} v{project.template.version}"
+  >
+    <Badge tone="accent">{shortName} v{project.template.version}</Badge>
+  </a>
+{/if}
+
 <style>
   .branch {
     display: inline-flex;
@@ -55,5 +66,9 @@ const promotionStatus = $derived(project.promotion?.status)
     font-family: var(--font-mono);
     color: var(--color-muted-2);
     white-space: nowrap;
+  }
+
+  .template-link {
+    text-decoration: none;
   }
 </style>

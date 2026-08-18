@@ -1,4 +1,5 @@
 <script lang="ts">
+import { page } from '$app/state'
 import type { TemplateAdoption } from '$lib/adoption'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Card from '$lib/components/ui/Card.svelte'
@@ -60,7 +61,9 @@ const families = $derived([...new Set(railItems.map((i) => i.family))].sort())
 
 let selectedId = $state<string | null>(null)
 $effect(() => {
-  if (selectedId === null && railItems.length > 0) selectedId = railItems[0].id
+  if (selectedId !== null || railItems.length === 0) return
+  const requested = page.url.searchParams.get('t')
+  selectedId = requested && railItems.some((i) => i.id === requested) ? requested : railItems[0].id
 })
 const selected = $derived(railItems.find((i) => i.id === selectedId) ?? null)
 
@@ -241,7 +244,9 @@ function referencesByFile(refs: VariableReference[]): Map<string, VariableRefere
             {#each selectedAdoption.projects as p (p.path)}
               <Card>
                 <div class="adopter-head">
-                  <span class="var-name">{p.name}</span>
+                  <a class="var-name adopter-link" href="/?q={encodeURIComponent(p.name)}">
+                    {p.name}
+                  </a>
                   <Badge tone="neutral">v{p.version || '—'}</Badge>
                   {#if p.behind}<Badge tone="warn">behind</Badge>{/if}
                 </div>
@@ -391,6 +396,14 @@ function referencesByFile(refs: VariableReference[]): Map<string, VariableRefere
   .var-name {
     font-family: monospace;
     font-weight: 600;
+  }
+  .adopter-link {
+    color: var(--color-fg);
+    text-decoration: none;
+  }
+  .adopter-link:hover {
+    color: var(--color-accent);
+    text-decoration: underline;
   }
   .note {
     font-size: 12px;
