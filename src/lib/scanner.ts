@@ -128,6 +128,12 @@ export interface Project {
   umami?: UmamiInfo
   claudeSessions?: ClaudeSessionsInfo
   agentFiles?: AgentFilesInfo
+  template?: TemplateInfo
+}
+
+export interface TemplateInfo {
+  name: string
+  version: string
 }
 
 export type { UmamiInfo }
@@ -294,6 +300,24 @@ async function detectBeads(fullPath: string): Promise<BeadsInfo | undefined> {
     }
   }
   return counts
+}
+
+async function detectTemplate(fullPath: string): Promise<TemplateInfo | undefined> {
+  let raw: string
+  try {
+    raw = await readFile(join(fullPath, '.template-meta.json'), 'utf-8')
+  } catch {
+    return undefined
+  }
+  try {
+    const meta = JSON.parse(raw)
+    if (typeof meta.template !== 'string' || typeof meta.template_version !== 'string') {
+      return undefined
+    }
+    return { name: meta.template, version: meta.template_version }
+  } catch {
+    return undefined
+  }
 }
 
 const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects')
@@ -687,7 +711,7 @@ async function getProjectInfo(
     /* no readme */
   }
 
-  const [runner, justfileInfo, deployInfo, beadsInfo, domains, claudeSessions, agentFiles] =
+  const [runner, justfileInfo, deployInfo, beadsInfo, domains, claudeSessions, agentFiles, template] =
     await Promise.all([
       detectRunner(fullPath),
       detectJustfile(fullPath),
@@ -696,6 +720,7 @@ async function getProjectInfo(
       detectDomains(fullPath, { homepage }),
       detectClaudeSessions(fullPath),
       detectAgentFiles(fullPath),
+      detectTemplate(fullPath),
     ])
 
   info.runner = runner
@@ -704,6 +729,7 @@ async function getProjectInfo(
   if (beadsInfo) info.beads = beadsInfo
   if (claudeSessions) info.claudeSessions = claudeSessions
   if (agentFiles) info.agentFiles = agentFiles
+  if (template) info.template = template
   if (justfileInfo.hasJustfile) {
     info.hasJustfile = true
     info.justRecipes = justfileInfo.recipes
