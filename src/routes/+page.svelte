@@ -244,10 +244,12 @@ async function doMove(targetFolder: string): Promise<void> {
 		padding: 0 var(--page-pad) var(--space-16);
 	}
 
-	/* Header and toolbar travel together as one sticky band. */
+	/* Header and toolbar travel together as one sticky band, stacked below the
+	   global nav (also sticky top:0 — offset here so the two bands don't
+	   overlap once scrolled). */
 	.topbar {
 		position: sticky;
-		top: 0;
+		top: var(--nav-h);
 		z-index: 50;
 		background: var(--color-bg);
 		padding-bottom: var(--space-2);
