@@ -889,6 +889,25 @@ async function performScan(baseDir: string, skipGit: boolean): Promise<ProjectAt
   }
 }
 
+let revalidating: Promise<void> | null = null
+
+/**
+ * Refresh a stale cache behind the answer already served.
+ *
+ * `scan` used to compute `stale` and do nothing with it, so a cache aged without bound and
+ * `atlas <query>` kept naming paths that had moved hours earlier. One sweep at a time, and
+ * failures stay silent because the caller already has its answer.
+ */
+function revalidate(baseDir: string): void {
+  if (revalidating) return
+  revalidating = performScan(baseDir, true)
+    .then((result) => enrichCacheWithGit(join(baseDir, CACHE_FILE), result))
+    .catch(() => {})
+    .finally(() => {
+      revalidating = null
+    })
+}
+
 export async function scan(
   baseDir: string,
   options: { skipGit?: boolean; useCache?: boolean; forceRefresh?: boolean } = {},
@@ -903,7 +922,9 @@ export async function scan(
       const age = Date.now() - cached.cachedAt
       // Always return cache - let client decide to refresh in background
       if (cached.shapeVersion === CACHE_SHAPE_VERSION) {
-        return { ...cached, fromCache: true, stale: age > CACHE_TTL }
+        const stale = age > CACHE_TTL
+        if (stale) revalidate(baseDir)
+        return { ...cached, fromCache: true, stale }
       }
     } catch {
       /* no cache or invalid */
