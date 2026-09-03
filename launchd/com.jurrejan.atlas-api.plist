@@ -14,7 +14,7 @@
         <string>build/index.js</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/jurrejan/Documents/development/multi-stack/project-atlas/atlas-api</string>
+    <string>/Users/jurrejan/dev/multi-stack/project-atlas/atlas-api</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
