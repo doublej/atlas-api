@@ -34,7 +34,11 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 ### Core Components
 
 **Scanner (`src/lib/scanner.ts`)**
-- Recursively scans directories (max 3 levels) for projects
+- Recursively scans directories for projects. Depth is no longer a constant: `.atlas-config.json`
+  at the scan root carries `maxDepth` (default 3), a per-subtree `depth` map — the only way to
+  walk *into* a folder that is itself a project, which is what catalogs the apps in a monorepo —
+  `force`, which promotes or demotes a folder the detectors read wrong, and `ignore`, glob
+  patterns whose folders are skipped whole, subtree included (`src/lib/atlasFile.ts`)
 - Detects project type from manifests: package.json, pyproject.toml, Cargo.toml, go.mod
 - Detects package manager from lockfiles: bun.lockb, yarn.lock, pnpm-lock.yaml, package-lock.json, uv.lock
 - Detects justfile presence and parses recipes
@@ -56,6 +60,19 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 - ripgrep is resolved by absolute path as well (`/opt/homebrew/bin/rg`) because launchd runs atlas-api with a minimal PATH; without it, detection is skipped with a warning and the rest of the scan is unaffected
 - `.atlas` overrides both fields: `umami` (id string, array, or `{ websiteIds, instance }`) and `domain`/`domains`
 
+**Remote hosts (`src/lib/remoteScan.ts`)**
+- `scanHost(host)` ships/runs the bundled scan agent over SSH (`bun run agent:build` →
+  `shared/agent/atlas-scan.mjs`) and writes `~/dev/.atlas-cache-<id>.json`.
+  It never throws: an unreachable host keeps its previous projects and is reported
+  `status: 'unreachable'` in `ProjectAtlas.hosts[]`
+- `refreshHosts()` is TTL-guarded (10 min) and de-duplicated per host. **Never awaited by
+  `GET /api/projects`** — the catalog answers from the merged cache in ~30ms whether or not
+  Ubuntu is powered on. `POST /api/refresh?host=<id>` is the one blocking form
+- The merge itself lives in `scanner.ts` (`finalizeAtlas`), not here, so it has no import cycle
+  and so the scanner keeps working standalone. It is idempotent: it drops non-local projects
+  before re-merging, which is what stops the 60s revalidation from erasing the merged catalog
+- `resolveLocal()` (`$lib/config`) is the write boundary — see the root CLAUDE.md
+
 **CLAUDE.md tree (`src/lib/claude-tree.ts`)**
 - `buildTree(root, { ancestorsOnly })` walks up to the ancestors and (unless `ancestorsOnly`) down through descendants/glossaries/rules. `?up=1` on `GET /api/claude-tree` sets `ancestorsOnly` — the chain towards the root only, and no recursive walk
 - `buildTreeCached()` memoizes that per root+option for 60s (same bargain as the scanner cache). Every route that writes a context file (`POST /api/claude-tree`, `POST`/`PUT /api/agent-files`) calls `clearTreeCache()`; edits made outside atlas show up within the TTL
@@ -68,7 +85,8 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 | Directory | Holds |
 |---|---|
 | `src/lib/components/ui/` | `Button`, `Chip`, `Badge`, `Menu`, `Modal`, `Card` — the Tooling primitives |
-| `src/lib/components/browser/` | `BrowserHeader`, `Toolbar`, `FilterPanel`, `FolderTree`, `RenameDialog`, `MoveDialog` |
+| `src/lib/components/browser/` | `BrowserHeader`, `Toolbar`, `FilterPanel`, `FolderTree`, `HostBanner`, `Notice` |
+| `src/lib/components/dialogs/` | `RenameDialog`, `MoveDialog`, `ProjectSettings`, `BeadsDialog` |
 | `src/lib/components/project/` | `ProjectRow`, `ProjectBadges`, `ProjectDetails`, `ProjectActions`, `ProjectLinks` |
 | `src/lib/components/icons/` | `Icon.svelte` + `paths.ts` — a vendored Lucide subset (no icon dependency) |
 | `src/lib/browser/` | `filters.ts`, `tree.ts`, `api.ts`, `colors.ts` + their tests — pure logic, no runes |
@@ -79,12 +97,25 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 - Projects render as a dense single-column row list inside one bordered card, not a card grid.
   The card treatment (hairline + accent gradient + up-left halo) belongs on containers, never rows.
 - Flat and nested view modes
+- Host badges and an `alsoOn` chip per twin whenever the catalog spans more than one machine, and
+  a banner for any host whose last scan came back `unreachable`/`error`
+- Project rows render on the client: the SSR HTML of `/` holds only the serialized payload, so `curl /`
+  proves a loader change and nothing about the UI. Verify rows in a browser, where 500+ rows take ~10s to
+  appear. The scaffold badge (`ProjectBadges.svelte`) compares `project.template.version` with the
+  template's current `_version` from `templateVersions` in `+page.server.ts` and turns amber when behind
 
-**Action rendering.** `ProjectActions` takes labels, icons and conditions from `shared/actions.json`
-but renders an explicit allowlist (`run-dev`, `open-iterm`, `open-finder`, `claude-tree-view`,
-`rename`, `move`). Most registry actions carry no `consumers` field, so `getActions` returns far
-more than this consumer implements — the `clipboard` and `iterm-command` types have no executor in
-the browser. Scripts, just recipes, domains and umami links come from `getDynamicActions`.
+**System console (`src/routes/system/`)**
+- One page for the machine-level view: hosts (status, per-host rescan, registry editor), the
+  scanner config, the launchd daemons and the port audit. Sections are sibling components next to
+  the page, the way `claude-tree/` does it.
+
+**Action rendering.** `ProjectActions` renders whatever `getActions(project, 'svelte')` returns:
+four ids get an inline button (`run-dev`, `open-iterm`, `open-finder`, `claude-tree-view`) and the
+rest fall into the overflow menu, grouped by the registry's own groups. `runAction` in
+`src/lib/browser/api.ts` is the executor — `clipboard`, `iterm-command`, `open-url` and `api`
+types each have a case; `open-default` is the one action with no browser equivalent, and the
+dialog-backed ones (`rename`, `move`, `project-settings`, `beads-create`) are handled by the page.
+Scripts, just recipes, domains and umami links come from `getDynamicActions`.
 - Project cards show: git status, scripts, just recipes, dev command
 - Actions: run dev server, open iTerm, open Finder, rename, move
 
@@ -98,6 +129,11 @@ the browser. Scripts, just recipes, domains and umami links come from `getDynami
 - `PUT /api/description` - Update project description in manifest
 - `POST /api/rename`, `/api/move` - File operations
 - `GET/POST/PUT /api/agent-files` - CLAUDE.md and AGENTS.md operations
+- `GET/PATCH /api/atlas` - read/merge a project's `.atlas` (`null` in the patch clears a key)
+- `GET/PUT /api/config` - the scanner's `.atlas-config.json` (`maxDepth`, `depth`, `force`, `ignore`)
+- `GET/PUT /api/hosts` - the host registry; a write lands in the file but the running daemon
+  keeps its start-up copy until `bun run daemon:reload`, which the response says as `restartRequired`
+- `POST /api/iterm` also takes an optional `command`, which is what backs every web launcher
 - `GET /api/daemons` - List launchd daemons joined with live `launchctl` state, port check, stale-path detection
 - `POST /api/daemons/:label` - Lifecycle actions (`{action: 'start'|'stop'|'restart'}`); gated by `ATLAS_DAEMON_WRITE=1`
 

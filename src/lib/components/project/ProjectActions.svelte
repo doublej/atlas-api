@@ -1,9 +1,10 @@
 <script lang="ts">
+import { isRunnable } from '$lib/browser/api'
 import Icon from '$lib/components/icons/Icon.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Menu from '$lib/components/ui/Menu.svelte'
 import type { Project } from '$lib/scanner'
-import { getActions, getDynamicActions } from '$shared/actions'
+import { type ActionDef, getActions, getDynamicActions, getGroupsForActions } from '$shared/actions'
 
 interface Props {
   project: Project
@@ -14,31 +15,38 @@ interface Props {
   onFinder: (path: string) => void
   onRename: (project: Project) => void
   onMove: (project: Project) => void
+  /** Everything the registry offers that isn't one of the inline buttons above. */
+  onAction: (action: ActionDef, project: Project) => void
 }
 
-const { project, onRunDev, onRunScript, onRunJust, onIterm, onFinder, onRename, onMove }: Props =
-  $props()
+const {
+  project,
+  onRunDev,
+  onRunScript,
+  onRunJust,
+  onIterm,
+  onFinder,
+  onRename,
+  onMove,
+  onAction,
+}: Props = $props()
 
-// The registry hands this consumer more actions than the web UI implements —
-// most have no `consumers` field, so they pass the filter for everyone. The
-// clipboard and iterm-command types need executors the browser doesn't have,
-// so the UI opts in by id rather than rendering whatever comes back.
-const IMPLEMENTED = new Set([
-  'run-dev',
-  'open-iterm',
-  'open-finder',
-  'claude-tree-view',
-  'rename',
-  'move',
-])
+// The six actions with a button of their own; everything else the project qualifies for
+// lands in the overflow menu, grouped the way the registry groups it.
+const INLINE = new Set(['run-dev', 'open-iterm', 'open-finder', 'claude-tree-view'])
 
-const actions = $derived(getActions(project, 'svelte').filter((a) => IMPLEMENTED.has(a.id)))
+const actions = $derived(getActions(project, 'svelte'))
 const has = (id: string): boolean => actions.some((a) => a.id === id)
 const labelFor = (id: string): string => actions.find((a) => a.id === id)?.label ?? id
 
 const scripts = $derived(getDynamicActions('run-script', project))
 const recipes = $derived(getDynamicActions('run-just', project))
-const manageable = $derived(has('rename') || has('move'))
+const overflow = $derived(actions.filter((a) => !INLINE.has(a.id) && isRunnable(a)))
+const dialogs = $derived(
+  actions.filter((a) => ['rename', 'move', 'project-settings', 'beads-create'].includes(a.id)),
+)
+const menuActions = $derived([...dialogs, ...overflow])
+const groups = $derived(getGroupsForActions(menuActions))
 </script>
 
 <div class="actions">
@@ -119,40 +127,33 @@ const manageable = $derived(has('rename') || has('move'))
     </Button>
   {/if}
 
-  {#if manageable}
+  {#if menuActions.length > 0}
     <Menu label="More actions" align="end">
       {#snippet trigger()}
         <Icon name="ellipsis" size={14} />
       {/snippet}
       {#snippet children(close)}
-        {#if has('rename')}
-          <button
-            class="item"
-            type="button"
-            role="menuitem"
-            onclick={() => {
-              onRename(project)
-              close()
-            }}
-          >
-            <Icon name="pencil" size={12} />
-            {labelFor('rename')}
-          </button>
-        {/if}
-        {#if has('move')}
-          <button
-            class="item"
-            type="button"
-            role="menuitem"
-            onclick={() => {
-              onMove(project)
-              close()
-            }}
-          >
-            <Icon name="folder" size={12} />
-            {labelFor('move')}
-          </button>
-        {/if}
+        {#each groups as group (group.id)}
+          {@const items = menuActions.filter((a) => a.group === group.id)}
+          {#if items.length > 0}
+            <p class="group t-caption">{group.label}</p>
+            {#each items as action (action.id)}
+              <button
+                class="item"
+                type="button"
+                role="menuitem"
+                onclick={() => {
+                  if (action.id === 'rename') onRename(project)
+                  else if (action.id === 'move') onMove(project)
+                  else onAction(action, project)
+                  close()
+                }}
+              >
+                {action.label}
+              </button>
+            {/each}
+          {/if}
+        {/each}
       {/snippet}
     </Menu>
   {/if}
@@ -189,5 +190,15 @@ const manageable = $derived(has('rename') || has('move'))
   .item:hover {
     background: var(--color-hover);
     color: var(--color-fg);
+  }
+
+  .group {
+    margin: var(--space-2) 0 2px;
+    padding: 0 var(--space-2);
+    color: var(--color-muted-2);
+  }
+
+  .group:first-child {
+    margin-top: 0;
   }
 </style>

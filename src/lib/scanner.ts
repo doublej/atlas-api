@@ -1,9 +1,22 @@
 import { exec } from 'node:child_process'
 import type { Dirent, Stats } from 'node:fs'
-import { open, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { open, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
+// Relative, not the `$shared` alias: this module also runs standalone (`bun run scan`) and is
+// bundled for remote hosts, where SvelteKit's aliases do not exist.
+import { getHosts, getPrimaryHost } from '../../../shared/hosts'
+import {
+  type AtlasConfig,
+  DEFAULT_CONFIG,
+  depthLimit,
+  isIgnored,
+  patchAtlas,
+  readAtlas,
+  readConfig,
+} from './atlasFile'
 import { estimateTokens } from './claude-tree'
 import { detectDomains, mergeDomains } from './domains'
 import { attachUmami, type UmamiInfo } from './umami'
@@ -24,7 +37,6 @@ const IGNORE = new Set([
   '.cache',
   '.beads',
 ])
-const MAX_DEPTH = 3
 
 export type Framework =
   | 'sveltekit'
@@ -96,16 +108,52 @@ export interface AgentFilesInfo {
   agents?: { tokens: number }
 }
 
+/**
+ * How a project is set up for Claude Code: the MCP servers it declares and what its
+ * `.claude/` directory carries. Counts, not contents — the claude-tree view is where
+ * the files themselves are read.
+ */
+export interface ClaudeSetupInfo {
+  /** Every MCP server scoped to this project: its `.mcp.json` plus user-added ones. */
+  mcpServers?: string[]
+  /** The subset of `mcpServers` switched off for this project. */
+  mcpDisabled?: string[]
+  agents?: number
+  commands?: number
+  skills?: number
+  rules?: number
+  /** Hook events wired in `.claude/settings.json` / `settings.local.json`. */
+  hooks?: string[]
+  /** `.claude/settings.json` (shared) and/or `settings.local.json` (personal) exist. */
+  settings?: ('shared' | 'local')[]
+}
+
 export interface PromotionStatus {
   status: 'none' | 'draft' | 'in-progress' | 'ready' | 'published'
   platforms: Record<string, string>
   vaultPath?: string
 }
 
+/** The same project, catalogued on another machine. Derived at merge time, never scanned. */
+export interface HostLink {
+  host: string
+  path: string
+}
+
 export interface Project {
   name: string
+  slug: string
   path: string
   relativePath: string
+  /** Which machine this project lives on — a `hosts.json` id. */
+  host: string
+  /**
+   * Present (and `true`) only on the primary host's own projects. Every action that touches
+   * a filesystem or a GUI is gated on it, so the flag's *absence* is what keeps writes local.
+   */
+  isLocal?: boolean
+  /** The same project name found on another host. Only set when the name is unambiguous here. */
+  alsoOn?: HostLink[]
   description?: string
   readme?: string
   type?: string
@@ -124,10 +172,13 @@ export interface Project {
   promotion?: PromotionStatus
   archived?: boolean
   port?: number
+  /** `.atlas` override: this project's `atlas.remote` dev hostname needs no password. */
+  devPublic?: boolean
   domains?: string[]
   umami?: UmamiInfo
   claudeSessions?: ClaudeSessionsInfo
   agentFiles?: AgentFilesInfo
+  claudeSetup?: ClaudeSetupInfo
   template?: TemplateInfo
 }
 
@@ -138,16 +189,43 @@ export interface TemplateInfo {
 
 export type { UmamiInfo }
 
+/** Per-host outcome of the last scan, so a short catalog reads as "ubuntu down", not "gone". */
+export interface HostState {
+  id: string
+  root: string
+  scannedAt: string
+  status: 'ok' | 'unreachable' | 'error'
+  error?: string
+  projectCount: number
+}
+
 export interface ProjectAtlas {
   baseDir: string
   scannedAt: string
   projects: Project[]
   frameworks: Framework[]
   folders: string[]
+  /** Only present on the primary root's atlas, where remote fragments are merged in. */
+  hosts?: HostState[]
+}
+
+/**
+ * kebab-case a string for use as a DNS label (dev hostnames). The default slug is derived
+ * from a project's `relativePath`, not its bare folder name — two projects named `frontend`
+ * in different categories would otherwise collide on the same hostname and silently steal
+ * each other's Caddy route. Same known ambiguity as `claudeSessionDir`: `web/a-b` and
+ * `web-a/b` collapse to the same slug; rare enough in practice not to solve here.
+ */
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
 
 async function detectRunner(fullPath: string): Promise<Project['runner'] | undefined> {
   const checks: [string, Project['runner']][] = [
+    ['bun.lock', 'bun'],
     ['bun.lockb', 'bun'],
     ['yarn.lock', 'yarn'],
     ['pnpm-lock.yaml', 'pnpm'],
@@ -431,6 +509,101 @@ async function detectAgentFiles(fullPath: string): Promise<AgentFilesInfo | unde
   return info.claude || info.agents ? info : undefined
 }
 
+/** Entries that are not an extension: dotfiles, and the editor droppings next to them. */
+const countEntries = async (dir: string): Promise<number> => {
+  try {
+    const entries = await readdir(dir, { withFileTypes: true })
+    return entries.filter((e) => !e.name.startsWith('.')).length
+  } catch {
+    return 0
+  }
+}
+
+const readJson = async (path: string): Promise<Record<string, unknown> | undefined> => {
+  try {
+    return JSON.parse(await readFile(path, 'utf-8'))
+  } catch {
+    return undefined // absent, or hand-edited into invalid JSON — same outcome here
+  }
+}
+
+const names = (v: unknown): string[] =>
+  v && typeof v === 'object' ? Object.keys(v as Record<string, unknown>) : []
+
+const strings = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+
+/**
+ * `~/.claude.json` keeps per-project MCP state (servers added with `claude mcp add`, and
+ * which servers are switched off) under the project's absolute path. It is ~1.4 MB, so it
+ * is read once and cached for the length of a scan rather than per project.
+ */
+const USER_CLAUDE_CONFIG = join(homedir(), '.claude.json')
+const USER_CONFIG_TTL_MS = 60_000
+let userConfigAt = 0
+let userConfig: Promise<Record<string, Record<string, unknown>>> | undefined
+
+async function userClaudeEntry(fullPath: string): Promise<Record<string, unknown> | undefined> {
+  if (!userConfig || Date.now() - userConfigAt > USER_CONFIG_TTL_MS) {
+    userConfigAt = Date.now()
+    userConfig = readJson(USER_CLAUDE_CONFIG).then(
+      (cfg) => (cfg?.projects as Record<string, Record<string, unknown>>) ?? {},
+    )
+  }
+  return (await userConfig)[fullPath]
+}
+
+/**
+ * What Claude Code sees when it opens this project: `.mcp.json` servers, the `.claude/`
+ * extensions, and which settings files exist. Cheap by design — four readdirs and three
+ * small JSON reads, run for every project on every scan.
+ */
+async function detectClaudeSetup(fullPath: string): Promise<ClaudeSetupInfo | undefined> {
+  const dir = join(fullPath, '.claude')
+  const [mcp, shared, local, userEntry, agents, commands, skills, rules] = await Promise.all([
+    readJson(join(fullPath, '.mcp.json')),
+    readJson(join(dir, 'settings.json')),
+    readJson(join(dir, 'settings.local.json')),
+    userClaudeEntry(fullPath),
+    countEntries(join(dir, 'agents')),
+    countEntries(join(dir, 'commands')),
+    countEntries(join(dir, 'skills')),
+    countEntries(join(dir, 'rules')),
+  ])
+
+  const info: ClaudeSetupInfo = {}
+  // `.mcp.json` is the committed half; `claude mcp add` writes the other half into the
+  // user's own config, and a project that only has those still has those servers.
+  const mcpServers = [...new Set([...names(mcp?.mcpServers), ...names(userEntry?.mcpServers)])]
+  if (mcpServers.length > 0) info.mcpServers = mcpServers
+
+  // Only an explicit "off" counts. Approval state for an un-run project is not written
+  // anywhere, so inferring it from an empty enable-list would call every server disabled.
+  const off = new Set([
+    ...strings(userEntry?.disabledMcpServers),
+    ...strings(userEntry?.disabledMcpjsonServers),
+    ...strings(shared?.disabledMcpjsonServers),
+    ...strings(local?.disabledMcpjsonServers),
+  ])
+  const disabled = mcpServers.filter((n) => off.has(n))
+  if (disabled.length > 0) info.mcpDisabled = disabled
+
+  if (agents > 0) info.agents = agents
+  if (commands > 0) info.commands = commands
+  if (skills > 0) info.skills = skills
+  if (rules > 0) info.rules = rules
+
+  const hooks = [...new Set([...names(shared?.hooks), ...names(local?.hooks)])]
+  if (hooks.length > 0) info.hooks = hooks
+
+  const settings: ('shared' | 'local')[] = []
+  if (shared) settings.push('shared')
+  if (local) settings.push('local')
+  if (settings.length > 0) info.settings = settings
+
+  return Object.keys(info).length > 0 ? info : undefined
+}
+
 /** Owner of the "main repository" — repos under another owner are clones, not ours. */
 const GIT_OWNER = process.env.ATLAS_GIT_OWNER ?? 'doublej'
 
@@ -456,7 +629,8 @@ function buildFlow(
   branch: string,
   meta: Partial<GitFlow> | undefined,
 ): GitFlow {
-  const trunk = meta?.trunk ?? (refs.includes('main') ? 'main' : refs.includes('master') ? 'master' : branch)
+  const trunk =
+    meta?.trunk ?? (refs.includes('main') ? 'main' : refs.includes('master') ? 'master' : branch)
   const integration = meta?.integration ?? (refs.includes('develop') ? 'develop' : undefined)
   const owner = remoteUrl ? parseRemoteOwner(remoteUrl) : undefined
   const policy: FlowPolicy =
@@ -665,28 +839,33 @@ async function getProjectInfo(
     }
   }
 
-  // .atlas metadata (fallback for type detection + archive flag)
-  try {
-    const raw = await readFile(join(fullPath, '.atlas'), 'utf-8')
-    const meta = JSON.parse(raw)
+  // .atlas metadata — the hand-written correction layer
+  {
+    const meta = await readAtlas(fullPath)
     if (meta.archived) info.archived = true
-    if (meta.port) info.port = meta.port
+    if (typeof meta.port === 'number') info.port = meta.port
+    if (meta.devPublic === true) info.devPublic = true
+    if (typeof meta.slug === 'string' && meta.slug) info.slug = slugify(meta.slug)
     // Manual overrides — listed before anything detected from the project's files.
     const atlasDomains = mergeDomains(
       typeof meta.domain === 'string' ? [meta.domain] : undefined,
-      meta.domains,
+      meta.domains as string[] | undefined,
     )
     if (atlasDomains.length > 0) info.domains = atlasDomains
     const atlasUmami = parseAtlasUmami(meta.umami)
     if (atlasUmami && atlasUmami.websiteIds.length > 0) info.umami = atlasUmami
-    // Presence of .atlas marks the folder as an intentional project.
-    if (!info.type) {
-      info.type = meta.type ?? 'generic'
-      if (meta.description) info.description = meta.description
-      info.framework = meta.framework ?? 'unknown'
+    // Overrides beat detection: this is the file the settings UI writes, and a correction
+    // that loses to a heuristic is not a correction. Presence alone still marks a folder as
+    // an intentional project — that is what `type` falls back to.
+    if (typeof meta.type === 'string' && meta.type) info.type = meta.type
+    if (typeof meta.framework === 'string' && meta.framework)
+      info.framework = meta.framework as Framework
+    if (typeof meta.description === 'string' && meta.description)
+      info.description = meta.description
+    if (Object.keys(meta).length > 0 && !info.type) {
+      info.type = 'generic'
+      info.framework ??= 'unknown'
     }
-  } catch {
-    /* no .atlas */
   }
 
   // README - only check existence, load content lazily
@@ -711,17 +890,27 @@ async function getProjectInfo(
     /* no readme */
   }
 
-  const [runner, justfileInfo, deployInfo, beadsInfo, domains, claudeSessions, agentFiles, template] =
-    await Promise.all([
-      detectRunner(fullPath),
-      detectJustfile(fullPath),
-      detectDeploy(fullPath),
-      detectBeads(fullPath),
-      detectDomains(fullPath, { homepage }),
-      detectClaudeSessions(fullPath),
-      detectAgentFiles(fullPath),
-      detectTemplate(fullPath),
-    ])
+  const [
+    runner,
+    justfileInfo,
+    deployInfo,
+    beadsInfo,
+    domains,
+    claudeSessions,
+    agentFiles,
+    claudeSetup,
+    template,
+  ] = await Promise.all([
+    detectRunner(fullPath),
+    detectJustfile(fullPath),
+    detectDeploy(fullPath),
+    detectBeads(fullPath),
+    detectDomains(fullPath, { homepage }),
+    detectClaudeSessions(fullPath),
+    detectAgentFiles(fullPath),
+    detectClaudeSetup(fullPath),
+    detectTemplate(fullPath),
+  ])
 
   info.runner = runner
   const allDomains = mergeDomains(info.domains, domains)
@@ -729,6 +918,7 @@ async function getProjectInfo(
   if (beadsInfo) info.beads = beadsInfo
   if (claudeSessions) info.claudeSessions = claudeSessions
   if (agentFiles) info.agentFiles = agentFiles
+  if (claudeSetup) info.claudeSetup = claudeSetup
   if (template) info.template = template
   if (justfileInfo.hasJustfile) {
     info.hasJustfile = true
@@ -752,9 +942,8 @@ async function scanFolder(
   depth: number = 0,
   skipGit: boolean = false,
   folders: string[] = [],
+  config: AtlasConfig = DEFAULT_CONFIG,
 ): Promise<Project[]> {
-  if (depth > MAX_DEPTH) return []
-
   let entries: string[]
 
   try {
@@ -787,32 +976,43 @@ async function scanFolder(
   // Parallel project info gathering
   const projectResults = await Promise.all(
     validEntries.map(async ({ entry, fullPath, stats }) => {
-      const info = await getProjectInfo(fullPath, skipGit)
+      const relPath = relative(baseDir, fullPath)
+      // Ignored folders leave no trace: no project, no move target, and no walk underneath.
+      if (isIgnored(config, relPath)) return []
+      const forced = config.force[relPath]
+      const info: Partial<Project> = forced === false ? {} : await getProjectInfo(fullPath, skipGit)
+      // `force: true` catalogs a folder the detectors have no opinion about; `false` demotes
+      // one they got wrong back to a container the walk passes straight through.
+      const isProject = forced === false ? false : Boolean(info.type) || forced === true
+      const rows: Project[] = []
 
-      if (info.type) {
+      if (isProject) {
         const promotion = await detectPromotion(entry, baseDir)
-        const relPath = relative(baseDir, fullPath)
         const archived = info.archived || relPath.includes('_archive') || undefined
-        return [
-          {
-            name: entry,
-            path: fullPath,
-            relativePath: relPath,
-            modifiedAt: stats.mtime.toISOString(),
-            ...info,
-            ...(promotion ? { promotion } : {}),
-            ...(archived ? { archived } : {}),
-          } as Project,
-        ]
-      } else {
+        rows.push({
+          name: entry,
+          path: fullPath,
+          relativePath: relPath,
+          modifiedAt: stats.mtime.toISOString(),
+          type: 'generic',
+          ...info,
+          slug: info.slug ?? slugify(relPath),
+          ...(promotion ? { promotion } : {}),
+          ...(archived ? { archived } : {}),
+        } as Project)
+      } else if (depth < 2) {
         // Collect non-project folders for move targets (during same traversal)
-        if (depth < 2) {
-          folders.push(relative(baseDir, fullPath) || entry)
-        }
-        const subProjects = await scanFolder(baseDir, fullPath, depth + 1, skipGit, folders)
-
-        return subProjects
+        folders.push(relPath || entry)
       }
+
+      // A project normally ends the walk — its subfolders are its own business. An explicit
+      // depth entry is the one way in, which is what catalogs the apps inside a monorepo.
+      const descend = !isProject || relPath in config.depth
+      if (descend && depth + 1 <= depthLimit(config, relPath)) {
+        rows.push(...(await scanFolder(baseDir, fullPath, depth + 1, skipGit, folders, config)))
+      }
+
+      return rows
     }),
   )
 
@@ -860,7 +1060,7 @@ async function collectFolders(baseDir: string, dir: string, depth: number = 0): 
 const CACHE_FILE = '.atlas-cache.json'
 const CACHE_TTL = 60 * 1000 // 1 minute before considered stale
 /** Bump when the cached Project shape changes — a mismatch forces a full rescan. */
-const CACHE_SHAPE_VERSION = 3
+const CACHE_SHAPE_VERSION = 6
 
 interface CachedIndex extends ProjectAtlas {
   cachedAt: number
@@ -872,11 +1072,24 @@ export interface ScanResult extends ProjectAtlas {
   stale: boolean
 }
 
-async function performScan(baseDir: string, skipGit: boolean): Promise<ProjectAtlas> {
+/**
+ * Walk one root and return its projects — no cache read, no cache write, no host merge.
+ * Exported because the scan agent shipped to Fractal/Ubuntu runs exactly this and nothing else.
+ */
+export async function performScan(baseDir: string, skipGit: boolean): Promise<ProjectAtlas> {
   const folders: string[] = []
-  const projects = await scanFolder(baseDir, baseDir, 0, skipGit, folders)
+  const config = await readConfig(baseDir)
+  const projects = await scanFolder(baseDir, baseDir, 0, skipGit, folders, config)
   await attachUmami(baseDir, projects)
   projects.sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
+
+  // Stamped here rather than in `scanFolder` so there is one place to look. A remote scan
+  // gets re-stamped with its own host id on arrival, so a stale agent bundle can't lie.
+  const hostId = getPrimaryHost().id
+  for (const p of projects) {
+    p.host = hostId
+    p.isLocal = true
+  }
 
   const frameworks = [...new Set(projects.map((p) => p.framework).filter(Boolean))] as Framework[]
 
@@ -887,6 +1100,122 @@ async function performScan(baseDir: string, skipGit: boolean): Promise<ProjectAt
     frameworks,
     folders,
   }
+}
+
+/** One remote host's last scan, written by `remoteScan.ts`, read back here at merge time. */
+export interface HostFragment {
+  hostId: string
+  root: string
+  scannedAt: string
+  status: 'ok' | 'unreachable' | 'error'
+  error?: string
+  projects: Project[]
+}
+
+/**
+ * `<primary root>/.atlas-cache-<hostId>.json` — one file per remote host.
+ *
+ * **Internal.** Unlike the main cache (which atlas-picker reads directly and which carries
+ * `shapeVersion` so a reader can detect a shape change), a fragment is unversioned plumbing
+ * between `remoteScan.ts` and `finalizeAtlas`. Outside consumers read the registry
+ * (`shared/hosts.json`) and `/api/projects`, never this.
+ */
+export const hostFragmentPath = (baseDir: string, hostId: string): string =>
+  join(baseDir, `.atlas-cache-${hostId}.json`)
+
+/**
+ * Write via temp-file + rename. Four writers touch the main cache (`scan`, `revalidate` →
+ * `enrichCacheWithGit`, `updateCachedPort`, the host merge) and atlas-picker parses it with a
+ * hard failure on a torn read — a partial write takes down the whole picker, not one row.
+ * The host fragments go through it too: `readHostFragments` swallows a parse error as "that
+ * host is simply missing", so a torn fragment silently drops 27 projects from the merge.
+ */
+export async function writeJsonAtomic(path: string, data: unknown): Promise<void> {
+  const tmp = `${path}.${process.pid}.tmp`
+  await writeFile(tmp, JSON.stringify(data))
+  await rename(tmp, path)
+}
+
+async function readHostFragments(baseDir: string): Promise<HostFragment[]> {
+  const fragments = await Promise.all(
+    getHosts()
+      .filter((h) => h.ssh !== null)
+      .map(async (h): Promise<HostFragment | null> => {
+        try {
+          return JSON.parse(await readFile(hostFragmentPath(baseDir, h.id), 'utf-8'))
+        } catch {
+          return null // never synced, or mid-write — the catalog is simply short by that host
+        }
+      }),
+  )
+  return fragments.filter((f): f is HostFragment => f !== null)
+}
+
+/**
+ * Link a remote project to its primary-host twin by exact name.
+ *
+ * Deliberately not matched on git remote URL: most Ubuntu copies are rsync'd with no remote
+ * at all, so that rule would fail exactly where the link is wanted. The M2 catalog carries
+ * ~22 internally duplicated names, so an ambiguous name yields **no link** rather than a guess.
+ */
+function linkAlsoOn(local: Project[], remote: Project[]): void {
+  const byName = new Map<string, Project[]>()
+  for (const p of local) {
+    delete p.alsoOn // recomputed from scratch — `finalizeAtlas` must stay idempotent
+    const group = byName.get(p.name)
+    if (group) group.push(p)
+    else byName.set(p.name, [p])
+  }
+
+  for (const r of remote) {
+    const candidates = byName.get(r.name)
+    if (candidates?.length !== 1) continue
+    const source = candidates[0]
+    ;(r.alsoOn ??= []).push({ host: source.host, path: source.path })
+    ;(source.alsoOn ??= []).push({ host: r.host, path: r.path })
+  }
+}
+
+/**
+ * Fold every remote host fragment into a freshly scanned primary atlas.
+ *
+ * Idempotent by construction: it drops any non-local project first, so calling it on an
+ * already-merged atlas (which `/api/refresh` does) re-derives rather than duplicates.
+ * Only the primary root gets a merge — an explicit `?dir=` scan stays exactly what it was.
+ */
+export async function finalizeAtlas(baseDir: string, atlas: ProjectAtlas): Promise<ProjectAtlas> {
+  const primary = getPrimaryHost()
+  if (baseDir !== primary.root) return atlas
+
+  const local = atlas.projects.filter((p) => p.isLocal)
+  const fragments = await readHostFragments(baseDir)
+  const remote = fragments.flatMap((f) =>
+    f.projects.map((p) => {
+      const { isLocal, ...rest } = p
+      return { ...rest, host: f.hostId } as Project
+    }),
+  )
+  linkAlsoOn(local, remote)
+
+  const hosts: HostState[] = [
+    {
+      id: primary.id,
+      root: primary.root,
+      scannedAt: atlas.scannedAt,
+      status: 'ok',
+      projectCount: local.length,
+    },
+    ...fragments.map((f) => ({
+      id: f.hostId,
+      root: f.root,
+      scannedAt: f.scannedAt,
+      status: f.status,
+      ...(f.error ? { error: f.error } : {}),
+      projectCount: f.projects.length,
+    })),
+  ]
+
+  return { ...atlas, projects: [...local, ...remote], hosts }
 }
 
 let revalidating: Promise<void> | null = null
@@ -901,7 +1230,7 @@ let revalidating: Promise<void> | null = null
 function revalidate(baseDir: string): void {
   if (revalidating) return
   revalidating = performScan(baseDir, true)
-    .then((result) => enrichCacheWithGit(join(baseDir, CACHE_FILE), result))
+    .then((result) => enrichCacheWithGit(join(baseDir, CACHE_FILE), result, baseDir))
     .catch(() => {})
     .finally(() => {
       revalidating = null
@@ -931,7 +1260,7 @@ export async function scan(
     }
   }
 
-  const result = await performScan(baseDir, skipGit)
+  const result = await finalizeAtlas(baseDir, await performScan(baseDir, skipGit))
 
   // Save to cache (fire and forget)
   const cacheData: CachedIndex = {
@@ -939,7 +1268,7 @@ export async function scan(
     cachedAt: Date.now(),
     shapeVersion: CACHE_SHAPE_VERSION,
   }
-  writeFile(cachePath, JSON.stringify(cacheData)).catch(() => {})
+  writeJsonAtomic(cachePath, cacheData).catch(() => {})
 
   return { ...result, fromCache: false, stale: false }
 }
@@ -1001,39 +1330,62 @@ export async function updateDescription(projectPath: string, description: string
   }
 
   // Fallback: create/update .atlas (only if description is non-empty)
-  if (description) {
-    const piPath = join(projectPath, '.atlas')
-    try {
-      const existing = JSON.parse(await readFile(piPath, 'utf-8'))
-      existing.description = description
-      await writeFile(piPath, JSON.stringify(existing, null, 2) + '\n')
-    } catch {
-      await writeFile(piPath, JSON.stringify({ description }, null, 2) + '\n')
-    }
-  }
+  if (description) await patchAtlas(projectPath, { description })
 }
 
 export async function setArchived(projectPath: string, archived: boolean): Promise<void> {
-  const atlasPath = join(projectPath, '.atlas')
-  let meta: Record<string, unknown> = {}
-  try {
-    meta = JSON.parse(await readFile(atlasPath, 'utf-8'))
-  } catch {
-    /* no existing .atlas */
-  }
-
-  if (archived) {
-    meta.archived = true
-  } else {
-    delete meta.archived
-  }
-
-  await writeFile(atlasPath, JSON.stringify(meta, null, 2) + '\n')
+  await patchAtlas(projectPath, { archived: archived || null })
 }
 
-export async function enrichCacheWithGit(cachePath: string, atlas: ProjectAtlas): Promise<void> {
+/**
+ * The slug `.atlas` says right now, not the one the cache scanned. A slug edited since the
+ * last scan would otherwise register the folder-derived hostname and spend two certificates.
+ */
+export async function currentSlug(project: Pick<Project, 'path' | 'relativePath'>): Promise<string> {
+  const meta = await readAtlas(project.path)
+  return typeof meta.slug === 'string' && meta.slug ? slugify(meta.slug) : slugify(project.relativePath)
+}
+
+export async function setPort(projectPath: string, port: number): Promise<void> {
+  await patchAtlas(projectPath, { port })
+}
+
+/**
+ * Patch a project's port directly into `.atlas-cache.json`. `setPort` only writes `.atlas`;
+ * without this, `scan()`'s cache-first read keeps serving the old (portless) record until the
+ * next background revalidation, so the very next `/api/run` call would allocate a fresh port
+ * all over again instead of reusing the one just persisted.
+ */
+export async function updateCachedPort(
+  baseDir: string,
+  projectPath: string,
+  port: number,
+): Promise<void> {
+  const cachePath = join(baseDir, CACHE_FILE)
+  try {
+    const cached: CachedIndex = JSON.parse(await readFile(cachePath, 'utf-8'))
+    const project = cached.projects.find((p) => p.path === projectPath)
+    if (project) project.port = port
+    await writeJsonAtomic(cachePath, cached)
+  } catch {
+    /* no cache yet — the next full scan will read the persisted .atlas port */
+  }
+}
+
+/**
+ * Fill in git state and persist the cache. `baseDir` is what makes this the single write
+ * point that also re-merges the remote fragments — without it, every revalidation would
+ * overwrite the merged catalog with a local-only scan 60 seconds after the merge.
+ */
+export async function enrichCacheWithGit(
+  cachePath: string,
+  atlas: ProjectAtlas,
+  baseDir: string,
+): Promise<void> {
   const BATCH_SIZE = 20
-  const { projects } = atlas
+  // Local projects only: a remote path has no repo here, so `git` would spawn once per
+  // remote project just to fail. Remote git state comes from that host's own scan.
+  const projects = atlas.projects.filter((p) => p.isLocal)
 
   for (let i = 0; i < projects.length; i += BATCH_SIZE) {
     const batch = projects.slice(i, i + BATCH_SIZE)
@@ -1046,11 +1398,11 @@ export async function enrichCacheWithGit(cachePath: string, atlas: ProjectAtlas)
   }
 
   const cacheData: CachedIndex = {
-    ...atlas,
+    ...(await finalizeAtlas(baseDir, atlas)),
     cachedAt: Date.now(),
     shapeVersion: CACHE_SHAPE_VERSION,
   }
-  await writeFile(cachePath, JSON.stringify(cacheData))
+  await writeJsonAtomic(cachePath, cacheData)
 }
 
 export async function scanAndSave(baseDir: string, outputPath: string): Promise<ProjectAtlas> {
@@ -1059,14 +1411,26 @@ export async function scanAndSave(baseDir: string, outputPath: string): Promise<
   return index
 }
 
-// CLI usage
-if (import.meta.url === `file://${process.argv[1]}`) {
+// CLI usage.
+//
+// `pathToFileURL` rather than a `file://` + argv[1] template: on Windows the template yields
+// `file://C:\Users\…` against an `import.meta.url` of `file:///C:/Users/…`, which is never
+// equal — the bundled agent would exit 0 with no output on Fractal, silently.
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   const baseDir = process.argv[2] || process.cwd()
-  const output = process.argv[3] || join(baseDir, 'projects.json')
 
-  console.log(`Scanning: ${baseDir}`)
-  const index = await scanAndSave(baseDir, output)
-  console.log(`Found ${index.projects.length} projects`)
-  console.log(`Frameworks: ${index.frameworks.join(', ')}`)
-  console.log(`Saved to: ${output}`)
+  // `--json`: the scan-agent mode. Pure JSON on stdout, no cache read, no file written —
+  // this is what `atlas hosts sync` ships to Fractal and Ubuntu and runs over SSH.
+  if (process.argv.includes('--json')) {
+    const index = await performScan(baseDir, process.argv.includes('--skip-git'))
+    process.stdout.write(JSON.stringify(index))
+  } else {
+    const output = process.argv[3] || join(baseDir, 'projects.json')
+
+    console.log(`Scanning: ${baseDir}`)
+    const index = await scanAndSave(baseDir, output)
+    console.log(`Found ${index.projects.length} projects`)
+    console.log(`Frameworks: ${index.frameworks.join(', ')}`)
+    console.log(`Saved to: ${output}`)
+  }
 }

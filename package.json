@@ -11,6 +11,7 @@
     "daemon:reload": "bun run build && launchctl kickstart -k gui/$(id -u)/com.jurrejan.atlas-api",
     "preview": "vite preview",
     "scan": "bun src/lib/scanner.ts",
+    "agent:build": "bun build src/lib/scanner.ts --target=node --outfile ../shared/agent/atlas-scan.mjs",
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",

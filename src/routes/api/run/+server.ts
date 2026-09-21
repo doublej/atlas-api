@@ -11,7 +11,7 @@ import {
   releaseAllocatedPort,
   stopProjectListeners,
 } from '$lib/ports'
-import { scan, setPort, updateCachedPort } from '$lib/scanner'
+import { currentSlug, scan, setPort, updateCachedPort } from '$lib/scanner'
 import type { RequestHandler } from './$types'
 
 /** How long POST waits for the dev server to bind before answering with the allocated port, unless the body's `wait` says longer. */
@@ -79,6 +79,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const atlas = await scan(DEV_FOLDER) // cached, stale-while-revalidate — no new fs walk
   const project = atlas.projects.find((p) => p.path === path)
+  const slug = project ? await currentSlug(project) : basename(path)
   const port = project?.port ?? (await allocatePort(atlas))
   if (!project?.port) {
     await setPort(path, port)
@@ -117,7 +118,7 @@ export const POST: RequestHandler = async ({ request }) => {
   // 'error' event per Node's documented behavior. Either one, left unhandled, crashes the
   // whole daemon process — not just this request — which is what actually happened here
   // (KeepAlive silently restarted it; every other request/connection dropped with it).
-  const log = openLog(path, project?.slug)
+  const log = openLog(path, slug)
   let child: ReturnType<typeof spawn>
   try {
     child = spawn(cmd, args, {
@@ -162,7 +163,7 @@ export const POST: RequestHandler = async ({ request }) => {
   if (bound && bound.port !== port) await persistPort(path, bound.port)
 
   const hostnames = project
-    ? await ensureRoute({ slug: project.slug, path, port: finalPort, devPublic: project.devPublic })
+    ? await ensureRoute({ slug, path, port: finalPort, devPublic: project.devPublic })
     : null
 
   if (bound === undefined && project) {
@@ -171,7 +172,7 @@ export const POST: RequestHandler = async ({ request }) => {
         if (!late || late.port === finalPort) return
         await persistPort(path, late.port)
         await ensureRoute({
-          slug: project.slug,
+          slug,
           path,
           port: late.port,
           devPublic: project.devPublic,

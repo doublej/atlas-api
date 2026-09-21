@@ -14,7 +14,7 @@ import '@xyflow/svelte/dist/style.css'
 import type { Reference, SearchHit, SearchMatch, TreeNode } from '$lib/claude-tree'
 import { type AgentEngine, getAction } from '$lib/claude-tree-actions'
 import { type Entity, replaceLines } from '$lib/claude-tree-entities'
-import { theme, toggleTheme } from '$lib/theme.svelte'
+import { theme } from '$lib/theme.svelte'
 import { CARD_W, cardHeight, layoutTree } from '$lib/tree-layout'
 import AgentResultPanel from './AgentResultPanel.svelte'
 import CmEditor from './CmEditor.svelte'
@@ -766,7 +766,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 <div class="page">
 	<header class="topbar">
 		<h1>CLAUDE.md tree</h1>
-		<span class="proj">{root || '~/Documents/development'}</span>
+		<span class="proj">{root || '~/dev'}</span>
 		<span class="hint">Click a node · <kbd>⌘/Ctrl-S</kbd> save · <kbd>⌘/Ctrl-F</kbd> find</span>
 		<button
 			class="theme-toggle"
@@ -787,14 +787,6 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 			onclick={openFind}
 		>
 			⌕
-		</button>
-		<button
-			class="theme-toggle"
-			title="Toggle light / dark theme"
-			aria-label="Toggle light / dark theme"
-			onclick={toggleTheme}
-		>
-			{theme.mode === 'light' ? '☾' : '☀'}
 		</button>
 	</header>
 
@@ -1054,7 +1046,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		--card-view: var(--color-bg);
 		--card-muted: var(--color-muted);
 
-		height: 100vh;
+		height: calc(100vh - var(--nav-h));
 		display: flex;
 		flex-direction: column;
 		background: var(--bg);

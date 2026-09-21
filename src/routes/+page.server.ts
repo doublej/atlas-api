@@ -1,8 +1,16 @@
-import { DEV_FOLDER } from '$lib/config'
+import { ATLAS_TEMPLATES_DIR, DEV_FOLDER } from '$lib/config'
 import { type ScanResult, scan } from '$lib/scanner'
+import { discoverTemplates } from '$lib/templates'
 
 export type { Project } from '$lib/scanner'
 
-export async function load(): Promise<ScanResult> {
-  return scan(DEV_FOLDER, { skipGit: true })
+export async function load(): Promise<ScanResult & { templateVersions: Record<string, string> }> {
+  const [result, { templates }] = await Promise.all([
+    scan(DEV_FOLDER, { skipGit: true }),
+    discoverTemplates(ATLAS_TEMPLATES_DIR),
+  ])
+  const templateVersions = Object.fromEntries(
+    templates.filter((t) => t.version).map((t) => [`${t.family}/${t.name}`, t.version as string]),
+  )
+  return { ...result, templateVersions }
 }

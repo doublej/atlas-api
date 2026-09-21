@@ -1,6 +1,5 @@
 <script lang="ts">
 import Icon from '$lib/components/icons/Icon.svelte'
-import { theme, toggleTheme } from '$lib/theme.svelte'
 
 interface Props {
   filteredCount: number
@@ -28,14 +27,6 @@ const { filteredCount, totalCount, refreshing }: Props = $props()
         Refreshing
       </span>
     {/if}
-    <button
-      class="theme"
-      type="button"
-      onclick={toggleTheme}
-      aria-label="Toggle light / dark theme"
-    >
-      <Icon name={theme.mode === 'dark' ? 'sun' : 'moon'} size={16} />
-    </button>
   </div>
 </header>
 
@@ -78,33 +69,5 @@ const { filteredCount, totalCount, refreshing }: Props = $props()
     align-items: center;
     gap: var(--space-1);
     color: var(--color-muted);
-  }
-
-  .theme {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    color: var(--color-muted);
-    background: transparent;
-    border: var(--hairline) solid var(--color-border);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition:
-      background var(--duration-fast) var(--ease-out),
-      color var(--duration-fast) var(--ease-out);
-  }
-
-  .theme:hover {
-    background: var(--color-hover);
-    color: var(--color-fg);
-  }
-
-  @media (max-width: 768px) {
-    .theme {
-      width: var(--touch);
-      height: var(--touch);
-    }
   }
 </style>

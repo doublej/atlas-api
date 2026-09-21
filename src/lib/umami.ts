@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
-import { dirname, sep } from 'node:path'
+import { dirname } from 'node:path'
 import { promisify } from 'node:util'
 import { extractHtmlDomains, mergeDomains } from './domains'
 
@@ -85,13 +85,22 @@ interface UmamiTarget {
   domains?: string[]
 }
 
-/** Find the project owning a file: the deepest project path that contains it. */
+/**
+ * Find the project owning a file: the deepest project path that contains it.
+ *
+ * Terminates on "`dirname` stopped changing", not on `dir === sep`. A Windows root is `C:\`,
+ * which `dirname` maps to itself and which never equals `sep` (`\`) — the old test spun this
+ * loop forever the moment ripgrep matched a file outside any scanned project, which is how a
+ * whole Fractal scan hung on one `.html`.
+ */
 function ownerOf<T>(file: string, byPath: Map<string, T>): T | undefined {
   let dir = dirname(file)
-  while (dir && dir !== sep) {
+  while (dir) {
     const owner = byPath.get(dir)
     if (owner) return owner
-    dir = dirname(dir)
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
   }
   return undefined
 }

@@ -11,6 +11,8 @@ export interface FilterCriteria {
   frameworks: Set<Framework>
   types: Set<string>
   runners: Set<string>
+  /** hosts.json ids — the machine facet. Empty means every machine. */
+  hosts: Set<string>
   tools: Set<string>
   onlyWithDev: boolean
   onlyWithReadme: boolean
@@ -23,6 +25,7 @@ export function emptyCriteria(): FilterCriteria {
     frameworks: new Set(),
     types: new Set(),
     runners: new Set(),
+    hosts: new Set(),
     tools: new Set(),
     onlyWithDev: false,
     onlyWithReadme: false,
@@ -47,12 +50,18 @@ function matchesPromotion(project: Project, promotion: PromotionFilter | null): 
   return true
 }
 
+/** An empty facet selects everything; otherwise the project's value must be one of the picks. */
+function facetOk<T extends string>(selected: Set<T>, value: T | undefined): boolean {
+  return selected.size === 0 || (value !== undefined && selected.has(value))
+}
+
 function matchesFacets(project: Project, c: FilterCriteria): boolean {
-  if (c.frameworks.size > 0 && (!project.framework || !c.frameworks.has(project.framework)))
-    return false
-  if (c.types.size > 0 && (!project.type || !c.types.has(project.type))) return false
-  if (c.runners.size > 0 && (!project.runner || !c.runners.has(project.runner))) return false
-  return true
+  return (
+    facetOk(c.frameworks, project.framework) &&
+    facetOk(c.types, project.type) &&
+    facetOk(c.runners, project.runner) &&
+    facetOk(c.hosts, project.host)
+  )
 }
 
 /** True when `project` survives every active filter. */
@@ -71,6 +80,7 @@ export function countActiveFilters(c: FilterCriteria): number {
     c.frameworks.size +
     c.types.size +
     c.runners.size +
+    c.hosts.size +
     c.tools.size +
     (c.onlyWithDev ? 1 : 0) +
     (c.onlyWithReadme ? 1 : 0) +

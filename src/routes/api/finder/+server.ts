@@ -1,5 +1,6 @@
 import { exec } from 'node:child_process'
 import { json } from '@sveltejs/kit'
+import { resolveLocal } from '$lib/config'
 import type { RequestHandler } from './$types'
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -7,6 +8,10 @@ export const POST: RequestHandler = async ({ request }) => {
 
   if (!path) {
     return json({ error: 'Missing path' }, { status: 400 })
+  }
+
+  if (!resolveLocal(path)) {
+    return json({ error: "path is not in this machine's catalog" }, { status: 400 })
   }
 
   return new Promise((resolve) => {

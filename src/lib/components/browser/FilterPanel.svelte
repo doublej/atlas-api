@@ -9,10 +9,12 @@ interface Props {
   types: string[]
   frameworks: Framework[]
   runners: string[]
+  hosts: string[]
   showTools: boolean
   selectedTypes: Set<string>
   selectedFrameworks: Set<Framework>
   selectedRunners: Set<string>
+  selectedHosts: Set<string>
   selectedTools: Set<string>
   onlyWithDev: boolean
   onlyWithReadme: boolean
@@ -23,10 +25,12 @@ let {
   types,
   frameworks,
   runners,
+  hosts,
   showTools,
   selectedTypes = $bindable(),
   selectedFrameworks = $bindable(),
   selectedRunners = $bindable(),
+  selectedHosts = $bindable(),
   selectedTools = $bindable(),
   onlyWithDev = $bindable(),
   onlyWithReadme = $bindable(),
@@ -97,6 +101,25 @@ function togglePromotion(id: PromotionFilter): void {
         {/each}
       </div>
     </div>
+
+    <!-- Only worth a facet once a second machine is in the catalog. -->
+    {#if hosts.length > 1}
+      <div class="group">
+        <p class="t-eyebrow">Host</p>
+        <div class="chips">
+          {#each hosts as host (host)}
+            <Chip
+              pressed={selectedHosts.has(host)}
+              onclick={() => {
+                selectedHosts = toggleSet(selectedHosts, host)
+              }}
+            >
+              {host}
+            </Chip>
+          {/each}
+        </div>
+      </div>
+    {/if}
 
     {#if showTools}
       <div class="group">

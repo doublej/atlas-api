@@ -2,9 +2,11 @@
 import { page } from '$app/state'
 import Icon from '$lib/components/icons/Icon.svelte'
 import type { IconName } from '$lib/components/icons/paths'
+import { theme, toggleTheme } from '$lib/theme.svelte'
 
 const links: { href: string; label: string; icon: IconName }[] = [
   { href: '/', label: 'Projects', icon: 'folder' },
+  { href: '/system', label: 'System', icon: 'terminal' },
   { href: '/templates', label: 'Templates', icon: 'rows' },
   { href: '/claude-tree', label: 'Claude Tree', icon: 'tree' },
 ]
@@ -25,6 +27,14 @@ function isActive(href: string): boolean {
         </a>
       {/each}
     </div>
+    <button
+      class="theme"
+      type="button"
+      onclick={toggleTheme}
+      aria-label="Toggle light / dark theme"
+    >
+      <Icon name={theme.mode === 'dark' ? 'sun' : 'moon'} size={15} />
+    </button>
   </div>
 </nav>
 
@@ -83,5 +93,28 @@ function isActive(href: string): boolean {
   .link[aria-current='page'] {
     color: var(--color-fg);
     background: var(--color-card-2);
+  }
+
+  /* One toggle for the whole app — every route sits under this nav. */
+  .theme {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin-left: auto;
+    color: var(--color-muted);
+    background: transparent;
+    border: var(--hairline) solid var(--color-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition:
+      background var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out);
+  }
+
+  .theme:hover {
+    background: var(--color-hover);
+    color: var(--color-fg);
   }
 </style>

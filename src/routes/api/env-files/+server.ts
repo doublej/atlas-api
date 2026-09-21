@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { json } from '@sveltejs/kit'
+import { resolveLocal } from '$lib/config'
 import type { RequestHandler } from './$types'
 
 const ENV_PATTERN = /^\.env(\..+)?$/
@@ -25,6 +26,9 @@ function parseEnvContent(content: string): Record<string, string> {
 export const GET: RequestHandler = async ({ url }) => {
   const path = url.searchParams.get('path')
   if (!path) return json({ error: 'Missing path' }, { status: 400 })
+  if (!resolveLocal(path)) {
+    return json({ error: "path is not in this machine's catalog" }, { status: 400 })
+  }
 
   try {
     const entries = await readdir(path)

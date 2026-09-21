@@ -5,15 +5,23 @@ import { getDynamicActions } from '$shared/actions'
 
 interface Props {
   project: Project
+  hostname?: { local: string; remote: string }
 }
 
-const { project }: Props = $props()
+const { project, hostname }: Props = $props()
 
 // Domains and analytics links both come from the shared registry's dynamic
 // actions, so their URL shapes stay defined in one place for every consumer.
 const domains = $derived(getDynamicActions('domain-open', project))
 const umami = $derived(getDynamicActions('umami-open', project))
 </script>
+
+{#if hostname}
+  <a href={hostname.local} target="_blank" rel="noreferrer" class="link" title={hostname.remote}>
+    <Icon name="link" size={11} />
+    {hostname.local.replace(/^https?:\/\//, '')}
+  </a>
+{/if}
 
 {#each domains as link (link.value)}
   <a href={link.value} target="_blank" rel="noreferrer" class="link">

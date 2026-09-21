@@ -108,6 +108,10 @@ export const icons = {
     { t: 'path', d: 'M18 9a9 9 0 0 1-9 9' },
   ],
   check: [{ t: 'path', d: 'M20 6 9 17l-5-5' }],
+  link: [
+    { t: 'path', d: 'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71' },
+    { t: 'path', d: 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71' },
+  ],
 } satisfies Record<string, IconShape[]>
 
 export type IconName = keyof typeof icons

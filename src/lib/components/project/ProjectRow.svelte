@@ -1,5 +1,7 @@
 <script lang="ts">
 import type { GitStatus, Project } from '$lib/scanner'
+import type { ActionDef } from '$shared/actions'
+import ClaudeSetup from './ClaudeSetup.svelte'
 import ProjectActions from './ProjectActions.svelte'
 import ProjectBadges from './ProjectBadges.svelte'
 import ProjectDetails from './ProjectDetails.svelte'
@@ -9,6 +11,11 @@ interface Props {
   project: Project
   git?: { status: GitStatus; branch?: string }
   runningUrl?: string
+  hostname?: { local: string; remote: string }
+  /** True once the catalog spans more than one machine. */
+  showHost?: boolean
+  /** Current version per template name, for flagging a project behind its scaffold. */
+  templateVersions?: Record<string, string>
   onRunDev: (project: Project) => void
   onRunScript: (project: Project, script: string) => void
   onRunJust: (project: Project, recipe: string) => void
@@ -16,9 +23,18 @@ interface Props {
   onFinder: (path: string) => void
   onRename: (project: Project) => void
   onMove: (project: Project) => void
+  onAction: (action: ActionDef, project: Project) => void
 }
 
-const { project, git, runningUrl, ...handlers }: Props = $props()
+const {
+  project,
+  git,
+  runningUrl,
+  hostname,
+  showHost = false,
+  templateVersions,
+  ...handlers
+}: Props = $props()
 
 const GIT_TITLES: Record<string, string> = {
   clean: 'Clean working tree',
@@ -38,7 +54,7 @@ const modified = $derived(new Date(project.modifiedAt).toLocaleDateString())
   <div class="body">
     <div class="line">
       <strong class="name">{project.name}</strong>
-      <ProjectBadges {project} {git} />
+      <ProjectBadges {project} {git} {showHost} {templateVersions} />
       {#if runningUrl}
         <a class="running" href={runningUrl} target="_blank" rel="noreferrer">
           <span class="pulse"></span>
@@ -50,10 +66,12 @@ const modified = $derived(new Date(project.modifiedAt).toLocaleDateString())
 
     <div class="line secondary">
       <code class="path">{project.relativePath}</code>
-      <ProjectLinks {project} />
+      <ProjectLinks {project} {hostname} />
     </div>
 
     <ProjectDetails {project} />
+
+    <ClaudeSetup {project} />
   </div>
 
   <div class="tools">

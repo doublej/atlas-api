@@ -626,6 +626,10 @@ export async function popHistory(file: string): Promise<HistoryEntry | null> {
  * absolute path when allowed, or null when the path escapes the catalog (→ 403).
  */
 export function resolveInCatalog(candidate: string, baseDir: string): string | null {
+  // A non-absolute candidate would be resolved against the daemon's own cwd, which lives
+  // *inside* the catalog — so `C:\dev\web\foo` (absolute on Fractal, relative here) would
+  // resolve to `…/atlas-api/C:\dev\web\foo` and pass. Remote paths must fail closed.
+  if (!isAbsolute(candidate)) return null
   const real = resolve(candidate)
   const base = resolve(baseDir)
   if (real === resolve(GLOBAL_CLAUDE)) return real
