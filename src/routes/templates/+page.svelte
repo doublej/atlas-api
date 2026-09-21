@@ -97,7 +97,7 @@ function referencesByFile(refs: VariableReference[]): Map<string, VariableRefere
 </script>
 
 <svelte:head>
-  <title>Scaffold Registry</title>
+  <title>Atlas - Templates</title>
 </svelte:head>
 
 <div class="layout">

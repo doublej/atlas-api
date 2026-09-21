@@ -184,7 +184,7 @@ async function doMove(targetFolder: string): Promise<void> {
 </script>
 
 <svelte:head>
-	<title>Projects ({filtered.length})</title>
+	<title>Atlas - Projects</title>
 </svelte:head>
 
 {#snippet projectItem(project: Project)}

@@ -49,7 +49,7 @@ const active = $derived<Tab>(
 </script>
 
 <svelte:head>
-  <title>System · atlas</title>
+  <title>Atlas - System</title>
 </svelte:head>
 
 <main>
