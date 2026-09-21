@@ -140,6 +140,7 @@ Scripts, just recipes, domains and umami links come from `getDynamicActions`.
 - `POST /api/iterm` also takes an optional `command`, which is what backs every web launcher
 - `GET /api/daemons` - List launchd daemons joined with live `launchctl` state, port check, stale-path detection
 - `GET /api/ports/listeners` - every TCP listener on this Mac joined with its owner (project by cwd, service by port, docker container), 10s cache, `?fresh=1` skips it. Backs the `/ports` page, which replaced the Active Ports Raycast web dashboard
+  Listeners come from `netstat -anv` (`listSockets` in `$lib/ports`), never `lsof -iTCP`: lsof walks every process and hangs in uninterruptible wait, past any timeout, when a NAS SMB mount stalls. That made the page read "0 listening"
 - `POST /api/ports/kill` - `{ pids }` → SIGKILL, only for pids the listener scan saw, never atlas-api's own
 - `GET/POST /api/services` - service hostname states / sync now. `src/lib/services.ts` runs the sync from `src/hooks.server.ts` (`init`, every 60s, skipped under `vite dev`) and holds the loopback bridges in memory
 - `POST /api/daemons/:label` - Lifecycle actions (`{action: 'start'|'stop'|'restart'}`); gated by `ATLAS_DAEMON_WRITE=1`

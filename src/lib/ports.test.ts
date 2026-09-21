@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { devFlags, parseListeners, pickPort } from './ports'
+import { devFlags, parseListeners, parseNetstat, pickPort } from './ports'
 
 describe('parseListeners', () => {
   it('reads addresses and folds both stacks of one port together', () => {
@@ -57,5 +57,22 @@ describe('devFlags', () => {
   it('still adds --port to a script that sets its own host', () => {
     expect(devFlags('next dev -H 0.0.0.0', 4101)).toEqual(['--port', '4101'])
     expect(devFlags('vite dev --host --port 5185', 4101)).toEqual([])
+  })
+})
+
+describe('parseNetstat', () => {
+  it('reads LISTEN rows, including process names with spaces and IPv6 binds', () => {
+    const out = [
+      'Proto Recv-Q Send-Q  Local Address          Foreign Address        (state)          rxbytes      txbytes  rhiwat  shiwat          process:pid    state  options',
+      'tcp4       0      0  127.0.0.1.16494        *.*                    LISTEN                 0            0  131072  131072 Adobe Desktop Se:5822   00000 0000020f 0000000000005c85',
+      'tcp46      0      0  *.5185                 *.*                    LISTEN                 0            0  131072  131072             node:33772  00100 00000106 0000000001818982',
+      'tcp6       0      0  ::1.4190               *.*                    LISTEN                 0            0  131072  131072          swift:99926  00100 00000106 0000000001818982',
+      'tcp4       0      0  192.168.1.5.52100      1.2.3.4.443            ESTABLISHED         7810         7819  131072  132104           claude:89424  00102 00000008 000000000181e353',
+    ].join('\n')
+    expect(parseNetstat(out)).toEqual([
+      { address: '127.0.0.1', port: 16494, command: 'Adobe Desktop Se', pid: 5822 },
+      { address: '*', port: 5185, command: 'node', pid: 33772 },
+      { address: '::1', port: 4190, command: 'swift', pid: 99926 },
+    ])
   })
 })

@@ -270,12 +270,58 @@ export function devFlags(script: string | undefined, port: number): string[] {
 const execFileAsync = promisify(execFile)
 
 /** Stdout of a command, or '' when it exits non-zero — lsof exits 1 for "nothing matched". */
+/** One listening TCP socket, as the kernel reports it. */
+export interface Socket {
+  port: number
+  pid: number
+  /** Bind address without the port: `*`, `127.0.0.1`, `::1`, a LAN IP. */
+  address: string
+  command: string
+}
+
+// proto, recv-q, send-q, local, foreign, LISTEN, 4 counters, `process name:pid` (the name may
+// hold spaces, so the row is matched rather than split), then the hex state column.
+const NETSTAT_ROW =
+  /^tcp\d+\s+\d+\s+\d+\s+(\S+)\.(\d+)\s+\S+\s+LISTEN\s+(?:\d+\s+){4}(.+?):(\d+)\s+[0-9a-f]{5}\s/
+
+/** Pure: the LISTEN rows of `netstat -anv -p tcp`. */
+export function parseNetstat(out: string): Socket[] {
+  const sockets: Socket[] = []
+  for (const line of out.split('\n')) {
+    const m = line.match(NETSTAT_ROW)
+    if (m)
+      sockets.push({ address: m[1], port: Number(m[2]), command: m[3].trim(), pid: Number(m[4]) })
+  }
+  return sockets
+}
+
+/**
+ * Every listening TCP socket on this Mac. `netstat` reads the kernel's socket table in ~20ms;
+ * `lsof -iTCP` walks every process and hangs — past its own timeout, in uninterruptible wait —
+ * whenever one of the NAS's SMB mounts stalls. Throws when netstat fails, so a caller never
+ * mistakes a failed read for "nothing is listening".
+ */
+export async function listSockets(): Promise<Socket[]> {
+  const { stdout } = await execFileAsync('/usr/sbin/netstat', ['-anv', '-p', 'tcp'], {
+    timeout: LSOF_TIMEOUT_MS,
+    maxBuffer: 16 * 1024 * 1024,
+  })
+  return parseNetstat(stdout)
+}
+
+export const isLoopback = (address: string): boolean =>
+  address === '::1' || address.startsWith('127.')
+
+/**
+ * A command's stdout, kept even on a non-zero exit: lsof and ps exit 1 when any one pid is gone
+ * or unreadable (a root process's cwd), yet print everything they could read for the rest.
+ */
 export async function stdoutOf(cmd: string, args: string[]): Promise<string> {
   try {
     const { stdout } = await execFileAsync(cmd, args, { timeout: LSOF_TIMEOUT_MS })
     return stdout
-  } catch {
-    return ''
+  } catch (e) {
+    return (e as { stdout?: string }).stdout ?? ''
   }
 }
 

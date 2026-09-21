@@ -2,7 +2,7 @@ import { basename } from 'node:path'
 import { getServices } from '$shared/services'
 import { listHostnames } from './caddyDev'
 import { DEV_FOLDER } from './config'
-import { stdoutOf } from './ports'
+import { listSockets, type Socket, stdoutOf } from './ports'
 import { type Project, scan } from './scanner'
 
 /**
@@ -29,27 +29,15 @@ interface RawListener {
   command: string
 }
 
-const portOf = (address: string): number => Number(address.slice(address.lastIndexOf(':') + 1))
-
-function claimPort(byPort: Map<number, RawListener>, next: RawListener, selfPid: number): void {
-  const seen = byPort.get(next.port)
-  if (next.port > 0 && (!seen || (seen.pid === selfPid && next.pid !== selfPid)))
-    byPort.set(next.port, next)
-}
-
 /**
- * Pure: `lsof -Fpcn` → one entry per port. A port held by `selfPid` as well as another process
- * belongs to the other one: atlas's own loopback bridges sit on the service's port.
+ * Pure: one entry per port. A port held by `selfPid` as well as another process belongs to the
+ * other one: atlas's own loopback bridges sit on the service's port.
  */
-export function parseLsof(out: string, selfPid: number): RawListener[] {
+export function ownersByPort(sockets: Socket[], selfPid: number): RawListener[] {
   const byPort = new Map<number, RawListener>()
-  let pid = 0
-  let command = ''
-  for (const line of out.split('\n')) {
-    const value = line.slice(1)
-    if (line[0] === 'p') pid = Number(value)
-    else if (line[0] === 'c') command = value
-    else if (line[0] === 'n') claimPort(byPort, { port: portOf(value), pid, command }, selfPid)
+  for (const { port, pid, command } of sockets) {
+    const seen = byPort.get(port)
+    if (!seen || (seen.pid === selfPid && pid !== selfPid)) byPort.set(port, { port, pid, command })
   }
   return [...byPort.values()].sort((a, b) => a.port - b.port)
 }
@@ -72,7 +60,10 @@ function displayName(command: string, cwd: string | undefined): string {
   return basename(command.split(/\s+/)[0])
 }
 
-/** pid → cwd and pid → full argv, one `lsof` and one `ps` for all pids. */
+/**
+ * pid → cwd and pid → full argv, one `lsof` and one `ps` for all pids. `-b` keeps lsof off the
+ * kernel calls that block on a stalled SMB mount; a timeout only leaves the cwd unknown.
+ */
 async function processDetails(pids: number[]) {
   const cwds = new Map<number, string>()
   const commands = new Map<number, string>()
@@ -81,7 +72,7 @@ async function processDetails(pids: number[]) {
 
   let pid = 0
   for (const line of (
-    await stdoutOf('/usr/sbin/lsof', ['-a', '-d', 'cwd', '-p', list, '-Fpn'])
+    await stdoutOf('/usr/sbin/lsof', ['-b', '-w', '-a', '-d', 'cwd', '-p', list, '-Fpn'])
   ).split('\n')) {
     if (line[0] === 'p') pid = Number(line.slice(1))
     else if (line[0] === 'n' && pid) cwds.set(pid, line.slice(1))
@@ -111,10 +102,7 @@ async function dockerPorts(): Promise<Map<number, string>> {
 }
 
 async function scanListeners(): Promise<Listener[]> {
-  const raw = parseLsof(
-    await stdoutOf('/usr/sbin/lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-Fpcn']),
-    process.pid,
-  )
+  const raw = ownersByPort(await listSockets(), process.pid)
   const [{ cwds, commands }, docker, atlas, hostnames] = await Promise.all([
     processDetails([...new Set(raw.map((r) => r.pid))]),
     dockerPorts(),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderSiteBlock } from './caddyDev'
-import { routeMode } from './services'
+import { listenersOn, routeMode } from './services'
 
 describe('routeMode', () => {
   it('routes a wildcard bind directly', () => {
@@ -13,6 +13,16 @@ describe('routeMode', () => {
 
   it('is down with no listeners', () => {
     expect(routeMode([])).toBe('down')
+  })
+})
+
+describe('listenersOn', () => {
+  it("ignores atlas's own bridge, so a loopback-only service stays bridged", () => {
+    const sockets = [
+      { port: 47823, pid: 42, address: '127.0.0.1', command: 'node' },
+      { port: 47823, pid: process.pid, address: '10.0.0.2', command: 'bun' },
+    ]
+    expect(routeMode(listenersOn(sockets, 47823, '10.0.0.2'))).toBe('bridge')
   })
 })
 

@@ -5,10 +5,10 @@ import { promisify } from 'node:util'
 import { getServices, type ServiceDef } from '$shared/services'
 import { ensureRoute, lanIp } from './caddyDev'
 import { createMutex } from './mutex'
-import { type BoundPort, parseListeners } from './ports'
+import { type BoundPort, isLoopback, listSockets, type Socket } from './ports'
 
 const run = promisify(execFile)
-const LSOF_TIMEOUT_MS = 5000
+const SSH_G_TIMEOUT_MS = 5000
 
 /**
  * How the NAS reaches a service: `direct` to its own wildcard/LAN bind, `bridge` through a
@@ -46,27 +46,17 @@ let nasAddress: string | null = null
 
 /** `ssh -G nas` → the NAS's current IPv4, the same way `caddyDev` reaches it. */
 async function resolveNas(): Promise<string | null> {
-  const { stdout } = await run('ssh', ['-G', 'nas'], { timeout: LSOF_TIMEOUT_MS })
+  const { stdout } = await run('ssh', ['-G', 'nas'], { timeout: SSH_G_TIMEOUT_MS })
   const host = stdout.match(/^hostname (\S+)$/m)?.[1]
   return host ? (await lookup(host, { family: 4 })).address : null
 }
 
-/** Listeners on `port`, minus the bridge atlas itself holds there. */
-async function listenersOn(port: number, bridge: Bridge | undefined): Promise<BoundPort[]> {
-  // lsof exits 1 when nothing listens — that is an answer, not a failure.
-  const out = await run('/usr/sbin/lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fn'], {
-    timeout: LSOF_TIMEOUT_MS,
-  }).then(
-    (r) => r.stdout,
-    (e: { code?: number; stdout?: string }) => (e.code === 1 ? '' : Promise.reject(e)),
+/** Pure: the sockets on `port` as route candidates, minus the bridge atlas itself holds there. */
+export function listenersOn(sockets: Socket[], port: number, bridgeIp?: string): BoundPort[] {
+  const own = sockets.filter(
+    (s) => s.port === port && !(s.pid === process.pid && s.address === bridgeIp),
   )
-  const own = bridge ? `n${bridge.ip}:${port}` : null
-  return parseListeners(
-    out
-      .split('\n')
-      .filter((l) => l !== own)
-      .join('\n'),
-  )
+  return own.length ? [{ port, lanReachable: own.some((s) => !isLoopback(s.address)) }] : []
 }
 
 /**
@@ -120,8 +110,8 @@ async function route(svc: ServiceDef): Promise<Pick<ServiceState, 'local' | 'rem
   return { local: names.local, ...(remote ? { remote: names.remote } : {}) }
 }
 
-async function syncOne(svc: ServiceDef, ip: string): Promise<ServiceState> {
-  const mode = routeMode(await listenersOn(svc.port, bridges.get(svc.slug)))
+async function syncOne(svc: ServiceDef, ip: string, sockets: Socket[]): Promise<ServiceState> {
+  const mode = routeMode(listenersOn(sockets, svc.port, bridges.get(svc.slug)?.ip))
   const error = await reconcileBridge(svc, ip, mode)
   const base = {
     slug: svc.slug,
@@ -138,15 +128,16 @@ async function syncOne(svc: ServiceDef, ip: string): Promise<ServiceState> {
 const withSyncLock = createMutex()
 
 /**
- * Route every registered service. Cheap when nothing changed: one `lsof` per service, and
+ * Route every registered service. Cheap when nothing changed: one `netstat` for all services, and
  * `ensureRoute` is a local no-op for a route the NAS already has.
  */
 export function syncServices(): Promise<ServiceState[]> {
   return withSyncLock(async () => {
     nasAddress = await resolveNas()
     const ip = lanIp()
+    const sockets = await listSockets()
     const next: ServiceState[] = []
-    for (const svc of getServices()) next.push(await syncOne(svc, ip))
+    for (const svc of getServices()) next.push(await syncOne(svc, ip, sockets))
     states = next
     return states
   })
