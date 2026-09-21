@@ -13,8 +13,14 @@ const NAS_DOCKER = '/share/CACHEDEV1_DATA/.qpkg/container-station/bin/docker'
 const SSH_TIMEOUT_MS = 8000
 
 interface HostnameEntry {
-  path: string
+  /** Absent on a service (`shared/services.json`) — it has a port, not a folder. */
+  path?: string
+  service?: true
   port: number
+  /** LAN IP the route was pushed with — a DHCP change re-pushes on the next `ensureRoute`. */
+  ip?: string
+  /** False drops the `atlas.remote` block. */
+  remote?: boolean
   /** `.atlas` `devPublic` override — remote reachable with no password. Tracked so a flag
    *  flip with no port change still triggers a re-push. */
   devPublic?: boolean
@@ -41,7 +47,7 @@ async function writeRegistry(registry: Registry): Promise<void> {
   await writeFile(REGISTRY_FILE, `${JSON.stringify(registry, null, 2)}\n`)
 }
 
-function hostnamesFor(slug: string): Hostnames {
+export function hostnamesFor(slug: string): Hostnames {
   return {
     local: `https://${slug}.${SUBDOMAIN_LABEL}.local.${ROOT_DOMAIN}`,
     remote: `https://${slug}.${SUBDOMAIN_LABEL}.remote.${ROOT_DOMAIN}`,
@@ -49,7 +55,7 @@ function hostnamesFor(slug: string): Hostnames {
 }
 
 /** This machine's LAN IPv4 — resolved live so a DHCP-renewed address self-heals on the next run. */
-function lanIp(): string {
+export function lanIp(): string {
   for (const ifaces of Object.values(networkInterfaces())) {
     for (const iface of ifaces ?? []) {
       if (iface.family === 'IPv4' && !iface.internal) return iface.address
@@ -68,7 +74,13 @@ function lanIp(): string {
  * (bcrypt, generated once via the NAS's own `caddy hash-password`) — unless `devPublic` opts the
  * project out via its `.atlas` file, for something meant to be shared with no password at all.
  */
-function renderSiteBlock(slug: string, port: number, ip: string, devPublic: boolean): string {
+export function renderSiteBlock(
+  slug: string,
+  port: number,
+  ip: string,
+  devPublic: boolean,
+  withRemote = true,
+): string {
   // Vite (and anything built on it) has its own Host-header allowlist independent of
   // `--host`/bind address, and rejects a proxied Host it doesn't recognize with a 403 —
   // rewriting it to `localhost` here means no per-project vite.config changes are needed.
@@ -92,7 +104,7 @@ function renderSiteBlock(slug: string, port: number, ip: string, devPublic: bool
   ].join('\n')
 
   const authHash = process.env.CADDY_DEV_AUTH_HASH
-  if (!authHash) return `${local}\n`
+  if (!authHash || !withRemote) return `${local}\n`
 
   const authUser = process.env.CADDY_DEV_AUTH_USER ?? 'dev'
   const remote = [
@@ -166,40 +178,64 @@ ${validateAndReload}
 // registrations are rare, human-triggered events, never a hot path.
 const withRegistryLock = createMutex()
 
+/** The NAS already serves exactly this route — nothing to push. */
+function isCurrent(
+  entry: HostnameEntry,
+  want: { port: number; ip: string; devPublic: boolean; remote: boolean },
+): boolean {
+  return (
+    entry.port === want.port &&
+    entry.ip === want.ip &&
+    (entry.devPublic ?? false) === want.devPublic &&
+    (entry.remote ?? true) === want.remote &&
+    !!entry.nasSynced
+  )
+}
+
 /**
  * Registers `project`'s dev hostnames. Only pushes to the NAS (an SSH round-trip + a reload
- * of a shared, production Caddy instance) when something actually changed — a new project or
- * a changed port — or the last push never confirmed success; a repeat `atlas run` with an
+ * of a shared, production Caddy instance) when something actually changed — a new project, a
+ * changed port or LAN IP — or the last push never confirmed success; a repeat `atlas run` with an
  * already-synced port is a local no-op. Best-effort: an unreachable NAS (offline, off-LAN)
  * fails soft and callers fall back to the plain `localhost:<port>` URL instead of a hostname
  * that won't resolve.
  */
 export function ensureRoute(project: {
   slug: string
-  path: string
+  path?: string
+  service?: true
   port: number
   devPublic?: boolean
+  remote?: boolean
 }): Promise<Hostnames | null> {
   const devPublic = project.devPublic ?? false
+  const remote = project.remote ?? true
   return withRegistryLock(async () => {
     const registry = await readRegistry()
     const existing = registry[project.slug]
+    const ip = lanIp()
 
-    if (
-      existing?.port === project.port &&
-      (existing.devPublic ?? false) === devPublic &&
-      existing.nasSynced
-    ) {
+    // Projects and services share one slug namespace; neither may take the other's hostname.
+    if (existing && !!existing.service !== !!project.service) {
+      console.warn(
+        `caddyDev: slug ${project.slug} already belongs to ${existing.path ?? 'a service'}`,
+      )
+      return null
+    }
+
+    if (existing && isCurrent(existing, { port: project.port, ip, devPublic, remote })) {
       return hostnamesFor(project.slug)
     }
 
-    const content = renderSiteBlock(project.slug, project.port, lanIp(), devPublic)
+    const content = renderSiteBlock(project.slug, project.port, ip, devPublic, remote)
     const synced = await pushToNas(project.slug, content)
 
     registry[project.slug] = {
-      path: project.path,
+      ...(project.service ? { service: true as const } : { path: project.path }),
       port: project.port,
+      ip,
       devPublic,
+      ...(remote ? {} : { remote }),
       registeredAt: existing?.registeredAt ?? new Date().toISOString(),
       nasSynced: synced,
     }
@@ -229,14 +265,19 @@ export async function removeRouteByPath(path: string): Promise<void> {
 }
 
 export async function listHostnames(): Promise<
-  { slug: string; path: string; local: string; remote: string }[]
+  { slug: string; path?: string; service?: true; local: string; remote?: string }[]
 > {
   const registry = await readRegistry()
   return Object.entries(registry)
     .filter(([, entry]) => entry.nasSynced)
-    .map(([slug, entry]) => ({
-      slug,
-      path: entry.path,
-      ...hostnamesFor(slug),
-    }))
+    .map(([slug, entry]) => {
+      const { local, remote } = hostnamesFor(slug)
+      return {
+        slug,
+        path: entry.path,
+        service: entry.service,
+        local,
+        ...(entry.remote === false ? {} : { remote }),
+      }
+    })
 }
