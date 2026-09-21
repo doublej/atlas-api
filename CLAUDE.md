@@ -87,7 +87,8 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 | `src/lib/components/ui/` | `Button`, `Chip`, `Badge`, `Menu`, `Modal`, `Card` — the Tooling primitives |
 | `src/lib/components/browser/` | `BrowserHeader`, `Toolbar`, `FilterPanel`, `FolderTree`, `HostBanner`, `Notice` |
 | `src/lib/components/dialogs/` | `RenameDialog`, `MoveDialog`, `ProjectSettings`, `BeadsDialog` |
-| `src/lib/components/project/` | `ProjectRow`, `ProjectBadges`, `ProjectDetails`, `ProjectActions`, `ProjectLinks` |
+| `src/lib/components/project/` | `ProjectRow`, `ProjectBadges`, `ProjectDetails`, `ProjectActions`, `ProjectLinks`, `ClaudeSetup` |
+| `src/lib/components/table/` | `ProjectTable` (sortable, full-width, default view) + `ProjectLine` (one 30px line); opening a line renders the full `ProjectRow` below it |
 | `src/lib/components/icons/` | `Icon.svelte` + `paths.ts` — a vendored Lucide subset (no icon dependency) |
 | `src/lib/browser/` | `filters.ts`, `tree.ts`, `api.ts`, `colors.ts` + their tests — pure logic, no runes |
 
@@ -96,7 +97,8 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
   token layer. Plain CSS only — no Tailwind.
 - Projects render as a dense single-column row list inside one bordered card, not a card grid.
   The card treatment (hairline + accent gradient + up-left halo) belongs on containers, never rows.
-- Flat and nested view modes
+- Table (default, full window width), Cards (the row list) and Nested view modes. The social-promo
+  facet (promotion-vault status) only shows when some project has a vault entry
 - Host badges and an `alsoOn` chip per twin whenever the catalog spans more than one machine, and
   a banner for any host whose last scan came back `unreachable`/`error`
 - Project rows render on the client: the SSR HTML of `/` holds only the serialized payload, so `curl /`
@@ -107,7 +109,9 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 **System console (`src/routes/system/`)**
 - One page for the machine-level view: hosts (status, per-host rescan, registry editor), the
   scanner config, the launchd daemons and the port audit. Sections are sibling components next to
-  the page, the way `claude-tree/` does it.
+  the page, the way `claude-tree/` does it. A side menu shows one section at a time (`?tab=`),
+  and each menu line carries a count of what needs attention (unreachable hosts, failing or
+  stale daemons, port collisions)
 
 **Action rendering.** `ProjectActions` renders whatever `getActions(project, 'svelte')` returns:
 four ids get an inline button (`run-dev`, `open-iterm`, `open-finder`, `claude-tree-view`) and the

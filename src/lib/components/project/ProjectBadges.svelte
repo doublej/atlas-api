@@ -62,8 +62,11 @@ const scaffoldBehind = $derived(
 {/if}
 
 {#if promotionStatus}
-  <Badge tone={promotionTone[promotionStatus] ?? 'neutral'} title="Promotion: {promotionStatus}">
-    {promotionStatus}
+  <Badge
+    tone={promotionTone[promotionStatus] ?? 'neutral'}
+    title="Social promo plan in _management/promotion-vault: {promotionStatus}"
+  >
+    promo {promotionStatus}
   </Badge>
 {/if}
 

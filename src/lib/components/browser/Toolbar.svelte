@@ -2,7 +2,7 @@
 import Icon from '$lib/components/icons/Icon.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 
-type ViewMode = 'flat' | 'nested'
+type ViewMode = 'table' | 'flat' | 'nested'
 
 interface Props {
   search: string
@@ -34,13 +34,23 @@ let {
   <div class="views" role="group" aria-label="View mode">
     <button
       type="button"
+      aria-pressed={viewMode === 'table'}
+      onclick={() => {
+        viewMode = 'table'
+      }}
+    >
+      <Icon name="rows" size={13} />
+      Table
+    </button>
+    <button
+      type="button"
       aria-pressed={viewMode === 'flat'}
       onclick={() => {
         viewMode = 'flat'
       }}
     >
-      <Icon name="rows" size={13} />
-      Flat
+      <Icon name="folder" size={13} />
+      Cards
     </button>
     <button
       type="button"

@@ -52,7 +52,6 @@ function isActive(href: string): boolean {
     display: flex;
     align-items: center;
     gap: var(--space-6);
-    max-width: var(--col-max);
     height: 100%;
     margin: 0 auto;
     padding: 0 var(--page-pad);

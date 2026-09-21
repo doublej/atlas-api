@@ -21,12 +21,13 @@ import MoveDialog from '$lib/components/dialogs/MoveDialog.svelte'
 import ProjectSettings from '$lib/components/dialogs/ProjectSettings.svelte'
 import RenameDialog from '$lib/components/dialogs/RenameDialog.svelte'
 import ProjectRow from '$lib/components/project/ProjectRow.svelte'
+import ProjectTable from '$lib/components/table/ProjectTable.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { Framework, GitStatus, Project } from '$lib/scanner'
 import type { ActionDef } from '$shared/actions'
 
-type ViewMode = 'flat' | 'nested'
+type ViewMode = 'table' | 'flat' | 'nested'
 
 let { data } = $props()
 let projects = $state<Project[]>([])
@@ -50,13 +51,13 @@ let onlyWithDev = $state(false)
 let onlyWithReadme = $state(false)
 let selectedPromotion = $state<PromotionFilter | null>(null)
 let runningPorts = $state<Record<string, string>>({})
-let showFilters = $state(true)
+let showFilters = $state(false)
 let renaming = $state<Project | null>(null)
 let moving = $state<Project | null>(null)
 let settingsFor = $state<Project | null>(null)
 let beadsFor = $state<Project | null>(null)
 let notice = $state<{ ok: boolean; note: string } | null>(null)
-let viewMode = $state<ViewMode>('flat')
+let viewMode = $state<ViewMode>('table')
 let expandedFolders = $state<Set<string>>(new Set())
 let gitStatus = $state<Record<string, { status: GitStatus; branch?: string }>>({})
 let hostnames = $state<Record<string, { local: string; remote: string }>>({})
@@ -80,6 +81,7 @@ const filtered = $derived(projects.filter((p) => matchesFilters(p, criteria)))
 const activeFilterCount = $derived(countActiveFilters(criteria))
 const nestedProjects = $derived(buildFolderTree(filtered))
 const hasJust = $derived(projects.some((p) => p.hasJustfile))
+const hasPromotion = $derived(projects.some((p) => p.promotion))
 const showHost = $derived(hosts.length > 1)
 const degraded = $derived((data.hosts ?? []).filter((h) => h.status !== 'ok'))
 
@@ -204,7 +206,7 @@ async function doMove(targetFolder: string): Promise<void> {
 	/>
 {/snippet}
 
-<main>
+<main class:wide={viewMode === 'table'}>
 	<div class="topbar">
 		<BrowserHeader
 			filteredCount={filtered.length}
@@ -232,6 +234,7 @@ async function doMove(targetFolder: string): Promise<void> {
 				{runners}
 				{hosts}
 				showTools={hasJust}
+				showPromotion={hasPromotion}
 				bind:selectedTypes
 				bind:selectedFrameworks
 				bind:selectedRunners
@@ -251,6 +254,18 @@ async function doMove(targetFolder: string): Promise<void> {
 				<p class="t-small muted">No project matches the current search and filters.</p>
 				<Button variant="primary" onclick={clearFilters}>Clear filters</Button>
 			</div>
+		</Card>
+	{:else if viewMode === 'table'}
+		<Card flush>
+			<ProjectTable
+				projects={filtered}
+				{gitStatus}
+				{hostnames}
+				{runningPorts}
+				{showHost}
+				onRunDev={runDev}
+				detail={projectItem}
+			/>
 		</Card>
 	{:else if viewMode === 'flat'}
 		<Card flush>
@@ -301,6 +316,11 @@ async function doMove(targetFolder: string): Promise<void> {
 		min-height: 100vh;
 		margin: 0 auto;
 		padding: 0 var(--page-pad) var(--space-16);
+	}
+
+	/* 500+ projects: the table takes the whole window, not the reading column. */
+	main.wide {
+		max-width: none;
 	}
 
 	/* Header and toolbar travel together as one sticky band, stacked below the

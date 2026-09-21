@@ -11,6 +11,8 @@ interface Props {
   runners: string[]
   hosts: string[]
   showTools: boolean
+  /** Only a handful of projects have a promotion-vault entry; hide the facet when none do. */
+  showPromotion: boolean
   selectedTypes: Set<string>
   selectedFrameworks: Set<Framework>
   selectedRunners: Set<string>
@@ -27,6 +29,7 @@ let {
   runners,
   hosts,
   showTools,
+  showPromotion,
   selectedTypes = $bindable(),
   selectedFrameworks = $bindable(),
   selectedRunners = $bindable(),
@@ -40,9 +43,9 @@ let {
 const namedFrameworks = $derived(frameworks.filter((f) => f !== 'unknown'))
 
 const promotions: { id: PromotionFilter; label: string }[] = [
-  { id: 'promoted', label: 'Promoted' },
-  { id: 'unpromoted', label: 'Unpromoted' },
-  { id: 'in-progress', label: 'In progress' },
+  { id: 'promoted', label: 'Has a promo plan' },
+  { id: 'in-progress', label: 'Posting in progress' },
+  { id: 'unpromoted', label: 'No promo plan' },
 ]
 
 function togglePromotion(id: PromotionFilter): void {
@@ -160,8 +163,9 @@ function togglePromotion(id: PromotionFilter): void {
       </div>
     </div>
 
+    {#if showPromotion}
     <div class="group">
-      <p class="t-eyebrow">Promotion</p>
+      <p class="t-eyebrow" title="Social posts (X, Threads, Substack, Bluesky) planned in _management/promotion-vault">Social promo</p>
       <div class="chips">
         {#each promotions as option (option.id)}
           <Chip pressed={promotion === option.id} onclick={() => togglePromotion(option.id)}>
@@ -170,6 +174,7 @@ function togglePromotion(id: PromotionFilter): void {
         {/each}
       </div>
     </div>
+    {/if}
   </div>
 </Card>
 
