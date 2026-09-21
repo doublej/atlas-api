@@ -5,11 +5,13 @@ interface Props {
   open: boolean
   title: string
   onclose: () => void
+  /** Room for tables and previews (the /disk plans) instead of a short form. */
+  wide?: boolean
   children: Snippet
   footer: Snippet
 }
 
-const { open, title, onclose, children, footer }: Props = $props()
+const { open, title, onclose, wide = false, children, footer }: Props = $props()
 
 let dialog = $state<HTMLDialogElement>()
 
@@ -22,7 +24,7 @@ $effect(() => {
 })
 </script>
 
-<dialog bind:this={dialog} onclose={onclose} aria-label={title}>
+<dialog bind:this={dialog} class:wide onclose={onclose} aria-label={title}>
   <h2 class="t-h3">{title}</h2>
   <div class="body">
     {@render children()}
@@ -41,6 +43,11 @@ $effect(() => {
     border: var(--hairline) solid var(--color-border-strong);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
+  }
+
+  dialog.wide {
+    width: min(760px, calc(100vw - var(--space-8)));
+    max-height: calc(100vh - var(--space-16));
   }
 
   dialog::backdrop {

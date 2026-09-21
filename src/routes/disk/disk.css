@@ -1,0 +1,75 @@
+/* The /disk sections' shared look: dense tables, toolbars and form controls, all under main.disk. */
+.disk .bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.disk .spacer {
+  flex: 1;
+}
+
+.disk .scroll {
+  overflow-x: auto;
+}
+
+.disk table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.disk th {
+  padding: var(--space-1) var(--space-3);
+  font-weight: 500;
+  text-align: left;
+  color: var(--color-muted);
+}
+
+.disk td {
+  padding: var(--space-1) var(--space-3);
+  border-top: var(--hairline) solid var(--color-border-soft);
+  white-space: nowrap;
+}
+
+.disk td.wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.disk tbody tr:hover {
+  background: var(--color-card-2);
+}
+
+.disk tr.selected {
+  background: var(--color-accent-soft);
+}
+
+.disk tr.dim {
+  opacity: 0.55;
+}
+
+.disk .right {
+  text-align: right;
+}
+
+.disk .err {
+  color: var(--color-neg);
+  overflow-wrap: anywhere;
+}
+
+.disk .ok {
+  color: var(--color-pos);
+}
+
+.disk input:not([type="checkbox"]),
+.disk select {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 7px;
+  color: var(--color-fg);
+  background: var(--color-card-2);
+  border: var(--hairline) solid var(--color-border);
+  border-radius: var(--radius-xs);
+}

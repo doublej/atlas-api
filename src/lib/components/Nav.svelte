@@ -8,6 +8,7 @@ const links: { href: string; label: string; icon: IconName }[] = [
   { href: '/', label: 'Projects', icon: 'folder' },
   { href: '/ports', label: 'Ports', icon: 'globe' },
   { href: '/system', label: 'System', icon: 'terminal' },
+  { href: '/disk', label: 'Disk', icon: 'hardDrive' },
   { href: '/templates', label: 'Templates', icon: 'rows' },
   { href: '/claude-tree', label: 'Claude Tree', icon: 'tree' },
 ]
