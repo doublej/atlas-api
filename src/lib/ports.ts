@@ -270,7 +270,7 @@ export function devFlags(script: string | undefined, port: number): string[] {
 const execFileAsync = promisify(execFile)
 
 /** Stdout of a command, or '' when it exits non-zero — lsof exits 1 for "nothing matched". */
-async function stdoutOf(cmd: string, args: string[]): Promise<string> {
+export async function stdoutOf(cmd: string, args: string[]): Promise<string> {
   try {
     const { stdout } = await execFileAsync(cmd, args, { timeout: LSOF_TIMEOUT_MS })
     return stdout

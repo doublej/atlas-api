@@ -764,7 +764,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 </script>
 
 <svelte:head>
-  <title>Atlas - Claude Tree</title>
+	<title>Atlas - Claude Tree</title>
 </svelte:head>
 
 <div class="page">
