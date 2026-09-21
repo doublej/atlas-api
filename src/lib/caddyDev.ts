@@ -178,6 +178,17 @@ ${validateAndReload}
 // registrations are rare, human-triggered events, never a hot path.
 const withRegistryLock = createMutex()
 
+/** Projects and services share one slug namespace; neither may take the other's hostname. */
+function isTakenByOtherKind(
+  slug: string,
+  existing: HostnameEntry | undefined,
+  service: true | undefined,
+): boolean {
+  if (!existing || !!existing.service === !!service) return false
+  console.warn(`caddyDev: slug ${slug} already belongs to ${existing.path ?? 'a service'}`)
+  return true
+}
+
 /** The NAS already serves exactly this route — nothing to push. */
 function isCurrent(
   entry: HostnameEntry,
@@ -215,13 +226,7 @@ export function ensureRoute(project: {
     const existing = registry[project.slug]
     const ip = lanIp()
 
-    // Projects and services share one slug namespace; neither may take the other's hostname.
-    if (existing && !!existing.service !== !!project.service) {
-      console.warn(
-        `caddyDev: slug ${project.slug} already belongs to ${existing.path ?? 'a service'}`,
-      )
-      return null
-    }
+    if (isTakenByOtherKind(project.slug, existing, project.service)) return null
 
     if (existing && isCurrent(existing, { port: project.port, ip, devPublic, remote })) {
       return hostnamesFor(project.slug)
@@ -231,11 +236,12 @@ export function ensureRoute(project: {
     const synced = await pushToNas(project.slug, content)
 
     registry[project.slug] = {
-      ...(project.service ? { service: true as const } : { path: project.path }),
+      path: project.path, // undefined values drop out of the JSON
+      service: project.service,
       port: project.port,
       ip,
       devPublic,
-      ...(remote ? {} : { remote }),
+      remote: remote ? undefined : false,
       registeredAt: existing?.registeredAt ?? new Date().toISOString(),
       nasSynced: synced,
     }
