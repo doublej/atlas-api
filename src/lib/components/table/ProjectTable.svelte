@@ -17,38 +17,72 @@ interface Props {
 
 const { projects, gitStatus, hostnames, runningPorts, showHost, onRunDev, detail }: Props = $props()
 
-type SortKey = 'name' | 'path' | 'stack' | 'modified'
+type SortKey =
+  | 'git'
+  | 'name'
+  | 'path'
+  | 'stack'
+  | 'branch'
+  | 'host'
+  | 'links'
+  | 'claude'
+  | 'modified'
+  | 'run'
 let sortKey = $state<SortKey>('modified')
 let descending = $state(true)
 let open = $state<string | null>(null)
 
-const keyOf: Record<SortKey, (p: Project) => string> = {
+// Order git by how much attention a repo needs: dirty first when descending.
+const GIT_RANK: Record<string, number> = { dirty: 3, error: 2, clean: 1, 'no-repo': 0 }
+
+const keyOf: Record<SortKey, (p: Project) => string | number> = {
+  git: (p) => GIT_RANK[gitStatus[p.path]?.status ?? ''] ?? -1,
   name: (p) => p.name.toLowerCase(),
   path: (p) => p.relativePath,
   stack: (p) => (p.framework && p.framework !== 'unknown' ? p.framework : (p.type ?? '')),
+  branch: (p) => gitStatus[p.path]?.branch ?? '',
+  host: (p) => p.host,
+  links: (p) =>
+    Number(Boolean(runningPorts[p.path] || hostnames[p.slug])) + (p.domains?.length ?? 0),
+  claude: (p) => p.agentFiles?.claude?.tokens ?? 0,
   modified: (p) => p.modifiedAt,
+  run: (p) => Number(Boolean(p.isLocal && p.devCommand)),
 }
 
-const sorted = $derived(
-  [...projects].sort((a, b) => {
-    const order = keyOf[sortKey](a).localeCompare(keyOf[sortKey](b))
-    return descending ? -order : order
-  }),
-)
+/** Counts, dates and "needs attention" open high-to-low; text columns open A→Z. */
+const DESCENDING_FIRST = new Set<SortKey>(['git', 'links', 'claude', 'modified', 'run'])
 
-// Newest-first is the only column worth opening descending; text columns start A→Z.
+function compare(a: string | number, b: string | number): number {
+  if (typeof a === 'number' && typeof b === 'number') return a - b
+  return String(a).localeCompare(String(b))
+}
+
+/** Blank text sorts last in both directions, so a branch/stack sort leads with real values. */
+function blanksLast(a: string | number, b: string | number): number {
+  return Number(a === '') - Number(b === '')
+}
+
+const sorted = $derived.by(() => {
+  const key = keyOf[sortKey]
+  const sign = descending ? -1 : 1
+  return [...projects].sort((a, b) => {
+    const [ka, kb] = [key(a), key(b)]
+    return blanksLast(ka, kb) || sign * compare(ka, kb)
+  })
+})
+
 function sortBy(key: SortKey): void {
-  descending = sortKey === key ? !descending : key === 'modified'
+  descending = sortKey === key ? !descending : DESCENDING_FIRST.has(key)
   sortKey = key
 }
 
 const columns = $derived(showHost ? 10 : 9)
 </script>
 
-{#snippet header(key: SortKey, label: string, cls = '')}
+{#snippet header(key: SortKey, label: string, cls = '', hidden = false)}
   <th class={cls} aria-sort={sortKey === key ? (descending ? 'descending' : 'ascending') : 'none'}>
-    <button type="button" onclick={() => sortBy(key)}>
-      {label}
+    <button type="button" onclick={() => sortBy(key)} aria-label={hidden ? `Sort by ${label}` : undefined} title={hidden ? label : undefined}>
+      {#if !hidden}{label}{:else}<span class="mark"></span>{/if}
       {#if sortKey === key}<Icon name="chevronDown" size={10} />{/if}
     </button>
   </th>
@@ -57,16 +91,16 @@ const columns = $derived(showHost ? 10 : 9)
 <table>
   <thead>
     <tr>
-      <th class="dot-col"><span class="sr-only">Git status</span></th>
+      {@render header('git', 'Git status', 'dot-col', true)}
       {@render header('name', 'Name')}
       {@render header('path', 'Path', 'path')}
       {@render header('stack', 'Stack')}
-      <th class="opt">Branch</th>
-      {#if showHost}<th>Host</th>{/if}
-      <th>Links</th>
-      <th class="opt num">CLAUDE.md</th>
+      {@render header('branch', 'Branch', 'opt')}
+      {#if showHost}{@render header('host', 'Host')}{/if}
+      {@render header('links', 'Links')}
+      {@render header('claude', 'CLAUDE.md', 'opt num')}
       {@render header('modified', 'Modified', 'num')}
-      <th><span class="sr-only">Run</span></th>
+      {@render header('run', 'Runnable', 'run-col', true)}
     </tr>
   </thead>
   <tbody>
@@ -117,6 +151,19 @@ const columns = $derived(showHost ? 10 : 9)
     width: 14px;
   }
 
+  /* Icon-only headers: a dot for git status, a play glyph's worth of space for run. */
+  .mark {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: var(--color-muted-2);
+  }
+
+  .run-col .mark {
+    border-radius: 1px;
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+  }
+
   th button {
     display: inline-flex;
     align-items: center;
@@ -149,14 +196,6 @@ const columns = $derived(showHost ? 10 : 9)
     margin: 0;
     padding: 0;
     list-style: none;
-  }
-
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
   }
 
   @media (max-width: 1100px) {
