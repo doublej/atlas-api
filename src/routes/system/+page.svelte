@@ -5,15 +5,17 @@ import DaemonsSection from './DaemonsSection.svelte'
 import HostsSection from './HostsSection.svelte'
 import PortsSection from './PortsSection.svelte'
 import ScannerSection from './ScannerSection.svelte'
+import ServicesSection from './ServicesSection.svelte'
 
 let { data }: { data: PageData } = $props()
 
-type Tab = 'hosts' | 'scanner' | 'daemons' | 'ports'
+type Tab = 'hosts' | 'scanner' | 'daemons' | 'services' | 'ports'
 
 const unreachable = $derived(data.hostStates.filter((h) => h.status !== 'ok').length)
 const failing = $derived(
   (data.daemons ?? []).filter((d) => d.state.status === 'error' || d.stale).length,
 )
+const down = $derived(data.services.filter((s) => s.mode === 'down').length)
 const collisions = $derived(data.audit?.collisions.length ?? 0)
 
 // Each tab says in its menu line what it holds and whether it needs you, so the
@@ -26,6 +28,12 @@ const tabs = $derived<{ id: Tab; label: string; hint: string; alert: number }[]>
     label: 'Daemons',
     hint: `${data.daemons?.length ?? 0} registered`,
     alert: failing,
+  },
+  {
+    id: 'services',
+    label: 'Services',
+    hint: `${data.services.length} hostnames`,
+    alert: down,
   },
   {
     id: 'ports',
@@ -75,6 +83,8 @@ const active = $derived<Tab>(
       <ScannerSection config={data.config} />
     {:else if active === 'daemons'}
       <DaemonsSection daemons={data.daemons} />
+    {:else if active === 'services'}
+      <ServicesSection services={data.services} />
     {:else}
       <PortsSection audit={data.audit} />
     {/if}

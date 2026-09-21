@@ -3,6 +3,7 @@ import { DEV_FOLDER } from '$lib/config'
 import type { LaunchctlState } from '$lib/launchctl'
 import { auditPorts } from '$lib/ports'
 import { scan } from '$lib/scanner'
+import { getServiceStates } from '$lib/services'
 import type { DaemonDef } from '$shared/daemons'
 import { getHosts } from '$shared/hosts'
 import type { PageServerLoad } from './$types'
@@ -52,6 +53,7 @@ export const load: PageServerLoad = async ({ fetch }) => {
     audit: atlas ? auditPorts(atlas) : null,
     config,
     daemons,
+    services: getServiceStates(),
     errors,
   }
 }
