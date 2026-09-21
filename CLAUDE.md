@@ -113,6 +113,19 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
   and each menu line carries a count of what needs attention (unreachable hosts, failing or
   stale daemons, port collisions)
 
+**Disk console (`src/routes/disk/`, `src/lib/disk.ts`)**
+- The web face of `atlas disk`. It never reimplements an operation: reads run `atlas disk … --json`
+  (`diskJson`), changes run as a detached `atlas disk job --log <file> -- …` in its own process
+  group, which outlives a daemon restart and writes `<log>.exit`. The page polls `/api/disk/jobs/:id`
+  every 500ms (`DiskJobPanel`), cancels with SIGINT to the group, and picks a running job back up
+  on reload. The CLI's lock keeps it to one job; its refusal (exit 4) shows in the panel
+- Every argument goes through `checkArgs` (a per-command allowlist; `--unattended`/`--include-dirty`
+  are not on it) and `isRead` decides read vs job. Jobs always get `--confirmed`, because the page
+  showed the plan first. `requireLocalRequest` refuses writes through the NAS proxy
+- `ATLAS_BIN` (default `~/.bun/bin/atlas`) and `ATLAS_DISK_HOME` pass through; test against a scratch
+  state with `ATLAS_DISK_HOME`, `ATLAS_DISK_SCAN_ROOT`, `ATLAS_DISK_LAUNCHCTL`, `ATLAS_DISK_PLIST_DIR`
+  and `ATLAS_DISK_LAUNCH_AGENTS` set on a `vite dev --port 47990`, never on the daemon
+
 **Action rendering.** `ProjectActions` renders whatever `getActions(project, 'svelte')` returns:
 four ids get an inline button (`run-dev`, `open-iterm`, `open-finder`, `claude-tree-view`) and the
 rest fall into the overflow menu, grouped by the registry's own groups. `runAction` in
