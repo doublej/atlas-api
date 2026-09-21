@@ -47,7 +47,7 @@ async function writeRegistry(registry: Registry): Promise<void> {
   await writeFile(REGISTRY_FILE, `${JSON.stringify(registry, null, 2)}\n`)
 }
 
-export function hostnamesFor(slug: string): Hostnames {
+function hostnamesFor(slug: string): Hostnames {
   return {
     local: `https://${slug}.${SUBDOMAIN_LABEL}.local.${ROOT_DOMAIN}`,
     remote: `https://${slug}.${SUBDOMAIN_LABEL}.remote.${ROOT_DOMAIN}`,
