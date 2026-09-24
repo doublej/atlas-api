@@ -79,6 +79,24 @@ describe('requireLocalRequest', () => {
       ),
     ).toBe(200)
   })
+  it('allows the console LAN hostname through the NAS proxy', () => {
+    const lan = 'atlas.atlas.local.jurrejan.com'
+    const proxied = { host: 'localhost', 'x-forwarded-for': '192.168.1.2', 'x-forwarded-host': lan }
+    expect(status(() => requireLocalRequest(req(proxied)))).toBe(200)
+    expect(status(() => requireLocalRequest(req({ ...proxied, origin: `https://${lan}` })))).toBe(
+      200,
+    )
+    expect(
+      status(() => requireLocalRequest(req({ ...proxied, origin: 'https://evil.example' }))),
+    ).toBe(403)
+    expect(
+      status(() =>
+        requireLocalRequest(
+          req({ ...proxied, 'x-forwarded-host': 'atlas.atlas.remote.jurrejan.com' }),
+        ),
+      ),
+    ).toBe(403)
+  })
   it('refuses the NAS proxy, other hosts and other origins', () => {
     expect(
       status(() =>
