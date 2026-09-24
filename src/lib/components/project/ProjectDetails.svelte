@@ -13,19 +13,22 @@ const { project }: Props = $props()
 // Description editing and the README disclosure are per-row concerns, so the
 // state lives here rather than as page-level singletons.
 let editing = $state(false)
+// Projects are plain objects (not deep state), so a saved edit shows through this.
+let description = $derived(project.description)
 let draft = $state('')
 let readmeOpen = $state(false)
 let readmeText = $state<string | null>(null)
 let readmeLoading = $state(false)
 
 function startEdit(): void {
-  draft = project.description ?? ''
+  draft = description ?? ''
   editing = true
 }
 
 async function save(): Promise<void> {
   await api.saveDescription(project.path, draft)
   project.description = draft
+  description = draft
   editing = false
 }
 
@@ -61,8 +64,8 @@ async function toggleReadme(): Promise<void> {
     </div>
   {:else}
     <!-- Double-click to edit matches the previous UI; the pencil is the discoverable path. -->
-    <p class="desc" class:empty={!project.description} ondblclick={startEdit}>
-      {project.description || 'No description'}
+    <p class="desc" class:empty={!description} ondblclick={startEdit}>
+      {description || 'No description'}
     </p>
     <button class="edit-btn" type="button" onclick={startEdit} aria-label="Edit description">
       <Icon name="pencil" size={11} />

@@ -101,9 +101,8 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
   facet (promotion-vault status) only shows when some project has a vault entry
 - Host badges and an `alsoOn` chip per twin whenever the catalog spans more than one machine, and
   a banner for any host whose last scan came back `unreachable`/`error`
-- Project rows render on the client: the SSR HTML of `/` holds only the serialized payload, so `curl /`
-  proves a loader change and nothing about the UI. Verify rows in a browser, where 500+ rows take ~10s to
-  appear. The scaffold badge (`ProjectBadges.svelte`) compares `project.template.version` with the
+- Project rows render in SSR (`projects` is a writable `$derived` of `data`, never `$state` filled by an
+  `$effect`, which rendered "No projects" and then re-rendered 500+ rows on the client). The scaffold badge (`ProjectBadges.svelte`) compares `project.template.version` with the
   template's current `_version` from `templateVersions` in `+page.server.ts` and turns amber when behind
 
 **System console (`src/routes/system/`)**
@@ -196,7 +195,7 @@ Rules that keep it that way:
 1. `+page.server.ts` calls `scan()` on server load
 2. Scanner returns cached data immediately, marks as `stale` if >60s old
 3. UI triggers background refresh if stale
-4. Git status loaded in batches client-side after initial render
+4. Git status comes from the cache (`git`/`gitBranch`, refreshed with it); `/api/git` probes only local projects the cache has none for — probing all ~500 per load held every browser connection for ~40s
 5. README content loaded on-demand when expanded
 
 ### Key Types

@@ -30,16 +30,12 @@ import type { ActionDef } from '$shared/actions'
 type ViewMode = 'table' | 'flat' | 'nested'
 
 let { data } = $props()
-let projects = $state<Project[]>([])
-let frameworks = $state<Framework[]>([])
-let folders = $state<string[]>([])
+// Writable deriveds, not $state + $effect: the rows render during SSR and hydration instead
+// of an empty page re-rendered after mount, and ~560 records skip the deep proxy.
+let projects = $derived<Project[]>(data.projects)
+let frameworks = $derived<Framework[]>(data.frameworks)
+let folders = $derived<string[]>(data.folders)
 let isRefreshing = $state(false)
-
-$effect(() => {
-  projects = data.projects
-  frameworks = data.frameworks
-  folders = data.folders
-})
 
 let search = $state(page.url.searchParams.get('q') ?? '')
 let selectedFrameworks = $state<Set<Framework>>(new Set())

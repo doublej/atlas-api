@@ -132,7 +132,8 @@ function onKeydown(e: KeyboardEvent) {
 
 onMount(() => {
   load()
-  const timer = setInterval(load, POLL_MS)
+  // A hidden tab polling spawns lsof + ps + docker every tick for nobody.
+  const timer = setInterval(() => document.visibilityState === 'visible' && load(), POLL_MS)
   return () => clearInterval(timer)
 })
 </script>
