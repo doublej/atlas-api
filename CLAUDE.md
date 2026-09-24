@@ -121,7 +121,7 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
   on reload. The CLI's lock keeps it to one job; its refusal (exit 4) shows in the panel
 - Every argument goes through `checkArgs` (a per-command allowlist; `--unattended`/`--include-dirty`
   are not on it) and `isRead` decides read vs job. Jobs always get `--confirmed`, because the page
-  showed the plan first. `requireLocalRequest` refuses writes through the NAS proxy, except on `atlas.atlas.local` (IP-gated to the LAN)
+  showed the plan first. `requireLocalRequest` refuses writes through the NAS proxy, except on `atlas.jurrejan.com`/`atlas.atlas.local` (IP-gated to the LAN)
 - `ATLAS_BIN` (default `~/.bun/bin/atlas`) and `ATLAS_DISK_HOME` pass through; test against a scratch
   state with `ATLAS_DISK_HOME`, `ATLAS_DISK_SCAN_ROOT`, `ATLAS_DISK_LAUNCHCTL`, `ATLAS_DISK_PLIST_DIR`
   and `ATLAS_DISK_LAUNCH_AGENTS` set on a `vite dev --port 47990`, never on the daemon

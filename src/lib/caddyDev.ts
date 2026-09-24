@@ -21,6 +21,8 @@ interface HostnameEntry {
   ip?: string
   /** False drops the `atlas.remote` block. */
   remote?: boolean
+  /** A service's own short LAN name, served alongside `<slug>.atlas.local` (see `ServiceDef.host`). */
+  host?: string
   /** `.atlas` `devPublic` override — remote reachable with no password. Tracked so a flag
    *  flip with no port change still triggers a re-push. */
   devPublic?: boolean
@@ -47,9 +49,9 @@ async function writeRegistry(registry: Registry): Promise<void> {
   await writeFile(REGISTRY_FILE, `${JSON.stringify(registry, null, 2)}\n`)
 }
 
-function hostnamesFor(slug: string): Hostnames {
+function hostnamesFor(slug: string, host?: string): Hostnames {
   return {
-    local: `https://${slug}.${SUBDOMAIN_LABEL}.local.${ROOT_DOMAIN}`,
+    local: `https://${host ?? `${slug}.${SUBDOMAIN_LABEL}.local.${ROOT_DOMAIN}`}`,
     remote: `https://${slug}.${SUBDOMAIN_LABEL}.remote.${ROOT_DOMAIN}`,
   }
 }
@@ -80,6 +82,7 @@ export function renderSiteBlock(
   ip: string,
   devPublic: boolean,
   withRemote = true,
+  host?: string,
 ): string {
   // Vite (and anything built on it) has its own Host-header allowlist independent of
   // `--host`/bind address, and rejects a proxied Host it doesn't recognize with a 403 —
@@ -92,7 +95,7 @@ export function renderSiteBlock(
     ].join('\n')
 
   const local = [
-    `${slug}.${SUBDOMAIN_LABEL}.local.${ROOT_DOMAIN} {`,
+    `${host ? `${host}, ` : ''}${slug}.${SUBDOMAIN_LABEL}.local.${ROOT_DOMAIN} {`,
     `\timport admin_ip_check`,
     `\thandle @admin_ips {`,
     proxy('\t\t'),
@@ -192,13 +195,14 @@ function isTakenByOtherKind(
 /** The NAS already serves exactly this route — nothing to push. */
 function isCurrent(
   entry: HostnameEntry,
-  want: { port: number; ip: string; devPublic: boolean; remote: boolean },
+  want: { port: number; ip: string; devPublic: boolean; remote: boolean; host?: string },
 ): boolean {
   return (
     entry.port === want.port &&
     entry.ip === want.ip &&
     (entry.devPublic ?? false) === want.devPublic &&
     (entry.remote ?? true) === want.remote &&
+    entry.host === want.host &&
     !!entry.nasSynced
   )
 }
@@ -218,6 +222,7 @@ export function ensureRoute(project: {
   port: number
   devPublic?: boolean
   remote?: boolean
+  host?: string
 }): Promise<Hostnames | null> {
   const devPublic = project.devPublic ?? false
   const remote = project.remote ?? true
@@ -228,11 +233,12 @@ export function ensureRoute(project: {
 
     if (isTakenByOtherKind(project.slug, existing, project.service)) return null
 
-    if (existing && isCurrent(existing, { port: project.port, ip, devPublic, remote })) {
-      return hostnamesFor(project.slug)
+    const { host } = project
+    if (existing && isCurrent(existing, { port: project.port, ip, devPublic, remote, host })) {
+      return hostnamesFor(project.slug, host)
     }
 
-    const content = renderSiteBlock(project.slug, project.port, ip, devPublic, remote)
+    const content = renderSiteBlock(project.slug, project.port, ip, devPublic, remote, host)
     const synced = await pushToNas(project.slug, content)
 
     registry[project.slug] = {
@@ -242,12 +248,13 @@ export function ensureRoute(project: {
       ip,
       devPublic,
       remote: remote ? undefined : false,
+      host,
       registeredAt: existing?.registeredAt ?? new Date().toISOString(),
       nasSynced: synced,
     }
     await writeRegistry(registry)
 
-    return synced ? hostnamesFor(project.slug) : null
+    return synced ? hostnamesFor(project.slug, host) : null
   })
 }
 
@@ -277,7 +284,7 @@ export async function listHostnames(): Promise<
   return Object.entries(registry)
     .filter(([, entry]) => entry.nasSynced)
     .map(([slug, entry]) => {
-      const { local, remote } = hostnamesFor(slug)
+      const { local, remote } = hostnamesFor(slug, entry.host)
       return {
         slug,
         path: entry.path,

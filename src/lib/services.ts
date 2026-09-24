@@ -105,7 +105,13 @@ async function reconcileBridge(svc: ServiceDef, ip: string, mode: RouteMode) {
 
 async function route(svc: ServiceDef): Promise<Pick<ServiceState, 'local' | 'remote' | 'error'>> {
   const remote = svc.remote ?? false
-  const names = await ensureRoute({ slug: svc.slug, service: true, port: svc.port, remote })
+  const names = await ensureRoute({
+    slug: svc.slug,
+    service: true,
+    port: svc.port,
+    remote,
+    host: svc.host,
+  })
   if (!names) return { local: null, error: 'NAS push failed or slug taken — see daemon log' }
   return { local: names.local, ...(remote ? { remote: names.remote } : {}) }
 }

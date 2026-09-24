@@ -27,6 +27,11 @@ describe('listenersOn', () => {
 })
 
 describe('renderSiteBlock', () => {
+  it('serves a service host next to its atlas.local name', () => {
+    expect(renderSiteBlock('x', 1, '10.0.0.2', false, false, 'x.jurrejan.com')).toContain(
+      'x.jurrejan.com, x.atlas.local.jurrejan.com {',
+    )
+  })
   process.env.CADDY_DEV_AUTH_HASH = 'hash'
 
   it('publishes atlas.remote by default', () => {

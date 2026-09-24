@@ -317,13 +317,13 @@ export function listJobs(limit = 20): JobState[] {
 
 const LOOPBACK_HOST = /^(localhost|127(\.\d{1,3}){3}|\[::1\])(:\d+)?$/
 const LOOPBACK_ORIGIN = /^http:\/\/(localhost|127(\.\d{1,3}){3}|\[::1\])(:\d+)?$/
-/** The console's own LAN hostname. The NAS Caddy lets only LAN (and household) IPs through. */
-const TRUSTED_HOST = 'atlas.atlas.local.jurrejan.com'
+/** The console's LAN hostnames. The NAS Caddy lets only LAN (and household) IPs through. */
+const TRUSTED_HOSTS = ['atlas.jurrejan.com', 'atlas.atlas.local.jurrejan.com']
 
 /**
  * Disk writes only from this Mac or the console's LAN hostname. The NAS Caddy rewrites `Host` to
  * `localhost` and sets `x-forwarded-for`/`x-forwarded-host` itself (it ignores client-sent
- * values), so a proxied request is trusted only when it came in on `TRUSTED_HOST` — never
+ * values), so a proxied request is trusted only when it came in on one of `TRUSTED_HOSTS` — never
  * `atlas.remote` or a project's hostname. A page on any other origin is refused. Reads stay open.
  */
 export function requireLocalRequest(request: Request): void {
@@ -333,11 +333,9 @@ export function requireLocalRequest(request: Request): void {
     !h.has('x-forwarded-for') &&
     LOOPBACK_HOST.test(h.get('host') ?? '') &&
     (!origin || LOOPBACK_ORIGIN.test(origin))
+  const forwarded = h.get('x-forwarded-host') ?? ''
   const trusted =
-    h.get('x-forwarded-host') === TRUSTED_HOST && (!origin || origin === `https://${TRUSTED_HOST}`)
+    TRUSTED_HOSTS.includes(forwarded) && (!origin || origin === `https://${forwarded}`)
   if (!direct && !trusted)
-    error(
-      403,
-      'disk changes are allowed only from this Mac or https://atlas.atlas.local.jurrejan.com',
-    )
+    error(403, 'disk changes are allowed only from this Mac or https://atlas.jurrejan.com')
 }
