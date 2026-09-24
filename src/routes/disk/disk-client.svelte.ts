@@ -61,7 +61,8 @@ export async function poll(): Promise<boolean> {
   const id = job.current?.id
   if (!id) return false
   const res = await fetch(`/api/disk/jobs/${id}?offset=${job.offset}`)
-  if (!res.ok) return false
+  // A 5xx (the NAS proxy mid-reload, a daemon restart) is passing; only a 4xx ends the watch.
+  if (!res.ok) return res.status >= 500
   const s = (await res.json()) as JobState & { text: string; offset: number }
   job.text += s.text
   job.offset = s.offset
