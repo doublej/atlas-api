@@ -1,9 +1,11 @@
 <script lang="ts">
 import { onMount } from 'svelte'
+import SortHeader from '$lib/components/table/SortHeader.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { Listener, ListenerGroup } from '$lib/listeners'
+import { TableSort } from '$lib/table-sort.svelte'
 
 const POLL_MS = 15_000
 const GROUPS: { id: ListenerGroup; label: string }[] = [
@@ -30,10 +32,22 @@ const visible = $derived(
       )
     : listeners,
 )
+/** One sort shared by every owner group. */
+const sort = new TableSort<'name' | 'port' | 'pid' | 'path' | 'hostname'>()
 const sections = $derived(
-  GROUPS.map((g) => ({ ...g, rows: visible.filter((l) => l.group === g.id) })).filter(
-    (s) => s.rows.length,
-  ),
+  GROUPS.map((g) => ({
+    ...g,
+    rows: sort.apply(
+      visible.filter((l) => l.group === g.id),
+      {
+        name: (l) => l.name,
+        port: (l) => l.port,
+        pid: (l) => l.pid,
+        path: (l) => l.project?.path ?? l.cwd,
+        hostname: (l) => l.hostname,
+      },
+    ),
+  })).filter((s) => s.rows.length),
 )
 /** Visible pids in render order, for shift-range and select-all. */
 const ordered = $derived(sections.flatMap((s) => s.rows.map((r) => r.pid)))
@@ -189,11 +203,11 @@ onMount(() => {
           <thead>
             <tr class="t-caption muted">
               <th></th>
-              <th>Name</th>
-              <th>Port</th>
-              <th>PID</th>
-              <th>Path</th>
-              <th>Hostname</th>
+              <SortHeader {sort} key="name" label="Name" />
+              <SortHeader {sort} key="port" label="Port" />
+              <SortHeader {sort} key="pid" label="PID" />
+              <SortHeader {sort} key="path" label="Path" />
+              <SortHeader {sort} key="hostname" label="Hostname" />
             </tr>
           </thead>
           <tbody>
@@ -303,7 +317,7 @@ onMount(() => {
     border-collapse: collapse;
   }
 
-  th {
+  table :global(th) {
     padding: var(--space-1) var(--space-3);
     font-weight: 500;
     text-align: left;

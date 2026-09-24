@@ -1,9 +1,11 @@
 <script lang="ts">
+import SortHeader from '$lib/components/table/SortHeader.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import Modal from '$lib/components/ui/Modal.svelte'
 import type { ArchiveVersion, DiskSettings } from '$lib/disk-types'
+import { TableSort } from '$lib/table-sort.svelte'
 import DiskRestoreModal from './DiskRestoreModal.svelte'
 import { human, readDisk, runJob, Selection } from './disk-client.svelte'
 
@@ -18,13 +20,26 @@ const STORAGE = {
   na: 'n/a',
 }
 const sel = new Selection()
+const sort = new TableSort<'id' | 'size' | 'local' | 'storage' | 'verified'>(null, [
+  'size',
+  'local',
+])
+const rows = $derived(
+  sort.apply(archives, {
+    id: (v) => v.id,
+    size: (v) => v.bytes,
+    local: (v) => v.localBytes,
+    storage: (v) => STORAGE[v.storage],
+    verified: (v) => Number(v.verified),
+  }),
+)
 let keep = $state(2)
 let restoring = $state(false)
 let confirmDelete = $state(false)
 let confirmPrune = $state(false)
 let contents = $state<{ id: string; text: string } | null>(null)
 
-const ordered = $derived(archives.map((v) => v.id))
+const ordered = $derived(rows.map((v) => v.id))
 const localBytes = $derived(archives.reduce((n, v) => n + v.localBytes, 0))
 const onlyVersion = (v: ArchiveVersion) =>
   archives.filter((x) => x.project === v.project).length === 1
@@ -80,11 +95,17 @@ function act(verb: string, ids: string[]) {
       <table>
         <thead>
           <tr class="t-caption">
-            <th></th><th>Version</th><th class="right">Size</th><th class="right">On this Mac</th><th>Storage</th><th>Verified</th><th></th>
+            <th></th>
+            <SortHeader {sort} key="id" label="Version" />
+            <SortHeader {sort} key="size" label="Size" class="right" />
+            <SortHeader {sort} key="local" label="On this Mac" class="right" />
+            <SortHeader {sort} key="storage" label="Storage" />
+            <SortHeader {sort} key="verified" label="Verified" />
+            <th></th>
           </tr>
         </thead>
         <tbody>
-          {#each archives as v (v.id)}
+          {#each rows as v (v.id)}
             <tr class="t-small" class:selected={sel.has(v.id)} onclick={(e) => sel.click(v.id, e, ordered)}>
               <td><input type="checkbox" aria-label="Select {v.id}" checked={sel.has(v.id)} onclick={(e) => e.stopPropagation()} onchange={(e) => sel.setMany([v.id], e.currentTarget.checked)} /></td>
               <td class="mono">{v.id}</td>

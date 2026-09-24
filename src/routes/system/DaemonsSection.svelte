@@ -1,7 +1,9 @@
 <script lang="ts">
+import SortHeader from '$lib/components/table/SortHeader.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
+import { TableSort } from '$lib/table-sort.svelte'
 import type { PageData } from './$types'
 
 type DaemonRow = NonNullable<PageData['daemons']>[number]
@@ -16,7 +18,14 @@ const SELF_MANAGED_HINT =
 
 /** Polled state, once there is any; until then the table shows what the server rendered. */
 let polled = $state<DaemonRow[] | null>(null)
-const rows = $derived(polled ?? daemons)
+const sort = new TableSort<'name' | 'state' | 'port'>()
+const rows = $derived(
+  sort.apply(polled ?? daemons ?? [], {
+    name: (d) => d.name,
+    state: (d) => d.state.status,
+    port: (d) => d.port,
+  }),
+)
 let loadError = $state('')
 /** `<label>:<action>` while a lifecycle call is in flight — one at a time, on purpose. */
 let pending = $state('')
@@ -86,7 +95,7 @@ $effect(() => {
 
   {#if loadError}
     <p class="t-small err">{loadError}</p>
-  {:else if !rows}
+  {:else if !(polled ?? daemons)}
     <p class="t-small err">Could not read /api/daemons.</p>
   {/if}
 
@@ -95,14 +104,14 @@ $effect(() => {
       <table>
         <thead>
           <tr>
-            <th>Daemon</th>
-            <th>State</th>
-            <th>Port</th>
+            <SortHeader {sort} key="name" label="Daemon" />
+            <SortHeader {sort} key="state" label="State" />
+            <SortHeader {sort} key="port" label="Port" />
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {#each rows ?? [] as d (d.label)}
+          {#each rows as d (d.label)}
             <tr>
               <td>
                 <div class="name-line">
@@ -180,7 +189,7 @@ $effect(() => {
     border-collapse: collapse;
     font-size: 13px;
   }
-  th {
+  table :global(th) {
     text-align: left;
     font-weight: 500;
     color: var(--color-muted);

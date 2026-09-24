@@ -1,11 +1,18 @@
 <script lang="ts">
 import { page } from '$app/state'
 import type { TemplateAdoption } from '$lib/adoption'
+import SortHeader from '$lib/components/table/SortHeader.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import Chip from '$lib/components/ui/Chip.svelte'
+import { TableSort } from '$lib/table-sort.svelte'
 import type { LintEntry } from '$lib/template-lint'
-import type { DiscoveredTemplate, TemplateError, VariableReference } from '$lib/templates'
+import type {
+  DiscoveredTemplate,
+  TemplateError,
+  TemplateVariable,
+  VariableReference,
+} from '$lib/templates'
 
 let {
   data,
@@ -68,10 +75,14 @@ $effect(() => {
 const selected = $derived(railItems.find((i) => i.id === selectedId) ?? null)
 
 let tab = $state<Tab>('effects')
+const varSort = new TableSort<'name' | 'default' | 'choices'>()
+const VAR_KEYS = {
+  name: (v: TemplateVariable) => v.name,
+  default: (v: TemplateVariable) => String(v.default),
+  choices: (v: TemplateVariable) => v.choices?.join(', '),
+}
 
-const selectedLint = $derived(
-  selected ? data.lint.filter((l) => l.template === selected.id) : [],
-)
+const selectedLint = $derived(selected ? data.lint.filter((l) => l.template === selected.id) : [])
 const selectedAdoption = $derived(selected ? (data.adoption[selected.id] ?? null) : null)
 
 function updateCommand(projectPath: string): string {
@@ -199,13 +210,13 @@ function referencesByFile(refs: VariableReference[]): Map<string, VariableRefere
           <table>
             <thead>
               <tr>
-                <th>name</th>
-                <th>default</th>
-                <th>choices</th>
+                <SortHeader sort={varSort} key="name" label="name" />
+                <SortHeader sort={varSort} key="default" label="default" />
+                <SortHeader sort={varSort} key="choices" label="choices" />
               </tr>
             </thead>
             <tbody>
-              {#each t.variables as v (v.name)}
+              {#each varSort.apply(t.variables, VAR_KEYS) as v (v.name)}
                 <tr>
                   <td>{v.name}</td>
                   <td>{v.default}</td>
@@ -436,7 +447,7 @@ function referencesByFile(refs: VariableReference[]): Map<string, VariableRefere
     border-collapse: collapse;
     font-size: 13px;
   }
-  .schema-table th {
+  .schema-table :global(th) {
     text-align: left;
     color: var(--color-muted);
     font-weight: 500;

@@ -97,8 +97,12 @@ async function refreshInBackground(): Promise<void> {
 
 onMount(() => {
   if (data.stale) refreshInBackground()
+  // The cache already carries git state for every local project (refreshed every 60s), so
+  // only a project it has none for yet is probed — probing all ~500 on each load spawned
+  // ~500 git processes and held every browser connection for ~40s.
+  for (const p of projects) if (p.git) gitStatus[p.path] = { status: p.git, branch: p.gitBranch }
   api.loadGitStatuses(
-    projects.map((p) => p.path),
+    projects.filter((p) => p.isLocal && !p.git).map((p) => p.path),
     (results) => {
       for (const r of results) gitStatus[r.path] = { status: r.status, branch: r.branch }
     },

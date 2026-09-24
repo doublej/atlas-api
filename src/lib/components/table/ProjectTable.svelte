@@ -2,6 +2,7 @@
 import type { Snippet } from 'svelte'
 import Icon from '$lib/components/icons/Icon.svelte'
 import type { GitStatus, Project } from '$lib/scanner'
+import { type SortValue, TableSort } from '$lib/table-sort.svelte'
 import ProjectLine from './ProjectLine.svelte'
 
 interface Props {
@@ -28,14 +29,12 @@ type SortKey =
   | 'claude'
   | 'modified'
   | 'run'
-let sortKey = $state<SortKey>('modified')
-let descending = $state(true)
 let open = $state<string | null>(null)
 
 // Order git by how much attention a repo needs: dirty first when descending.
 const GIT_RANK: Record<string, number> = { dirty: 3, error: 2, clean: 1, 'no-repo': 0 }
 
-const keyOf: Record<SortKey, (p: Project) => string | number> = {
+const keyOf: Record<SortKey, (p: Project) => SortValue> = {
   git: (p) => GIT_RANK[gitStatus[p.path]?.status ?? ''] ?? -1,
   name: (p) => p.name.toLowerCase(),
   path: (p) => p.relativePath,
@@ -50,40 +49,17 @@ const keyOf: Record<SortKey, (p: Project) => string | number> = {
 }
 
 /** Counts, dates and "needs attention" open high-to-low; text columns open A→Z. */
-const DESCENDING_FIRST = new Set<SortKey>(['git', 'links', 'claude', 'modified', 'run'])
-
-function compare(a: string | number, b: string | number): number {
-  if (typeof a === 'number' && typeof b === 'number') return a - b
-  return String(a).localeCompare(String(b))
-}
-
-/** Blank text sorts last in both directions, so a branch/stack sort leads with real values. */
-function blanksLast(a: string | number, b: string | number): number {
-  return Number(a === '') - Number(b === '')
-}
-
-const sorted = $derived.by(() => {
-  const key = keyOf[sortKey]
-  const sign = descending ? -1 : 1
-  return [...projects].sort((a, b) => {
-    const [ka, kb] = [key(a), key(b)]
-    return blanksLast(ka, kb) || sign * compare(ka, kb)
-  })
-})
-
-function sortBy(key: SortKey): void {
-  descending = sortKey === key ? !descending : DESCENDING_FIRST.has(key)
-  sortKey = key
-}
+const sort = new TableSort<SortKey>('modified', ['git', 'links', 'claude', 'modified', 'run'])
+const sorted = $derived(sort.apply(projects, keyOf))
 
 const columns = $derived(showHost ? 10 : 9)
 </script>
 
 {#snippet header(key: SortKey, label: string, cls = '', hidden = false)}
-  <th class={cls} aria-sort={sortKey === key ? (descending ? 'descending' : 'ascending') : 'none'}>
-    <button type="button" onclick={() => sortBy(key)} aria-label={hidden ? `Sort by ${label}` : undefined} title={hidden ? label : undefined}>
+  <th class={cls} aria-sort={sort.key === key ? (sort.descending ? 'descending' : 'ascending') : 'none'}>
+    <button type="button" onclick={() => sort.by(key)} aria-label={hidden ? `Sort by ${label}` : undefined} title={hidden ? label : undefined}>
       {#if !hidden}{label}{:else}<span class="mark"></span>{/if}
-      {#if sortKey === key}<Icon name="chevronDown" size={10} />{/if}
+      {#if sort.key === key}<Icon name="chevronDown" size={10} />{/if}
     </button>
   </th>
 {/snippet}

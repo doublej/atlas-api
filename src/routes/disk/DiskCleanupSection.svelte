@@ -1,9 +1,11 @@
 <script lang="ts">
+import SortHeader from '$lib/components/table/SortHeader.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import Chip from '$lib/components/ui/Chip.svelte'
 import type { Risk, Scan } from '$lib/disk-types'
+import { TableSort } from '$lib/table-sort.svelte'
 import DiskCleanModal from './DiskCleanModal.svelte'
 import { ago, human, runJob, Selection, tildify } from './disk-client.svelte'
 
@@ -18,10 +20,24 @@ const RISKS: { id: Risk; tone: 'pos' | 'warn' | 'neg'; note: string }[] = [
 let shown = $state(new Set<Risk>(['rebuildable', 'reinstallable', 'review']))
 let reviewing = $state(false)
 const sel = new Selection()
+/** One sort for every risk group, so the groups stay comparable. */
+const sort = new TableSort<'size' | 'path' | 'inUse' | 'why' | 'restore'>(null, ['size'])
 
 const groups = $derived(
   RISKS.filter((r) => shown.has(r.id))
-    .map((r) => ({ ...r, rows: (scan?.folders ?? []).filter((f) => f.risk === r.id) }))
+    .map((r) => ({
+      ...r,
+      rows: sort.apply(
+        (scan?.folders ?? []).filter((f) => f.risk === r.id),
+        {
+          size: (f) => f.bytes,
+          path: (f) => f.path,
+          inUse: (f) => f.inUse,
+          why: (f) => f.why,
+          restore: (f) => f.restore,
+        },
+      ),
+    }))
     .filter((g) => g.rows.length),
 )
 const ordered = $derived(groups.flatMap((g) => g.rows.map((r) => r.path)))
@@ -66,6 +82,16 @@ function toggleRisk(r: Risk) {
       </div>
       <div class="scroll">
         <table>
+          <thead>
+            <tr class="t-caption">
+              <th></th>
+              <SortHeader {sort} key="size" label="Size" class="right" />
+              <SortHeader {sort} key="path" label="Folder" />
+              <SortHeader {sort} key="inUse" label="In use" />
+              <SortHeader {sort} key="why" label="What it is" />
+              <SortHeader {sort} key="restore" label="How it comes back" />
+            </tr>
+          </thead>
           <tbody>
             {#each g.rows as f (f.path)}
               <tr class="t-small" class:selected={sel.has(f.path)} class:dim={f.nested} onclick={(e) => sel.click(f.path, e, ordered)}>

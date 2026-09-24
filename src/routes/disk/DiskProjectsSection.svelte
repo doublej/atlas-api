@@ -1,9 +1,11 @@
 <script lang="ts">
+import SortHeader from '$lib/components/table/SortHeader.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import Chip from '$lib/components/ui/Chip.svelte'
 import type { Analysis, DiskSettings, ProjectRow } from '$lib/disk-types'
+import { TableSort } from '$lib/table-sort.svelte'
 import DiskArchiveModal from './DiskArchiveModal.svelte'
 import { ago, human, runJob, Selection } from './disk-client.svelte'
 
@@ -15,9 +17,26 @@ const TONE = { eligible: 'accent', inactive: 'neutral', active: 'pos' } as const
 let filter = $state<ProjectRow['state'] | 'all'>('eligible')
 let planning = $state(false)
 const sel = new Selection()
+const sort = new TableSort<'id' | 'size' | 'state' | 'age' | 'ageFile' | 'commit' | 'flags'>(null, [
+  'size',
+  'age',
+  'commit',
+  'flags',
+])
 
 const rows = $derived(
-  (analysis?.projects ?? []).filter((p) => filter === 'all' || p.state === filter),
+  sort.apply(
+    (analysis?.projects ?? []).filter((p) => filter === 'all' || p.state === filter),
+    {
+      id: (p) => p.id,
+      size: (p) => p.bytes,
+      state: (p) => STATES.indexOf(p.state),
+      age: (p) => p.ageDays,
+      ageFile: (p) => p.ageFile,
+      commit: (p) => p.lastCommit,
+      flags: (p) => Number(p.dirty) + Number(p.push === 'unpushed'),
+    },
+  ),
 )
 const ordered = $derived(rows.map((r) => r.id))
 const chosen = $derived((analysis?.projects ?? []).filter((p) => sel.has(p.id)))
@@ -58,13 +77,13 @@ $effect(() => sel.keep((analysis?.projects ?? []).map((p) => p.id)))
         <thead>
           <tr class="t-caption">
             <th></th>
-            <th>Project</th>
-            <th class="right">Size</th>
-            <th>State</th>
-            <th class="right">Age</th>
-            <th>Age set by</th>
-            <th>Last commit</th>
-            <th>Flags</th>
+            <SortHeader {sort} key="id" label="Project" />
+            <SortHeader {sort} key="size" label="Size" class="right" />
+            <SortHeader {sort} key="state" label="State" />
+            <SortHeader {sort} key="age" label="Age" class="right" />
+            <SortHeader {sort} key="ageFile" label="Age set by" />
+            <SortHeader {sort} key="commit" label="Last commit" />
+            <SortHeader {sort} key="flags" label="Flags" />
           </tr>
         </thead>
         <tbody>

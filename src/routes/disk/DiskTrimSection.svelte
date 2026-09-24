@@ -1,9 +1,11 @@
 <script lang="ts">
+import SortHeader from '$lib/components/table/SortHeader.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { DiskItem } from '$lib/disk'
 import type { DiskSettings, Operation } from '$lib/disk-types'
+import { TableSort } from '$lib/table-sort.svelte'
 import { human, job, readDisk, runJob } from './disk-client.svelte'
 
 let { settings }: { settings: DiskSettings | null } = $props()
@@ -52,6 +54,20 @@ $effect(() => {
 })
 
 const cache = (o: Operation, k: string) => o.end?.details?.[k] as number | undefined
+const sort = new TableSort<'step' | 'result' | 'before' | 'after' | 'freed'>(null, [
+  'before',
+  'after',
+  'freed',
+])
+const lastSorted = $derived(
+  sort.apply(last, {
+    step: (o) => o.start.item,
+    result: (o) => o.end?.outcome ?? 'interrupted',
+    before: (o) => cache(o, 'cacheBefore'),
+    after: (o) => cache(o, 'cacheAfter'),
+    freed: (o) => o.end?.freed ?? 0,
+  }),
+)
 </script>
 
 <section>
@@ -89,9 +105,17 @@ const cache = (o: Operation, k: string) => o.end?.details?.[k] as number | undef
     <Card flush>
       <div class="scroll">
         <table>
-          <thead><tr class="t-caption"><th>Step</th><th>Result</th><th class="right">Before</th><th class="right">After</th><th class="right">Freed</th></tr></thead>
+          <thead>
+            <tr class="t-caption">
+              <SortHeader {sort} key="step" label="Step" />
+              <SortHeader {sort} key="result" label="Result" />
+              <SortHeader {sort} key="before" label="Before" class="right" />
+              <SortHeader {sort} key="after" label="After" class="right" />
+              <SortHeader {sort} key="freed" label="Freed" class="right" />
+            </tr>
+          </thead>
           <tbody>
-            {#each last as o (o.start.id)}
+            {#each lastSorted as o (o.start.id)}
               <tr class="t-small">
                 <td>{o.start.item}</td>
                 <td>{o.end?.outcome ?? 'interrupted'}{o.end?.message ? ` — ${o.end.message}` : ''}</td>
