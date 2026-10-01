@@ -71,9 +71,22 @@ describe('redact', () => {
     ['tool --apiKey FAKEPW35 --authToken=FAKEPW36', 'FAKEPW3'],
     ['node x.js {"api_key": "FAKEPW37"}', 'FAKEPW37'],
     ['mysqldump -u root --password FAKEPW38 db', 'FAKEPW38'],
+    ['curl -H "X-Shopify-Access-Token: shpat_FAKEPW40" https://x', 'FAKEPW40'],
+    ["curl -H 'PRIVATE-TOKEN: FAKEPW41' https://x", 'FAKEPW41'],
+    ['curl -H "X-Auth-Token: FAKEPW42" https://x', 'FAKEPW42'],
+    ['curl -H "Api-Key: FAKEPW43" https://x', 'FAKEPW43'],
+    ['http GET https://x X-Shopify-Access-Token:FAKEPW44', 'FAKEPW44'],
+    ['aws configure set aws_secret_access_key FAKEPW45', 'FAKEPW45'],
   ])('masks %s', (command, secret) => {
     expect(redact(command)).not.toContain(secret)
     expect(redact(command)).toContain('REDACTED')
+  })
+
+  it('stays linear on a long dotted/dashed argv token', () => {
+    const start = performance.now()
+    // Uncapped: ~7s under node, worse under bun (the daemon's runtime); capped: ~80ms.
+    redact(`node ${'a.-'.repeat(13_000)}`)
+    expect(performance.now() - start).toBeLessThan(1_000)
   })
 
   it.each([

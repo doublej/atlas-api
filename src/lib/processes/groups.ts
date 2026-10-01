@@ -192,12 +192,18 @@ function toRow(members: Proc[], infos: Map<number, ProcessInfo>, f: Facts): Fold
 }
 
 /** Attribution per process; a member with none takes its group's project (`via: 'group'`). */
-function attributeAll(procs: Proc[], f: Facts) {
-  const found = new Map(procs.map((p) => [p.pid, attribute(p, f)]))
-  const byGroup = new Map<number, Project>()
-  for (const p of [...procs].sort((a, b) => RANK.indexOf(a.role) - RANK.indexOf(b.role))) {
-    const project = found.get(p.pid)?.project
-    if (project && !byGroup.has(p.pgid)) byGroup.set(p.pgid, project)
+function attributeAll(groups: Proc[][], f: Facts) {
+  const found = new Map(groups.flat().map((p) => [p.pid, attribute(p, f)]))
+  const byGroup = new Map<number, Project | undefined>()
+  for (const members of groups) {
+    const { primary } = foldGroup(members)
+    // An agent session's stdio MCP servers share its group: where their code lives says
+    // nothing about the session's project, so an agent row's project is the agent's own.
+    const sources =
+      primary.role === 'agent'
+        ? [primary]
+        : [...members].sort((a, b) => RANK.indexOf(a.role) - RANK.indexOf(b.role))
+    byGroup.set(primary.pgid, sources.map((p) => found.get(p.pid)?.project).find(Boolean))
   }
   return (p: Proc) => {
     const own = found.get(p.pid)
@@ -223,15 +229,15 @@ function promote(procs: Proc[], f: Facts, projectOf: (p: Proc) => { project?: Pr
 }
 
 export function buildRows(procs: Proc[], f: Facts): { processes: ProcessInfo[]; rows: AppRow[] } {
-  const projectOf = attributeAll(procs, f)
+  const groups = new Map<number, Proc[]>()
+  for (const p of procs) groups.set(p.pgid, [...(groups.get(p.pgid) ?? []), p])
+  const projectOf = attributeAll([...groups.values()], f)
   promote(procs, f, projectOf)
   const infos = new Map<number, ProcessInfo>()
   for (const p of procs) {
     const { project, via } = projectOf(p)
     infos.set(p.pid, toInfo(p, f, project, via))
   }
-  const groups = new Map<number, Proc[]>()
-  for (const p of procs) groups.set(p.pgid, [...(groups.get(p.pgid) ?? []), p])
   const folded = [...groups.values()].map((members) => toRow(members, infos, f))
   for (const row of folded) flagRow(row, f)
   flagDuplicates(folded)

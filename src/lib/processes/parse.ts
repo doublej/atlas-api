@@ -66,9 +66,11 @@ const VALUE = `("[^"]*"|'[^']*'|\\S+)`
  * A flag, variable or JSON key that names a credential. A word that can also mean something
  * harmless must be the name's last word, so `--private-key`, `OPENAI_KEY` and `--github-pat` are
  * masked while `--key-file`, `--session-id`, `--max-tokens` and `--password-stdin` stay readable.
+ * ponytail: the name's prefix is capped at 64 chars, or a long dotted/dashed argv token costs
+ * seconds (every start position scans to its end); a longer prefix with no `.`/`-` goes unmasked.
  */
 const SECRET_NAME =
-  '(?:[\\w.-]*?(?:password|passwd|secret|token)|(?:[\\w.-]*[-_.])?(?:pass(?:phrase)?|pw|(?:api|access|private|secret)?key|auth(?:orization)?|cred(?:s|entials?)?|cookie|session|pat))'
+  '(?:[\\w.-]{0,64}?(?:password|passwd|secret|token)|(?:[\\w.-]{0,64}[-_.])?(?:pass(?:phrase)?|pw|(?:api|access|private|secret)?key|auth(?:orization)?|cred(?:s|entials?)?|cookie|session|pat))'
 // Values that are credentials, wherever they appear in a command line.
 const SECRETS: [RegExp, string][] = [
   [new RegExp(`(\\b(?:Bearer|Basic)\\s+)${VALUE}`, 'gi'), '$1REDACTED'],
@@ -81,15 +83,17 @@ const SECRETS: [RegExp, string][] = [
   // `DECKHAND_TOKEN=`, `OPENAI_KEY=`, `?access_token=…&` — a query value ends at `&`.
   [new RegExp(`\\b(${SECRET_NAME}=)("[^"]*"|'[^']*'|[^&\\s]+)`, 'gi'), '$1REDACTED'],
   [new RegExp(`("${SECRET_NAME}"\\s*:\\s*)"[^"]*"`, 'gi'), '$1"REDACTED"'],
+  // `Cookie: a=1; b=2`, every pair — before the header rule, whose value stops at the first `;`.
+  [/(\bcookie:\s*)[^;\s]+(?:;\s*[^;\s]+)*/gi, '$1REDACTED'],
+  // `-H "X-Shopify-Access-Token: …"`, `PRIVATE-TOKEN: …`, httpie's `Api-Key:…`.
   [
     new RegExp(
-      `(\\b(?:x-api-key|authorization):\\s*(?:(?:Bearer|Basic|Token|Digest|Negotiate)\\s+)?)${VALUE}`,
+      `(\\b${SECRET_NAME}:\\s*(?:(?:Bearer|Basic|Token|Digest|Negotiate)\\s+)?)${VALUE}`,
       'gi',
     ),
     '$1REDACTED',
   ],
-  // `Cookie: a=1; b=2`, every pair.
-  [/(\bcookie:\s*)[^;\s]+(?:;\s*[^;\s]+)*/gi, '$1REDACTED'],
+  [new RegExp(`(\\baws\\s+configure\\s+set\\s+${SECRET_NAME}[ \\t]+)${VALUE}`, 'gi'), '$1REDACTED'],
   // `user:pass@` and a token used as the user (`https://ghp_…@github.com`).
   [/(\w+:\/\/)[^/\s@]+@/g, '$1REDACTED@'],
   // Tokens that say what they are, wherever they stand.

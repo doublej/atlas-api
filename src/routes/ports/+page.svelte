@@ -13,7 +13,7 @@ import { StopFlow } from '$lib/processes/stop-flow.svelte'
 import { Selection } from '$lib/selection.svelte'
 import { TableSort } from '$lib/table-sort.svelte'
 import type { PageData } from './$types'
-import { MACOS_PORTS } from './known-ports'
+import { macosName } from './known-ports'
 import PortsTable, { type Section } from './PortsTable.svelte'
 
 /** The snapshot behind it is cached ~2s; a port list does not need more than this. */
@@ -48,7 +48,7 @@ const visible = $derived(
           String(l.port),
           l.project?.path ?? l.cwd ?? '',
           l.command,
-          MACOS_PORTS[l.port] ?? '',
+          macosName(l) ?? '',
         ].some((s) => s.toLowerCase().includes(q)),
       )
     : listeners,

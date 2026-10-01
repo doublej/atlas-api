@@ -18,7 +18,7 @@ import type { PortCollision } from '$lib/ports'
 import type { Selection } from '$lib/selection.svelte'
 import type { Column } from '$lib/table'
 import type { TableSort } from '$lib/table-sort.svelte'
-import { MACOS_PORTS } from './known-ports'
+import { macosName } from './known-ports'
 
 /** One card per owner group; rows are keyed by port, never pid — one pid can hold several. */
 interface Props {
@@ -56,9 +56,10 @@ const columns: Column<Listener>[] = [
 {/snippet}
 
 {#snippet nameCell(l: Listener)}
+  {@const known = macosName(l)}
   <span class="name">
-    <a href={processLink(l)} title="Its process on /processes">{MACOS_PORTS[l.port] ?? l.name}</a>
-    {#if MACOS_PORTS[l.port]}<span class="muted">{l.name}</span>{/if}
+    <a href={processLink(l)} title="Its process on /processes">{known ?? l.name}</a>
+    {#if known}<span class="muted">{l.name}</span>{/if}
     {#if l.project?.framework && l.project.framework !== 'unknown'}<Badge>{l.project.framework}</Badge>{/if}
     <span class="t-caption muted">{l.kind}</span>
   </span>

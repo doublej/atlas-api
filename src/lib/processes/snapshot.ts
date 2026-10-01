@@ -109,8 +109,9 @@ const sessionCache = new Map<string, string | null>()
 /**
  * `ps -E` appends each process's initial environment to its command. Only the session token
  * survives: each line is dropped once the regex ran, stderr is ignored, nothing is logged.
+ * `complete` is false when ps was killed or never ran: a pid it did not print may have a name.
  */
-function psSessions(pids: number[]): Promise<Map<number, string>> {
+function psSessions(pids: number[]): Promise<{ names: Map<number, string>; complete: boolean }> {
   const names = new Map<number, string>()
   const ps = spawn('/bin/ps', ['-Eww', '-o', 'pid=,command=', '-p', pids.join(',')], {
     env: ENV,
@@ -123,10 +124,10 @@ function psSessions(pids: number[]): Promise<Map<number, string>> {
     if (name) names.set(Number.parseInt(line, 10), name)
   })
   return new Promise((resolve) => {
-    ps.on('error', () => resolve(names))
-    ps.on('close', () => {
+    ps.on('error', () => resolve({ names, complete: false }))
+    ps.on('close', (_code, signal) => {
       clearTimeout(timer)
-      resolve(names)
+      resolve({ names, complete: !signal })
     })
   })
 }
@@ -139,8 +140,12 @@ function learnSessions(procs: Proc[]): Promise<void> {
   const fresh = procs.filter((p) => !sessionCache.has(sessionKey(p)))
   if (sessionRead || !fresh.length) return sessionRead ?? Promise.resolve()
   sessionRead = psSessions(fresh.map((p) => p.pid))
-    .then((found) => {
-      for (const p of fresh) sessionCache.set(sessionKey(p), found.get(p.pid) ?? null)
+    .then(({ names, complete }) => {
+      for (const p of fresh) {
+        const name = names.get(p.pid)
+        // Only a finished read may say "no session"; the rest is asked again next snapshot.
+        if (name || complete) sessionCache.set(sessionKey(p), name ?? null)
+      }
     })
     .finally(() => {
       sessionRead = null
@@ -186,16 +191,20 @@ const fileCache = new Map<string, OpenFiles>()
 
 /**
  * cwd and fd 1 of the candidates. lsof runs only for processes not seen before, so a poll costs
- * one ps instead of ps + lsof. ponytail: a shell that `cd`s later keeps its first cwd until it
- * exits — attribution, not a live pwd; re-read per poll if that ever matters.
+ * one ps instead of ps + lsof; one whose read failed is asked again next snapshot. ponytail: a
+ * shell that `cd`s later keeps its first cwd until it exits — attribution, not a live pwd;
+ * re-read per poll if that ever matters.
  */
 async function readFiles(procs: Proc[]): Promise<Map<number, OpenFiles>> {
   const fresh = procs.filter((p) => !fileCache.has(sessionKey(p)))
   if (fresh.length) {
-    const found = parseLsof(
-      await optional('/usr/sbin/lsof', [...LSOF_ARGS, fresh.map((p) => p.pid).join(',')]),
+    const pids = fresh.map((p) => p.pid).join(',')
+    // A timed-out or failed lsof caches nothing.
+    const found = await read('/usr/sbin/lsof', [...LSOF_ARGS, pids], true).then(
+      parseLsof,
+      () => null,
     )
-    for (const p of fresh) fileCache.set(sessionKey(p), found.get(p.pid) ?? {})
+    if (found) for (const p of fresh) fileCache.set(sessionKey(p), found.get(p.pid) ?? {})
   }
   const live = new Set(procs.map(sessionKey))
   for (const k of fileCache.keys()) if (!live.has(k)) fileCache.delete(k)
@@ -284,19 +293,25 @@ let inflight: Promise<Snapshot> | null = null
 /** The snapshot, at most ~2s old; `fresh` skips the cache but still joins a build in flight. */
 export function getSnapshot(fresh = false): Promise<Snapshot> {
   if (!fresh && current && Date.now() - current.at < TTL_MS) return Promise.resolve(current.snap)
-  inflight ??= build()
+  if (inflight) return inflight
+  const pending: Promise<Snapshot> = build()
     .then((snap) => {
-      current = { at: Date.now(), snap }
-      record(snap.rows)
+      // A build invalidateSnapshot() dropped saw processes that have since ended: never cache it.
+      if (inflight === pending) {
+        current = { at: Date.now(), snap }
+        record(snap.rows)
+      }
       return snap
     })
     .finally(() => {
-      inflight = null
+      if (inflight === pending) inflight = null
     })
-  return inflight
+  inflight = pending
+  return pending
 }
 
-/** After a stop: the next read must not show what just ended. */
+/** After a stop: the next read must not show what just ended, nor join a build that began before it. */
 export function invalidateSnapshot(): void {
   current = null
+  inflight = null
 }

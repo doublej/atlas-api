@@ -153,6 +153,15 @@ describe('project attribution', () => {
       via: 'group',
       project: { name: 'kunstuitleen-gallery' },
     }))
+  it("an agent session never takes its MCP servers' project", () => {
+    expect(rowOf(25030).project).toBeUndefined() // claude in ~/dev, deckhand-mcp in its group
+    expect(procOf(28684).project).toBeUndefined() // Consult User MCP
+    expect(procOf(28698)).toMatchObject({ via: 'args', project: { name: 'deckhand' } })
+    // An `onenv run -- claude` session: the agent is not its group's leader.
+    const mcp = { ...(FIXTURE.find((r) => r.pid === 28698) as PsRow), pid: 90006, ppid: 48367 }
+    const onenv = build([...FIXTURE, { ...mcp, pgid: 48223 }]).rows.find((r) => r.pgid === 48223)
+    expect(onenv?.project).toBeUndefined()
+  })
   it('picks the deepest project and not a sibling sharing a prefix', () => {
     const ps = [{ path: '/dev/a' }, { path: '/dev/a/app' }, { path: '/dev/ab' }] as Project[]
     expect(projectFor('/dev/a/app/src', ps)?.path).toBe('/dev/a/app')
