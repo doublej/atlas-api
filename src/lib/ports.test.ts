@@ -1,6 +1,28 @@
-import { describe, expect, it } from 'vitest'
-import { auditPorts, devFlags, parseListeners, parseNetstat, pickPort } from './ports'
+import { EventEmitter } from 'node:events'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  auditPorts,
+  devFlags,
+  discoverBoundPort,
+  parseListeners,
+  parseNetstat,
+  pickPort,
+} from './ports'
 import type { Project, ProjectAtlas } from './scanner'
+
+/** What the next `lsof -Fn` prints: discoverBoundPort reads its listeners through spawn. */
+const lsof = vi.hoisted(() => ({ out: '' }))
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
+  spawn: () => {
+    const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), kill() {} })
+    queueMicrotask(() => {
+      child.stdout.emit('data', lsof.out)
+      child.emit('close')
+    })
+    return child
+  },
+}))
 
 describe('parseListeners', () => {
   it('reads addresses and folds both stacks of one port together', () => {
@@ -92,5 +114,18 @@ describe('auditPorts', () => {
     expect(auditPorts(atlas).collisions.filter((c) => c.port === 4991)).toEqual([])
     atlas.projects.push(project('c', 'm2', true))
     expect(auditPorts(atlas).collisions.find((c) => c.port === 4991)?.sources).toHaveLength(2)
+  })
+})
+
+describe('discoverBoundPort', () => {
+  it("keeps waiting while wrangler's two loopback ports wait on a cold Vite", async () => {
+    vi.useFakeTimers()
+    lsof.out = 'n127.0.0.1:8787\nn127.0.0.1:9229\n'
+    const bound = discoverBoundPort(1, 5188, 60_000)
+    await vi.advanceTimersByTimeAsync(28_000)
+    lsof.out += 'n*:5188\n'
+    await vi.advanceTimersByTimeAsync(1_000)
+    vi.useRealTimers()
+    expect(await bound).toEqual({ port: 5188, lanReachable: true })
   })
 })

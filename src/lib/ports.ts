@@ -239,17 +239,21 @@ export async function discoverBoundPort(
 ): Promise<BoundPort | null> {
   const deadline = Date.now() + timeoutMs
   let fallback: BoundPort | null = null
-  let fallbackSince = 0
+  let alone = 0 // the group's only port, while it has exactly one
+  let aloneSince = 0
 
   while (Date.now() < deadline) {
-    const found = pickPort(await listeningPorts(pgid), preferred)
+    const ports = await listeningPorts(pgid)
+    const found = pickPort(ports, preferred)
     // A loopback-only hit this early is usually a side port (wrangler's inspector, a debugger),
     // so keep watching for a LAN-reachable one — but a loopback bind still alone after
-    // LOOPBACK_SETTLE_MS is the server itself, which the services bridge can route.
+    // LOOPBACK_SETTLE_MS is the server itself, which the services bridge can route. Several
+    // loopback ports (workerd + its inspector) may still be waiting on a frontend: no settling.
     if (found?.lanReachable) return found
-    if (found && !fallback) fallbackSince = Date.now()
     fallback = found ?? fallback
-    if (fallback && Date.now() - fallbackSince >= LOOPBACK_SETTLE_MS) return fallback
+    const only = ports.length === 1 ? ports[0].port : 0
+    if (only !== alone) [alone, aloneSince] = [only, Date.now()]
+    if (alone && Date.now() - aloneSince >= LOOPBACK_SETTLE_MS) return found
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
   }
 

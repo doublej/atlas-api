@@ -1,7 +1,8 @@
+import { type AddressInfo, createServer } from 'node:net'
 import { describe, expect, it } from 'vitest'
 import { getServices } from '$shared/services'
 import { renderSiteBlock } from './hostnames/nas'
-import { listenersOn, routedProjectPorts, routeMode } from './services'
+import { dialLoopback, listenersOn, routedProjectPorts, routeMode } from './services'
 
 describe('routeMode', () => {
   it('routes a wildcard bind directly', () => {
@@ -115,5 +116,18 @@ describe('routedProjectPorts', () => {
         atlas: { service: true, port: 47891, registeredAt: at },
       }),
     ).toEqual([4126])
+  })
+})
+
+describe('dialLoopback', () => {
+  it('reaches a dev server bound to [::1] only, the way Vite binds localhost', async () => {
+    const server = createServer((c) => c.end('ok'))
+    await new Promise<void>((resolve) => server.listen(0, '::1', resolve))
+    const reply = await new Promise<string>((resolve, reject) => {
+      const socket = dialLoopback((server.address() as AddressInfo).port)
+      socket.on('data', (d) => resolve(String(d)))
+      socket.on('error', reject)
+    }).finally(() => server.close())
+    expect(reply).toBe('ok')
   })
 })

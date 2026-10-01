@@ -61,7 +61,14 @@ export function listenersOn(sockets: Socket[], port: number, bridgeIp?: string):
 }
 
 /**
- * Forward `ip:port` → `127.0.0.1:port` for the NAS alone. Binding the specific LAN address
+ * The loopback bind on `port`, whichever family it took: `localhost` falls back across ::1 and
+ * 127.0.0.1 on every connect, so a Vite that bound `[::1]` only is reached as well — and a server
+ * that restarts on the other family needs no new bridge.
+ */
+export const dialLoopback = (port: number) => connect(port, 'localhost')
+
+/**
+ * Forward `ip:port` → `localhost:port` for the NAS alone. Binding the specific LAN address
  * leaves the service's own loopback bind untouched; every other peer is dropped on connect, so
  * the LAN gains no unauthenticated path to a loopback-only UI.
  */
@@ -71,7 +78,7 @@ function openBridge(ip: string, port: number): Promise<Server> {
       client.destroy()
       return
     }
-    const upstream = connect(port, '127.0.0.1')
+    const upstream = dialLoopback(port)
     const close = () => {
       client.destroy()
       upstream.destroy()
