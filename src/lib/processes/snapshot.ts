@@ -4,7 +4,7 @@
  * (cwd + stdout) over the development candidates. Cached ~2s with one shared in-flight build and
  * no timer: it runs only while someone asks, and so does the sparkline history it feeds.
  */
-import { execFile, spawn } from 'node:child_process'
+import { type ExecFileException, execFile, spawn } from 'node:child_process'
 import { existsSync, realpathSync, statSync } from 'node:fs'
 import { homedir, loadavg } from 'node:os'
 import { join } from 'node:path'
@@ -58,6 +58,12 @@ export interface Snapshot {
   hostnames: Awaited<ReturnType<typeof listHostnames>>
 }
 
+/** A command killed for running past `TIMEOUT_MS`, named with the load that explains it. */
+const timedOut = (cmd: string, error: ExecFileException) =>
+  error.killed
+    ? new Error(`${cmd} took over ${TIMEOUT_MS / 1000}s (load ${loadavg()[0].toFixed(0)})`)
+    : null
+
 /**
  * A command's stdout. `tolerant` keeps it on a plain non-zero exit (lsof and ps exit 1 when one
  * pid is gone, yet print the rest); a failure to run, a timeout or (without `tolerant`) any exit
@@ -68,12 +74,7 @@ function read(cmd: string, args: string[], tolerant = false, encoding: 'utf8' | 
     const opts = { env: ENV, encoding, timeout: TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024 }
     execFile(cmd, args, opts, (error, stdout) => {
       const exited = error && typeof error.code === 'number' && !error.killed
-      if (error && !(tolerant && exited))
-        reject(
-          error.killed
-            ? new Error(`${cmd} took over ${TIMEOUT_MS / 1000}s (load ${loadavg()[0].toFixed(0)})`)
-            : error,
-        )
+      if (error && !(tolerant && exited)) reject(timedOut(cmd, error) ?? error)
       else resolve(String(stdout))
     })
   })
