@@ -28,7 +28,9 @@ let { audit }: { audit: PageData['audit'] } = $props()
           <ul class="collisions">
             {#each audit.collisions as c (c.port)}
               <li>
-                <span class="mono num port">{c.port}</span>
+                <a class="mono num port" href="/ports?q={c.port}" title="Who listens on {c.port} now"
+                  >{c.port}</a
+                >
                 <div class="sources">
                   {#each c.sources as s (s.kind + s.label)}
                     <div class="t-caption">
@@ -116,6 +118,10 @@ let { audit }: { audit: PageData['audit'] } = $props()
     font-size: 15px;
     font-weight: 600;
     color: var(--color-neg);
+    text-decoration: none;
+  }
+  .port:hover {
+    text-decoration: underline;
   }
   .sources div {
     display: flex;
