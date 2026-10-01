@@ -221,6 +221,8 @@ function listeningPorts(pgid: number): Promise<BoundPort[]> {
   })
 }
 
+const LOOPBACK_SETTLE_MS = 10_000
+
 /**
  * Watch what a freshly spawned dev server actually binds, because atlas doesn't get to decide:
  * `--port` reaches a single-process script and nothing else. `spawn(…, { detached: true })`
@@ -235,13 +237,17 @@ export async function discoverBoundPort(
 ): Promise<BoundPort | null> {
   const deadline = Date.now() + timeoutMs
   let fallback: BoundPort | null = null
+  let fallbackSince = 0
 
   while (Date.now() < deadline) {
     const found = pickPort(await listeningPorts(pgid), preferred)
     // A loopback-only hit this early is usually a side port (wrangler's inspector, a debugger),
-    // so keep watching for a LAN-reachable one and only settle for it once time runs out.
+    // so keep watching for a LAN-reachable one — but a loopback bind still alone after
+    // LOOPBACK_SETTLE_MS is the server itself, which the services bridge can route.
     if (found?.lanReachable) return found
+    if (found && !fallback) fallbackSince = Date.now()
     fallback = found ?? fallback
+    if (fallback && Date.now() - fallbackSince >= LOOPBACK_SETTLE_MS) return fallback
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
   }
 
