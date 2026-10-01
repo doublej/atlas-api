@@ -5,7 +5,7 @@
  * `atlas disk job` child writing to `<ATLAS_DISK_HOME>/jobs/<id>.log`, which the page polls.
  * Nothing is passed through a shell, and every argument is checked against the allowlist below.
  */
-import { execFile, spawn } from 'node:child_process'
+import { execFile, spawn, spawnSync } from 'node:child_process'
 import {
   closeSync,
   existsSync,
@@ -53,8 +53,11 @@ export interface DiskResult {
 
 // ── argument allowlist ────────────────────────────────────────────────────────────────────────
 
-/** `<category>/<project>` or a version id `<category>/<project>@<YYYYMMDD-HHMMSS>`. */
-export const ID = /^[\w.-]+\/[\w. -]+(@[\d-]+)?$/
+/**
+ * `<category>/<project>` or a version id `<category>/<project>@<YYYYMMDD-HHMMSS>`. Neither
+ * segment may be `.` or `..`: `../Documents` would archive, and then delete, a folder outside ~/dev.
+ */
+export const ID = /^(?!\.\.?\/)[\w.-]+\/(?!\.\.?(@|$))[\w. -]+(@[\d-]+)?$/
 const OP_ID = /^\d{8}-\d{6}-[0-9a-f]{6}$/
 const NUM = /^\d{1,6}$/
 const ABS = /^\/[^\0]*$/
@@ -235,13 +238,21 @@ export interface JobState extends JobMeta {
 const JOB_ID = /^\d+-[a-z]+$/
 const logOf = (id: string) => join(jobsDir(), `${id}.log`)
 
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'EPERM'
-  }
+/**
+ * The job's wrapper still runs: its pid exists and started when the job did. A bare pid is not
+ * enough — a wrapper killed without writing `.exit` leaves its pid free for reuse, and Cancel
+ * would then SIGINT whatever group holds it now.
+ */
+function alive(meta: JobMeta): boolean {
+  if (meta.pgid <= 0) return false
+  // ps prints `lstart` with Dutch day names under nl_NL; it exits 1 when the pid is gone
+  const ps = spawnSync('/bin/ps', ['-o', 'lstart=', '-p', String(meta.pgid)], {
+    encoding: 'utf8',
+    env: { LC_ALL: 'C' },
+  })
+  if (ps.status !== 0) return false
+  // lstart has 1s resolution and comes just before startedAt is recorded
+  return Math.abs(new Date(ps.stdout.trim()).getTime() - Date.parse(meta.startedAt)) < 3_000
 }
 
 /** Start `atlas disk <args>` as a job in its own process group. It outlives an atlas-api restart. */
@@ -275,7 +286,7 @@ function jobMeta(id: string): JobMeta {
 function jobState(meta: JobMeta): JobState {
   const exitFile = `${logOf(meta.id)}.exit`
   const exit = existsSync(exitFile) ? Number(readFileSync(exitFile, 'utf8')) : null
-  return { ...meta, exit, done: exit !== null || !alive(meta.pgid) }
+  return { ...meta, exit, done: exit !== null || !alive(meta) }
 }
 
 /**

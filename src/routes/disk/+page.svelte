@@ -75,7 +75,7 @@ const active = $derived<Tab>(
   (tabs.find((t) => t.id === page.url.searchParams.get('tab'))?.id ?? 'projects') as Tab,
 )
 
-// A reload picks a running job back up; the CLI's lock means there is at most one.
+// A reload picks the newest running job back up (runJob starts no second one while it runs).
 onMount(async () => {
   if (job.current) return
   try {

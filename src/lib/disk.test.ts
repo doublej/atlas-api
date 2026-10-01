@@ -1,5 +1,9 @@
+import { spawn } from 'node:child_process'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { checkArgs, ID, isQuickWrite, isRead, withConfirmed } from './disk'
+import { checkArgs, ID, isQuickWrite, isRead, readJob, withConfirmed } from './disk'
 
 const status = (fn: () => void) => {
   try {
@@ -44,6 +48,33 @@ describe('checkArgs', () => {
     expect(ID.test('web')).toBe(false)
     expect(ID.test('../etc/passwd')).toBe(false)
     expect(ID.test('web/app;rm')).toBe(false)
+    for (const dots of ['../Public', './x', 'web/..', 'web/.', '../..', 'web/..@1'])
+      expect(ID.test(dots), dots).toBe(false)
+    expect(ID.test('web/.foo')).toBe(true)
+  })
+})
+
+describe('jobs', () => {
+  it('a job whose pid now belongs to another process reads as done', () => {
+    const home = mkdtempSync(join(tmpdir(), 'atlas-disk-jobs-'))
+    process.env.ATLAS_DISK_HOME = home
+    mkdirSync(join(home, 'jobs'))
+    const sleeper = spawn('/bin/sleep', ['30'])
+    const write = (id: string, pgid: number, startedAt: string) =>
+      writeFileSync(
+        join(home, 'jobs', `${id}.json`),
+        JSON.stringify({ id, args: [], pgid, startedAt }),
+      )
+    try {
+      write('1-archive', sleeper.pid ?? 0, new Date().toISOString())
+      write('2-archive', process.pid, '2000-01-01T00:00:00.000Z') // a reused pid
+      expect(readJob('1-archive', 0).done).toBe(false)
+      expect(readJob('2-archive', 0).done).toBe(true)
+    } finally {
+      sleeper.kill()
+      delete process.env.ATLAS_DISK_HOME
+      rmSync(home, { recursive: true, force: true })
+    }
   })
 })
 

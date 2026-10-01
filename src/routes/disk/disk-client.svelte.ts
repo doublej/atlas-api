@@ -14,7 +14,7 @@ export async function readDisk(cmd: string, ...args: string[]): Promise<DiskResu
   return body
 }
 
-/** The one job the panel follows. The CLI's lock refuses a second one (exit 4), which the panel shows. */
+/** The one job the panel follows; runJob starts no second one while it runs. */
 export const job = $state<{
   current: JobState | null
   text: string
@@ -28,12 +28,20 @@ export const job = $state<{
   finished: 0,
 })
 
-export async function runJob(command: string, args: string[]): Promise<void> {
+/** True once the job started; a caller clears its inputs only then. */
+export async function runJob(command: string, args: string[]): Promise<boolean> {
+  // Following a second job would hide the running one, its log and its Cancel button.
+  if (job.current && !job.current.done) {
+    toast(`atlas disk ${job.current.args[0]} is still running`, 'error')
+    return false
+  }
   try {
     const meta = await http.post<JobState>('/api/disk/jobs', { command, args })
     follow({ ...meta, done: false, exit: null })
+    return true
   } catch (e) {
     toast(`atlas disk ${command} did not start: ${errorMessage(e)}`, 'error')
+    return false
   }
 }
 
@@ -52,9 +60,13 @@ export async function poll(): Promise<boolean> {
     s = await http.get(`/api/disk/jobs/${id}?offset=${job.offset}`)
   } catch (e) {
     // A 5xx (the NAS proxy mid-reload, a daemon restart) is passing; only a 4xx ends the watch.
-    if (e instanceof HttpError) return e.status >= 500
-    throw e
+    if (!(e instanceof HttpError)) throw e
+    if (e.status >= 500) return true
+    // The job is gone: end it here too, or runJob would refuse every new job until a reload.
+    if (job.current?.id === id) job.current = { ...job.current, done: true }
+    return false
   }
+  if (job.current?.id !== id) return false // another job was followed meanwhile
   job.text += s.text
   job.offset = s.offset
   job.current = s

@@ -89,10 +89,17 @@ const columns: Column<Operation>[] = [
   </div>
   <div class="bar t-small">
     <input class="grow" placeholder="Add a note…" bind:value={note} />
-    <Button disabled={!note.trim()} onclick={() => (runJob('log', ['note', '--', note.trim()]), (note = ''))}>Note</Button>
+    <Button disabled={!note.trim()} onclick={async () => {
+        if (await runJob('log', ['note', '--', note.trim()])) note = ''
+      }}>Note</Button>
     <input class="mono grow" placeholder="/path/you/chose/to/keep" bind:value={skipPath} />
     <input class="grow" placeholder="why" bind:value={skipReason} />
-    <Button disabled={!skipPath.startsWith('/') || !skipReason.trim()} onclick={() => (runJob('log', ['skip', skipPath.trim(), '--reason', skipReason.trim()]), (skipPath = ''), (skipReason = ''))}>Record skip</Button>
+    <Button disabled={!skipPath.startsWith('/') || !skipReason.trim()} onclick={async () => {
+        if (await runJob('log', ['skip', skipPath.trim(), '--reason', skipReason.trim()])) {
+          skipPath = ''
+          skipReason = ''
+        }
+      }}>Record skip</Button>
   </div>
   <PageState
     loading={!loaded && !error}
