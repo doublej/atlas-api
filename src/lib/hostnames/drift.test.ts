@@ -1,7 +1,18 @@
-import { describe, expect, it } from 'vitest'
+import { spawn } from 'node:child_process'
+import { describe, expect, it, vi } from 'vitest'
 import { type DriftInput, findDrift, inRange } from './drift'
-import { parseNas } from './nas'
+import { parseNas, pushToNas, removeFromNas } from './nas'
 import type { HostnameEntry } from './registry'
+
+// Nothing here may reach the NAS, whatever the code under test does.
+vi.mock('node:child_process', () => ({
+  spawn: vi.fn(() => {
+    throw new Error('no ssh in tests')
+  }),
+}))
+
+/** The orphan file name from the security review: it would close the quote in `rm -f '…'`. */
+const INJECTED = "x';touch /tmp/pwned;'"
 
 const DEV = '/Users/u/dev'
 const row = (over: Partial<HostnameEntry> = {}): HostnameEntry => ({
@@ -93,6 +104,18 @@ describe('findDrift', () => {
     })
   })
 
+  it('only reports a NAS file whose name is no slug, never offers to remove it', () => {
+    const file = `${INJECTED}-atlas.caddy`
+    const [injected] = parseNas(`@@FILE ${file}\n`).sites
+    const nas = { sites: [wildcard, site('web-a'), injected], adminRanges: [] }
+    expect(findDrift(input({ nas })).find((d) => d.id === `orphan-site-file:${file}`)).toEqual({
+      id: `orphan-site-file:${file}`,
+      kind: 'orphan-site-file',
+      detail: 'legacy NAS file — ask JJ',
+      fix: null,
+    })
+  })
+
   it('flags a NAS file on another port, a missing remote half and a missing file', () => {
     const rows = {
       'web-a': row(),
@@ -153,6 +176,14 @@ describe('inRange', () => {
     expect(inRange('203.0.113.8', '203.0.113.7')).toBe(false)
     expect(inRange('192.168.1.99', '192.168.1.0/24')).toBe(true)
     expect(inRange('192.168.2.1', '192.168.1.0/24')).toBe(false)
+  })
+})
+
+describe('NAS writes', () => {
+  it('refuse a slug that is no DNS label before any ssh', () => {
+    expect(() => removeFromNas(INJECTED)).toThrow(/slug may only hold/)
+    expect(() => pushToNas(INJECTED, '')).toThrow(/slug may only hold/)
+    expect(spawn).not.toHaveBeenCalled()
   })
 })
 
