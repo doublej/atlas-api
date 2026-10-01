@@ -2,6 +2,7 @@
 import '$lib/styles/tokens.css'
 import { onMount } from 'svelte'
 import favicon from '$lib/assets/favicon.svg'
+import Toaster from '$lib/components/feedback/Toaster.svelte'
 import Nav from '$lib/components/Nav.svelte'
 import { initTheme } from '$lib/theme.svelte'
 
@@ -22,3 +23,4 @@ onMount(initTheme)
 
 <Nav />
 {@render children()}
+<Toaster />

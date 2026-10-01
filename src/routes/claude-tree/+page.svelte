@@ -14,7 +14,10 @@ import '@xyflow/svelte/dist/style.css'
 import type { Reference, SearchHit, SearchMatch, TreeNode } from '$lib/claude-tree'
 import { type AgentEngine, getAction } from '$lib/claude-tree-actions'
 import { type Entity, replaceLines } from '$lib/claude-tree-entities'
+import { errorMessage } from '$lib/format'
+import { http } from '$lib/http'
 import { theme } from '$lib/theme.svelte'
+import { toast } from '$lib/toast.svelte'
 import { CARD_W, cardHeight, layoutTree } from '$lib/tree-layout'
 import AgentResultPanel from './AgentResultPanel.svelte'
 import CmEditor from './CmEditor.svelte'
@@ -74,10 +77,8 @@ const editingLabel = $derived(
   current ? (activeName ? `${activeName} · ${current.label}` : current.label) : '',
 )
 
-// Right-click context menu + copy feedback
+// Right-click context menu
 let menu = $state<{ x: number; y: number; node: TreeNode } | null>(null)
-let toast = $state('')
-let toastTimer: ReturnType<typeof setTimeout>
 
 // Find: a scope toggle (Tree = server-side over every file, File = client-side
 // over the live editor content) feeding a snippet list that jumps to the line.
@@ -214,7 +215,7 @@ $effect(() => {
 async function runTreeSearch(q: string) {
   const url = `/api/claude-tree?search=${encodeURIComponent(q)}${root ? `&root=${encodeURIComponent(root)}` : ''}`
   try {
-    treeHits = await api<SearchHit[]>(url)
+    treeHits = await http.get<SearchHit[]>(url)
     findError = null
   } catch (e) {
     treeHits = []
@@ -224,19 +225,12 @@ async function runTreeSearch(q: string) {
   }
 }
 
-async function api<T>(url: string, opts?: RequestInit): Promise<T> {
-  const r = await fetch(url, opts)
-  const data = await r.json().catch(() => ({}))
-  if (!r.ok) throw new Error((data as { error?: string }).error ?? r.statusText)
-  return data as T
-}
-
 async function loadTree() {
   loading = true
   error = null
   try {
     const q = root ? `?root=${encodeURIComponent(root)}` : ''
-    tree = await api<TreeNode[]>(`/api/claude-tree${q}`)
+    tree = await http.get<TreeNode[]>(`/api/claude-tree${q}`)
     byId = new Map(tree.map((t) => [t.id, t]))
     collapsed.clear() // a fresh tree reuses node ids — drop stale collapse state
     rebuild()
@@ -423,14 +417,8 @@ function openMenu(event: MouseEvent, nodeId: string) {
   menu = { x: Math.min(event.clientX, window.innerWidth - 220), y: event.clientY, node }
 }
 
-function showToast(msg: string) {
-  toast = msg
-  clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (toast = ''), 1800)
-}
-
 async function fetchContent(node: TreeNode): Promise<string> {
-  const r = await api<{ content: string; sha: string }>(
+  const r = await http.get<{ content: string; sha: string }>(
     `/api/claude-tree?path=${encodeURIComponent(node.path)}`,
   )
   return r.content
@@ -451,9 +439,9 @@ async function copyText(text: string, label: string) {
   menu = null
   try {
     await navigator.clipboard.writeText(text)
-    showToast(label)
+    toast(label)
   } catch (e) {
-    showToast(`copy failed: ${(e as Error).message}`)
+    toast(`copy failed: ${errorMessage(e)}`, 'error')
   }
 }
 
@@ -505,7 +493,7 @@ async function openFile(node: TreeNode, path: string, skipGuard = false) {
   status = 'loading…'
   snapshot = ''
   try {
-    const r = await api<{ content: string; sha: string }>(
+    const r = await http.get<{ content: string; sha: string }>(
       `/api/claude-tree?path=${encodeURIComponent(path)}`,
     )
     content = r.content
@@ -526,15 +514,11 @@ async function selectNode(id: string, skipGuard = false) {
 
 async function loadHistory() {
   if (!current) return
-  history = await api(`/api/claude-tree?history=${encodeURIComponent(activePath)}`)
+  history = await http.get(`/api/claude-tree?history=${encodeURIComponent(activePath)}`)
 }
 
 async function postOp<T = { ok: boolean; sha: string }>(body: Record<string, unknown>): Promise<T> {
-  return api<T>('/api/claude-tree', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  return http.post<T>('/api/claude-tree', body)
 }
 
 async function save() {
@@ -582,7 +566,7 @@ async function syncToAgents() {
     })
     patchAgents(r.path)
     if (current && activePath === r.path) await openFile(current, r.path, true)
-    showToast('Synced CLAUDE.md → AGENTS.md')
+    toast('Synced CLAUDE.md → AGENTS.md')
   } catch (e) {
     status = `sync failed: ${(e as Error).message}`
   }
@@ -604,7 +588,7 @@ async function previewSnapshot() {
     await openFile(current, activePath, true)
     return
   }
-  const r = await api<{ content: string }>(
+  const r = await http.get<{ content: string }>(
     `/api/claude-tree?snapshot=${encodeURIComponent(activePath)}&n=${snapshot}`,
   )
   content = r.content
@@ -722,23 +706,19 @@ async function runEntityAction(p: { actionId: string; locked: boolean; question?
     entityMenu = null
   }
   try {
-    const res = await api<AgentResult>('/api/claude-tree/agent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        path: activePath,
-        content,
-        engine: agentEngine,
-        actionId: p.actionId,
-        locked: p.locked,
-        question: p.question,
-        entity: {
-          text: entity.text,
-          startLine: entity.startLine,
-          endLine: entity.endLine,
-          kind: entity.kind,
-        },
-      }),
+    const res = await http.post<AgentResult>('/api/claude-tree/agent', {
+      path: activePath,
+      content,
+      engine: agentEngine,
+      actionId: p.actionId,
+      locked: p.locked,
+      question: p.question,
+      entity: {
+        text: entity.text,
+        startLine: entity.startLine,
+        endLine: entity.endLine,
+        kind: entity.kind,
+      },
     })
     if (res.kind === 'answer')
       agentPanel = { title: label, busy: false, text: res.text, error: null }
@@ -746,7 +726,7 @@ async function runEntityAction(p: { actionId: string; locked: boolean; question?
   } catch (e) {
     const msg = (e as Error).message
     if (action.mode === 'answer') agentPanel = { title: label, busy: false, text: '', error: msg }
-    else showToast(`Agent failed: ${msg}`)
+    else toast(`Agent failed: ${msg}`, 'error')
     status = `agent failed: ${msg}`
   } finally {
     agentBusy = false
@@ -759,7 +739,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
   dirty = true
   status = `${label} via ${res.engine} · unsaved`
   entityMenu = null
-  showToast(`${label} applied — review & Save`)
+  toast(`${label} applied — review & Save`)
 }
 </script>
 
@@ -1016,9 +996,6 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 	/>
 {/if}
 
-{#if toast}
-	<div class="toast">{toast}</div>
-{/if}
 
 <style>
 	/* Local names mapped onto the global design tokens — the theme flips via
@@ -1317,7 +1294,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 	}
 
 	/* right-click context menu */
-	/* ctxmenu + toast render outside .page, so they read the GLOBAL design tokens
+	/* ctxmenu renders outside .page, so it reads the GLOBAL design tokens
 	   directly (the page-local --aliases don't cascade out here). */
 	.ctxmenu {
 		position: fixed;
@@ -1356,19 +1333,6 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		height: 1px;
 		margin: 4px 2px;
 		background: var(--color-border-soft);
-	}
-	.toast {
-		position: fixed;
-		bottom: 1.1rem;
-		right: 1.1rem;
-		z-index: 1001;
-		background: var(--color-bg-elev);
-		border: var(--hairline) solid var(--color-border);
-		color: var(--color-fg);
-		padding: 0.55rem 0.85rem;
-		border-radius: var(--radius-md);
-		font: 500 0.78rem var(--font-sans);
-		box-shadow: var(--shadow-lg);
 	}
 
 	/* find panel — overlays the top-left of the graph pane */
