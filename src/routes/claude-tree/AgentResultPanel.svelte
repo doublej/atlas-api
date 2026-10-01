@@ -1,5 +1,7 @@
 <script lang="ts">
 import type { AgentEngine } from '$lib/claude-tree-actions'
+import Notice from '$lib/components/feedback/Notice.svelte'
+import { copyText } from './clipboard'
 
 let {
   title,
@@ -16,14 +18,6 @@ let {
   error?: string | null
   onClose: () => void
 } = $props()
-
-let copied = $state(false)
-
-async function copy() {
-  await navigator.clipboard.writeText(text)
-  copied = true
-  setTimeout(() => (copied = false), 1400)
-}
 </script>
 
 <aside class="agent-panel" aria-label="Agent answer">
@@ -31,7 +25,7 @@ async function copy() {
 		<span class="ap-engine">{engine}</span>
 		<span class="ap-title">{title}</span>
 		{#if text && !busy}
-			<button class="ap-btn" onclick={copy}>{copied ? 'copied' : 'copy'}</button>
+			<button class="ap-btn" onclick={() => copyText(text, 'Copied the answer')}>copy</button>
 		{/if}
 		<button class="ap-btn" title="Close" aria-label="Close" onclick={onClose}>✕</button>
 	</header>
@@ -39,7 +33,7 @@ async function copy() {
 		{#if busy}
 			<div class="ap-busy">Asking {engine}…</div>
 		{:else if error}
-			<div class="ap-err">{error}</div>
+			<Notice tone="error">{error}</Notice>
 		{:else}
 			<pre class="ap-text">{text}</pre>
 		{/if}
@@ -115,9 +109,5 @@ async function copy() {
 	.ap-busy {
 		font: 500 0.78rem var(--font-mono);
 		color: var(--color-accent);
-	}
-	.ap-err {
-		font-size: 0.8rem;
-		color: var(--color-neg);
 	}
 </style>
