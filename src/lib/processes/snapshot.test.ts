@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { listenersOf } from '../listeners'
 import type { Project } from '../scanner'
+import { topBy } from './flags'
 import { buildRows, classifyRows } from './groups'
 import { type PsRow, parseLaunchctl, parseLsof, parsePs, parseSysctl, redact } from './parse'
 import type { Snapshot } from './snapshot'
@@ -23,6 +24,11 @@ describe('redact', () => {
       'env OPENAI_API_KEY=sk-1 DB_PASSWORD=p MY_SECRET=s node x',
       'OPENAI_API_KEY=REDACTED DB_PASSWORD=REDACTED MY_SECRET=REDACTED',
     ],
+    ['git fetch https://ghp_abc@github.com/x.git', 'https://REDACTED@github.com/x.git'],
+    ['curl https://x/cb?a=1&access_token=abc&b=2', 'access_token=REDACTED&b=2'],
+    ['env github_token=abc x', 'github_token=REDACTED x'],
+    ['curl -H x-api-key: abc https://x', 'x-api-key: REDACTED https://x'],
+    ['curl -H Authorization: token abc https://x', 'Authorization: token REDACTED https'],
   ])('%s', (command, expected) => expect(redact(command)).toContain(expected))
 
   it('leaves an ordinary command alone', () => {
@@ -81,6 +87,8 @@ const ROWS = [
   leaky(90101, `ssh ubuntu DECKHAND_TOKEN=${TOKEN} exec uv run deckhand`),
   leaky(90102, `node /tmp/mcp-remote https://mcp.example --header Authorization: Bearer ${TOKEN}`),
   leaky(90103, `bun /tmp/srv.ts --token=${TOKEN} --db https://jj:${TOKEN}@db.example`),
+  // A runtime that retitled itself: its whole argv becomes the name.
+  { ...leaky(90104, `my-worker --token ${TOKEN}`), exe: 'node' },
 ]
 
 function snapshotOf(rows: PsRow[]): Snapshot {
@@ -97,7 +105,7 @@ function snapshotOf(rows: PsRow[]): Snapshot {
     logDir: '/nowhere',
     hostnames: new Map(),
   })
-  const sockets = [90101, 90102, 90103].map((pid, i) => ({
+  const sockets = [90101, 90102, 90103, 90104].map((pid, i) => ({
     port: 4997 + i,
     pid,
     address: '*',
@@ -106,7 +114,10 @@ function snapshotOf(rows: PsRow[]): Snapshot {
   return {
     generatedAt: new Date().toISOString(),
     self: { pid: 977, pgid: 977 },
-    system: {} as Snapshot['system'],
+    system: {
+      topByRss: topBy(appRows, 'rss'),
+      topByCpu: topBy(appRows, 'cpu'),
+    } as Snapshot['system'],
     rows: appRows,
     processes,
     byPid: new Map(processes.map((p) => [p.pid, p])),
@@ -128,12 +139,13 @@ describe('nothing secret leaves the server', () => {
   it('GET /api/processes never carries the token', () => {
     const view = JSON.stringify(viewOf(snap, all))
     expect(view).toContain('DECKHAND_TOKEN=REDACTED')
+    expect(view).toContain('"name":"my-worker --token REDACTED"')
     expect(view).not.toContain(TOKEN)
   })
 
   it('GET /api/ports/listeners never carries the token', () => {
     const listeners = listenersOf(snap, [])
-    expect(listeners.map((l) => l.pid)).toEqual([90101, 90102, 90103])
+    expect(listeners.map((l) => l.pid)).toEqual([90101, 90102, 90103, 90104])
     expect(JSON.stringify(listeners)).not.toContain(TOKEN)
   })
 })

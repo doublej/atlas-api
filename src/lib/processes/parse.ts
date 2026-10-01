@@ -72,11 +72,20 @@ const SECRETS: [RegExp, string][] = [
     ),
     '$1REDACTED',
   ],
+  // `DECKHAND_TOKEN=`, `github_token=`, `?access_token=…&` — a query value ends at `&`.
   [
-    new RegExp(`\\b([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY)=)${VALUE}`, 'g'),
+    /\b([\w-]*(?:token|secret|password|passwd|api[-_]?key)=)("[^"]*"|'[^']*'|[^&\s]+)/gi,
     '$1REDACTED',
   ],
-  [/(\w+:\/\/)[^/\s:@]+:[^/\s@]+@/g, '$1REDACTED@'],
+  [
+    new RegExp(
+      `(\\b(?:x-api-key|authorization):\\s*(?:(?:Bearer|Basic|Token|Digest|Negotiate)\\s+)?)${VALUE}`,
+      'gi',
+    ),
+    '$1REDACTED',
+  ],
+  // `user:pass@` and a token used as the user (`https://ghp_…@github.com`).
+  [/(\w+:\/\/)[^/\s@]+@/g, '$1REDACTED@'],
 ]
 
 /** A command line with every credential value replaced. Runs before anything leaves the server. */

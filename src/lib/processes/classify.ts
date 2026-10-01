@@ -3,7 +3,7 @@
  * runs. Pure and table-driven; classified afresh every snapshot (`cargo run` execs in place, so
  * a pid's kind can change under the same start time).
  */
-import type { PsRow } from './parse'
+import { type PsRow, redact } from './parse'
 import { type Family, runtimeOf, type Shape, shapeOf } from './shape'
 import type { ProcessKind } from './types'
 
@@ -196,7 +196,8 @@ export function classify(
   return {
     kind: kindOf(role, familyOf(s)),
     role,
-    name: nameOf(s, role, tool),
-    ...(tool ? { tool } : {}),
+    // A runtime can retitle itself to anything, its argv included: a name leaves the server too.
+    name: redact(nameOf(s, role, tool)),
+    ...(tool ? { tool: redact(tool) } : {}),
   }
 }
