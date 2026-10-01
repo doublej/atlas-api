@@ -45,9 +45,16 @@ function refuseForeign(headers: Headers, self: string): string | null {
   return null
 }
 
-/** An open read: a link from anywhere may open it, another site's script or `<img>` may not. */
+/**
+ * An open read: a link from anywhere may open it, another site's script, `<img>` or frame may not.
+ * A frame load is a navigation too, with `Sec-Fetch-Dest: iframe` — framed, the console's own
+ * same-origin writes could be clickjacked. A missing `Sec-Fetch-Dest` is a non-browser client.
+ */
 const refuseOpenRead = (headers: Headers, self: string) =>
-  headers.get('sec-fetch-mode') === 'navigate' ? null : refuseForeign(headers, self)
+  headers.get('sec-fetch-mode') === 'navigate' &&
+  (headers.get('sec-fetch-dest') ?? 'document') === 'document'
+    ? null
+    : refuseForeign(headers, self)
 
 /** Through the NAS (`forwarded` is a known hostname): for a write that hostname's own `Origin`. */
 function refuseProxied(headers: Headers, forwarded: string, write: boolean): string | null {

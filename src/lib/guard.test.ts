@@ -170,6 +170,18 @@ const refused: [...Case, reason: RegExp][] = [
     /Sec-Fetch-Site: cross-site/,
   ],
   [
+    'another site frames a page (clickjacking)',
+    'GET',
+    '/processes',
+    {
+      host: 'localhost:47891',
+      'sec-fetch-site': 'cross-site',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-dest': 'iframe',
+    },
+    /Sec-Fetch-Site: cross-site/,
+  ],
+  [
     "another site's script reads a page's data",
     'GET',
     '/processes',

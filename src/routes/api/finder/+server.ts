@@ -1,4 +1,4 @@
-import { exec } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { json } from '@sveltejs/kit'
 import { resolveLocal } from '$lib/config'
 import type { RequestHandler } from './$types'
@@ -10,12 +10,14 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: 'Missing path' }, { status: 400 })
   }
 
-  if (!resolveLocal(path)) {
+  const resolved = resolveLocal(path)
+  if (!resolved) {
     return json({ error: "path is not in this machine's catalog" }, { status: 400 })
   }
 
+  // No shell: `$(…)` or a `"` in a folder name is just part of the path.
   return new Promise((resolve) => {
-    exec(`open "${path}"`, (error) => {
+    execFile('open', [resolved], (error) => {
       if (error) {
         resolve(json({ error: error.message }, { status: 500 }))
       } else {

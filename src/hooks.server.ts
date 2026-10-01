@@ -17,11 +17,18 @@ export const init: ServerInit = () => {
   setInterval(sync, SERVICE_SYNC_MS).unref()
 }
 
-/** One guard for every route (see `$lib/guard`). A load's own `fetch` was let in with its page. */
-export const handle: Handle = ({ event, resolve }) => {
+/**
+ * One guard for every route (see `$lib/guard`). A load's own `fetch` was let in with its page.
+ * Nothing may frame the console: its same-origin writes would be one clickjacked click away.
+ */
+export const handle: Handle = async ({ event, resolve }) => {
   if (event.isSubRequest) return resolve(event)
   const { method, headers } = event.request
   const { pathname, searchParams } = event.url
   const reason = refusal(method, event.route.id ?? pathname, headers, searchParams)
-  return reason ? json({ error: reason }, { status: 403 }) : resolve(event)
+  if (reason) return json({ error: reason }, { status: 403 })
+  const response = await resolve(event)
+  response.headers.set('Content-Security-Policy', "frame-ancestors 'none'")
+  response.headers.set('X-Frame-Options', 'DENY')
+  return response
 }
