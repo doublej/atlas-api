@@ -158,7 +158,12 @@ async function parseTemplate(
     content = JSON.parse(await readFile(ccPath, 'utf-8')) as Record<string, unknown>
   } catch (err) {
     return {
-      error: { path: ccPath, family, name, message: err instanceof Error ? err.message : String(err) },
+      error: {
+        path: ccPath,
+        family,
+        name,
+        message: err instanceof Error ? err.message : String(err),
+      },
     }
   }
   const variables = extractVariables(content)

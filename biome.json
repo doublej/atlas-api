@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/.mcp.json", "!**/.template-meta.json", "!src/app.html"]
+    "includes": ["**", "!**/.mcp.json", "!**/.template-meta.json", "!src/app.html", "!.claude"]
   },
   "assist": {
     "actions": {

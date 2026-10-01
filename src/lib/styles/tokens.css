@@ -337,8 +337,10 @@ pre,
   *,
   *::before,
   *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: reduced motion must beat component rules */
     /* stylelint-disable-next-line declaration-no-important */
     animation-duration: 0.001ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced motion must beat component rules */
     /* stylelint-disable-next-line declaration-no-important */
     transition-duration: 0.001ms !important;
   }

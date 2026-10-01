@@ -91,7 +91,7 @@ function coordinationBlock(commonDir: string, root: string): Record<string, unkn
   try {
     const db = new Database(join(commonDir, 'agent-log.sqlite'), { readonly: true })
     try {
-rows = db
+      rows = db
         .query(
           `SELECT s.id AS session_id, s.actor, s.parent_id, s.started_at, s.closed_at,
             l.scope, l.task_id, l.generation, l.expires_ms, l.worktree,
@@ -101,7 +101,7 @@ rows = db
           LEFT JOIN tasks t ON t.id = l.task_id AND t.session_id = s.id
           WHERE s.closed_at IS NULL
           ORDER BY s.started_at
-          LIMIT 20`
+          LIMIT 20`,
         )
         .all({ $now: Date.now() }) as CoordinationRow[]
     } finally {

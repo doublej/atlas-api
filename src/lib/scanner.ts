@@ -1341,9 +1341,13 @@ export async function setArchived(projectPath: string, archived: boolean): Promi
  * The slug `.atlas` says right now, not the one the cache scanned. A slug edited since the
  * last scan would otherwise register the folder-derived hostname and spend two certificates.
  */
-export async function currentSlug(project: Pick<Project, 'path' | 'relativePath'>): Promise<string> {
+export async function currentSlug(
+  project: Pick<Project, 'path' | 'relativePath'>,
+): Promise<string> {
   const meta = await readAtlas(project.path)
-  return typeof meta.slug === 'string' && meta.slug ? slugify(meta.slug) : slugify(project.relativePath)
+  return typeof meta.slug === 'string' && meta.slug
+    ? slugify(meta.slug)
+    : slugify(project.relativePath)
 }
 
 export async function setPort(projectPath: string, port: number): Promise<void> {

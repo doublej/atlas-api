@@ -44,7 +44,7 @@ export async function fetchReadme(path: string): Promise<string | null> {
 export function loadGitStatuses(
   paths: string[],
   onBatch: (results: GitResult[]) => void,
-): Promise<void[]> {
+): Promise<unknown> {
   const batches: Promise<void>[] = []
   for (let i = 0; i < paths.length; i += GIT_BATCH_SIZE) {
     const slice = paths.slice(i, i + GIT_BATCH_SIZE)
