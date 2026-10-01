@@ -593,7 +593,12 @@ function revert() {
 async function syncToAgents() {
   const claudePath = current?.files?.claude
   if (!current || !claudePath) return
-  if (dirty && activePath === claudePath) await save()
+  if (dirty && activePath === claudePath) {
+    await save()
+    // Still dirty: the save failed or waits on the overwrite dialog, and the sync would copy
+    // the disk version. The user syncs again once it is saved.
+    if (dirty) return
+  }
   try {
     const r = await postOp<{ ok: boolean; sha: string; path: string }>({
       op: 'sync',
