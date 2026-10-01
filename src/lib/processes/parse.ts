@@ -62,21 +62,25 @@ export function parsePs(latin1: string): PsRow[] {
 
 /** A value: quoted as a whole, else up to the next space. */
 const VALUE = `("[^"]*"|'[^']*'|\\S+)`
+/**
+ * A flag, variable or JSON key that names a credential. A word that can also mean something
+ * harmless must be the name's last word, so `--private-key`, `OPENAI_KEY` and `--github-pat` are
+ * masked while `--key-file`, `--session-id`, `--max-tokens` and `--password-stdin` stay readable.
+ */
+const SECRET_NAME =
+  '(?:[\\w.-]*?(?:password|passwd|secret|token)|(?:[\\w.-]*[-_.])?(?:pass(?:phrase)?|pw|(?:api|access|private|secret)?key|auth(?:orization)?|cred(?:s|entials?)?|cookie|session|pat))'
 // Values that are credentials, wherever they appear in a command line.
 const SECRETS: [RegExp, string][] = [
   [new RegExp(`(\\b(?:Bearer|Basic)\\s+)${VALUE}`, 'gi'), '$1REDACTED'],
+  // `--token x`, `--key=x`, `--auth<TAB>x`, from a flag's first dash (not `no-auth`'s); a
+  // `--no-…` flag and a spaced `-…` value are switches, not values.
   [
-    new RegExp(
-      `(--?(?:api[-_]?key|token|secret|password|passwd|access[-_]?token|client[-_]?secret)[= ])${VALUE}`,
-      'gi',
-    ),
+    new RegExp(`((?<![\\w-])--?(?!-?no-)${SECRET_NAME}(?:=|[ \\t]+(?!-)))${VALUE}`, 'gi'),
     '$1REDACTED',
   ],
-  // `DECKHAND_TOKEN=`, `github_token=`, `?access_token=…&` — a query value ends at `&`.
-  [
-    /\b([\w-]*(?:token|secret|password|passwd|api[-_]?key)=)("[^"]*"|'[^']*'|[^&\s]+)/gi,
-    '$1REDACTED',
-  ],
+  // `DECKHAND_TOKEN=`, `OPENAI_KEY=`, `?access_token=…&` — a query value ends at `&`.
+  [new RegExp(`\\b(${SECRET_NAME}=)("[^"]*"|'[^']*'|[^&\\s]+)`, 'gi'), '$1REDACTED'],
+  [new RegExp(`("${SECRET_NAME}"\\s*:\\s*)"[^"]*"`, 'gi'), '$1"REDACTED"'],
   [
     new RegExp(
       `(\\b(?:x-api-key|authorization):\\s*(?:(?:Bearer|Basic|Token|Digest|Negotiate)\\s+)?)${VALUE}`,
@@ -84,8 +88,21 @@ const SECRETS: [RegExp, string][] = [
     ),
     '$1REDACTED',
   ],
+  // `Cookie: a=1; b=2`, every pair.
+  [/(\bcookie:\s*)[^;\s]+(?:;\s*[^;\s]+)*/gi, '$1REDACTED'],
   // `user:pass@` and a token used as the user (`https://ghp_…@github.com`).
   [/(\w+:\/\/)[^/\s@]+@/g, '$1REDACTED@'],
+  // Tokens that say what they are, wherever they stand.
+  [/\b(sk-ant-|sk-|gh[pousr]_|github_pat_|glpat-|xox[abpr]-)[\w-]{20,}/g, '$1REDACTED'],
+  [/\bAKIA[0-9A-Z]{16}\b/g, 'AKIAREDACTED'],
+  // Short flags that are a password only for their own tool: `mysql -pS3cret` (a bare `-p`
+  // prompts), `sshpass -p x`, `redis-cli -a x`; `curl -u user:pass` keeps the user.
+  [/(\b(?:mysql|mariadb)\w*\b.*?\s-p)[^\s-]\S*/g, '$1REDACTED'],
+  [
+    new RegExp(`(\\b(?:sshpass\\b.*?\\s-p|redis-cli\\b.*?\\s-a)[ \\t]*)${VALUE}`, 'g'),
+    '$1REDACTED',
+  ],
+  [/(\bcurl\b.*?\s(?:-[uU][ \t]*|--(?:proxy-)?user(?:=|[ \t]+))[^\s:]+:)\S+/g, '$1REDACTED'],
 ]
 
 /** A command line with every credential value replaced. Runs before anything leaves the server. */
