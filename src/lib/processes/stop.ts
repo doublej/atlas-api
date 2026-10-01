@@ -93,7 +93,15 @@ export function planStop(
   }
 
   const results = req.targets.map(resolve)
-  return { results, wouldEnd: [...ending.values()], skipped }
+  // Request order, except an ancestor that also ends goes first: targets may arrive child-first.
+  const wouldEnd = new Map<number, EndingProcess>()
+  const place = (p: EndingProcess, hops = 0): void => {
+    const up = ending.get(p.ppid)
+    if (up && !wouldEnd.has(up.pid) && hops < ending.size) place(up, hops + 1)
+    if (!wouldEnd.has(p.pid)) wouldEnd.set(p.pid, p)
+  }
+  for (const p of ending.values()) place(p)
+  return { results, wouldEnd: [...wouldEnd.values()], skipped }
 }
 
 function signal(pid: number, sig: NodeJS.Signals): void {

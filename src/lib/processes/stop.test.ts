@@ -58,6 +58,11 @@ describe('planStop trees', () => {
     expect(wouldEnd[0]).toMatchObject({ kind: 'node', name: 'wrangler' })
   })
 
+  it('puts a parent before its child when the targets arrive child-first', () => {
+    const { wouldEnd } = plan([at(62577), at(61250), at(61126)])
+    expect(wouldEnd.map((p) => p.pid)).toEqual([61126, 61250, 62577])
+  })
+
   it('without tree, only the target', () => {
     expect(plan([at(67570)]).wouldEnd.map((p) => p.pid)).toEqual([67570])
   })
