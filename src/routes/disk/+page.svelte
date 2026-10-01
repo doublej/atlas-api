@@ -5,6 +5,7 @@ import Notice from '$lib/components/feedback/Notice.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import SideNav, { type SideTab } from '$lib/components/SideNav.svelte'
 import type { JobState } from '$lib/disk'
+import type { ArchiveVersion } from '$lib/disk-types'
 import { errorMessage } from '$lib/format'
 import { http } from '$lib/http'
 import { toast } from '$lib/toast.svelte'
@@ -24,8 +25,19 @@ let { data }: { data: PageData } = $props()
 
 type Tab = 'projects' | 'archives' | 'cleanup' | 'trim' | 'schedules' | 'log' | 'settings'
 
+/** Streamed (see `load`): null until the first read lands; a reload keeps the last one on screen. */
+let archives = $state<{ versions: ArchiveVersion[]; error: string | null } | null>(null)
+$effect(() => {
+  const pending = data.archives
+  pending.then((r) => {
+    if (data.archives === pending) archives = r
+  })
+})
+
+const versions = $derived(archives?.versions ?? [])
+const errors = $derived(archives?.error ? [...data.errors, archives.error] : data.errors)
 const eligible = $derived(data.analysis?.projects.filter((p) => p.state === 'eligible') ?? [])
-const unverified = $derived(data.archives.filter((v) => !v.verified).length)
+const unverified = $derived(versions.filter((v) => !v.verified).length)
 const scheduleProblems = $derived(data.schedules.filter((s) => s.problem).length)
 const serious = $derived(data.problems.filter((p) => p.severity !== 'info'))
 
@@ -39,7 +51,7 @@ const tabs = $derived<(SideTab & { id: Tab })[]>([
   {
     id: 'archives',
     label: 'Archives',
-    hint: `${data.archives.length} versions`,
+    hint: archives ? `${versions.length} versions` : 'reading…',
     alert: unverified,
   },
   {
@@ -86,10 +98,10 @@ onMount(async () => {
     analysis {ago(data.analysis?.ranAt)} · scan {ago(data.scan?.ranAt)}
   {/snippet}
 
-  {#if data.errors.length || serious.length}
+  {#if errors.length || serious.length}
     <Notice tone="error">
       <ul>
-        {#each data.errors as e (e)}
+        {#each errors as e (e)}
           <li>{e}</li>
         {/each}
         {#each serious as p (p.what)}
@@ -102,7 +114,9 @@ onMount(async () => {
   {#if active === 'projects'}
     <DiskProjectsSection analysis={data.analysis} settings={data.settings} />
   {:else if active === 'archives'}
-    <DiskArchivesSection archives={data.archives} settings={data.settings} />
+    <PageState loading={!archives} loadingText="Reading the archive folder…">
+      <DiskArchivesSection archives={versions} settings={data.settings} />
+    </PageState>
   {:else if active === 'cleanup'}
     <DiskCleanupSection scan={data.scan} />
   {:else if active === 'trim'}
