@@ -72,11 +72,14 @@ function isActive(href: string): boolean {
     text-decoration: none;
   }
 
-  /* A narrow screen scrolls the links sideways rather than pushing the page wider. */
+  /* A narrow screen scrolls the links sideways rather than pushing the page wider. The scroller
+     clips at its padding box, so the padding (offset by the margin) leaves room for the focus ring. */
   .links {
     display: flex;
     gap: var(--space-1);
     min-width: 0;
+    margin: calc(-1 * var(--space-1));
+    padding: var(--space-1);
     overflow-x: auto;
     scrollbar-width: none;
   }
