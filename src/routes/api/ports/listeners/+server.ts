@@ -2,9 +2,6 @@ import { json } from '@sveltejs/kit'
 import { getListeners } from '$lib/listeners'
 import type { RequestHandler } from './$types'
 
-/** Every TCP listener on this Mac, owner-joined. `?fresh=1` skips the 10s cache. */
+/** Every TCP listener on this Mac, owner-joined, from the process snapshot. `?fresh=1` skips its 2s cache. */
 export const GET: RequestHandler = async ({ url }) =>
-  json({
-    listeners: await getListeners(url.searchParams.get('fresh') === '1'),
-    updatedAt: new Date().toISOString(),
-  })
+  json(await getListeners(url.searchParams.get('fresh') === '1'))

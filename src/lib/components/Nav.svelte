@@ -7,6 +7,7 @@ import { theme, toggleTheme } from '$lib/theme.svelte'
 const links: { href: string; label: string; icon: IconName }[] = [
   { href: '/', label: 'Projects', icon: 'folder' },
   { href: '/ports', label: 'Ports', icon: 'globe' },
+  { href: '/processes', label: 'Processes', icon: 'chart' },
   { href: '/system', label: 'System', icon: 'terminal' },
   { href: '/disk', label: 'Disk', icon: 'hardDrive' },
   { href: '/templates', label: 'Templates', icon: 'rows' },

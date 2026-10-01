@@ -1,13 +1,12 @@
-import { basename } from 'node:path'
-import { getServices } from '$shared/services'
-import { listHostnames } from './caddyDev'
-import { DEV_FOLDER } from './config'
-import { listSockets, type Socket, stdoutOf } from './ports'
-import { type Project, scan } from './scanner'
+import { getServices, type ServiceDef } from '$shared/services'
+import type { Socket } from './ports'
+import { getSnapshot, type Snapshot } from './processes/snapshot'
+import type { ProcessKind } from './processes/types'
 
 /**
  * Every TCP listener on this Mac, joined with what atlas knows about it — the Active Ports
  * dashboard, folded into the console. Grouped by who owns the port, not by a hand-kept category.
+ * A projection of the process snapshot: no scan of its own.
  */
 export type ListenerGroup = 'project' | 'service' | 'docker' | 'system'
 
@@ -15,12 +14,17 @@ export interface Listener {
   port: number
   pid: number
   name: string
+  /** Redacted, like every command the snapshot hands out. */
   command: string
   cwd?: string
   group: ListenerGroup
   project?: { name: string; path: string; framework?: string }
   docker?: string
   hostname?: string
+  /** pid + startedAt is what `POST /api/processes/stop` takes. */
+  startedAt: string
+  pgid: number
+  kind: ProcessKind
 }
 
 interface RawListener {
@@ -42,127 +46,55 @@ export function ownersByPort(sockets: Socket[], selfPid: number): RawListener[] 
   return [...byPort.values()].sort((a, b) => a.port - b.port)
 }
 
-/** Pure: the deepest catalogued project containing `cwd`. */
-export function projectFor(cwd: string | undefined, projects: Project[]): Project | undefined {
-  if (!cwd) return undefined
-  let best: Project | undefined
-  for (const p of projects) {
-    const inside = cwd === p.path || cwd.startsWith(`${p.path}/`)
-    if (inside && (!best || p.path.length > best.path.length)) best = p
-  }
-  return best
+/** A project's dev hostname routes to one port, its own: not to a second server it runs. */
+const projectHost = (snap: Snapshot, project: Snapshot['projects'][number], port: number) =>
+  port === project.port ? snap.hostnames.find((h) => h.path === project.path)?.local : undefined
+
+/** Pure: the snapshot's listeners, owner-joined: service, then project, then docker, else system. */
+export function listenersOf(snap: Snapshot, services: ServiceDef[] = getServices()): Listener[] {
+  const byPort = new Map(services.map((s) => [s.port, s]))
+  const byPath = new Map(snap.projects.map((p) => [p.path, p]))
+  const hostFor = (match: (h: Snapshot['hostnames'][number]) => boolean) =>
+    snap.hostnames.find(match)?.local
+
+  return ownersByPort(snap.sockets, snap.self.pid).flatMap(
+    ({ port, pid, command: short }): Listener[] => {
+      const proc = snap.byPid.get(pid)
+      // ps and netstat run side by side: a server born in between shows up in the next snapshot.
+      if (!proc) return []
+      const { name, cwd, startedAt, pgid, kind } = proc
+      const base = { port, pid, name, command: proc.command || short, cwd, startedAt, pgid, kind }
+      const service = byPort.get(port)
+      const project = proc.project && byPath.get(proc.project.path)
+      const container = snap.docker.get(port)
+
+      if (service) {
+        const hostname = hostFor((h) => h.slug === service.slug)
+        return [{ ...base, group: 'service' as const, name: service.name, hostname }]
+      }
+      if (project) {
+        const hostname = projectHost(snap, project, port)
+        const { name, path, framework } = project
+        return [
+          {
+            ...base,
+            group: 'project' as const,
+            name,
+            project: { name, path, framework },
+            hostname,
+          },
+        ]
+      }
+      if (container)
+        return [{ ...base, group: 'docker' as const, name: container, docker: container }]
+      return [{ ...base, group: 'system' as const }]
+    },
+  )
 }
 
-function displayName(command: string, cwd: string | undefined): string {
-  const app = command.match(/\/([^/]+)\.app\//)?.[1]
-  if (app) return app
-  if (cwd && cwd !== '/') return basename(cwd)
-  return basename(command.split(/\s+/)[0])
-}
-
-/**
- * pid → cwd and pid → full argv, one `lsof` and one `ps` for all pids. `-b` keeps lsof off the
- * kernel calls that block on a stalled SMB mount; a timeout only leaves the cwd unknown.
- */
-async function processDetails(pids: number[]) {
-  const cwds = new Map<number, string>()
-  const commands = new Map<number, string>()
-  if (!pids.length) return { cwds, commands }
-  const list = pids.join(',')
-
-  let pid = 0
-  for (const line of (
-    await stdoutOf('/usr/sbin/lsof', ['-b', '-w', '-a', '-d', 'cwd', '-p', list, '-Fpn'])
-  ).split('\n')) {
-    if (line[0] === 'p') pid = Number(line.slice(1))
-    else if (line[0] === 'n' && pid) cwds.set(pid, line.slice(1))
-  }
-  for (const line of (await stdoutOf('/bin/ps', ['-ww', '-o', 'pid=,args=', '-p', list])).split(
-    '\n',
-  )) {
-    const m = line.match(/^\s*(\d+)\s+(.*)$/)
-    if (m) commands.set(Number(m[1]), m[2].trim())
-  }
-  return { cwds, commands }
-}
-
-/** Published docker ports → container name. Empty when docker isn't running. */
-async function dockerPorts(): Promise<Map<number, string>> {
-  const map = new Map<number, string>()
-  const out = await stdoutOf('/opt/homebrew/bin/docker', [
-    'ps',
-    '--format',
-    '{{.Names}}\t{{.Ports}}',
-  ])
-  for (const line of out.split('\n')) {
-    const [container, ports = ''] = line.split('\t')
-    for (const m of ports.matchAll(/:(\d+)->/g)) map.set(Number(m[1]), container)
-  }
-  return map
-}
-
-async function scanListeners(): Promise<Listener[]> {
-  const raw = ownersByPort(await listSockets(), process.pid)
-  const [{ cwds, commands }, docker, atlas, hostnames] = await Promise.all([
-    processDetails([...new Set(raw.map((r) => r.pid))]),
-    dockerPorts(),
-    scan(DEV_FOLDER, { skipGit: true }), // cached, stale-while-revalidate
-    listHostnames(),
-  ])
-  const projects = atlas.projects.filter((p) => p.isLocal)
-  const services = new Map(getServices().map((s) => [s.port, s]))
-
-  return raw.map(({ port, pid, command: short }) => {
-    const cwd = cwds.get(pid)
-    const command = commands.get(pid) ?? short
-    const service = services.get(port)
-    const project = projectFor(cwd, projects)
-    const container = docker.get(port)
-    const base = { port, pid, command, cwd, name: displayName(command, cwd) }
-
-    if (service) {
-      const hostname = hostnames.find((h) => h.slug === service.slug)?.local
-      return { ...base, group: 'service', name: service.name, hostname }
-    }
-    if (project) {
-      const hostname = hostnames.find((h) => h.path === project.path)?.local
-      const { name, path, framework } = project
-      return { ...base, group: 'project', name, project: { name, path, framework }, hostname }
-    }
-    if (container) return { ...base, group: 'docker', name: container, docker: container }
-    return { ...base, group: 'system' }
-  })
-}
-
-// A full scan takes a few seconds with a few hundred listeners; the page polls every 15s.
-const TTL_MS = 10_000
-let cached: { at: number; listeners: Promise<Listener[]> } | null = null
-
-export function getListeners(fresh = false): Promise<Listener[]> {
-  if (fresh || !cached || Date.now() - cached.at > TTL_MS) {
-    cached = { at: Date.now(), listeners: scanListeners() }
-    cached.listeners.catch(() => {
-      cached = null
-    })
-  }
-  return cached.listeners
-}
-
-/**
- * SIGKILL each pid — but only pids the last scan saw listening, never atlas-api itself. The
- * route is not a general-purpose `kill`.
- */
-export async function killListeners(pids: number[]): Promise<{ pid: number; killed: boolean }[]> {
-  const listening = new Set((await getListeners()).map((l) => l.pid))
-  const results = pids.map((pid) => {
-    if (!listening.has(pid) || pid <= 1 || pid === process.pid) return { pid, killed: false }
-    try {
-      process.kill(pid, 'SIGKILL')
-      return { pid, killed: true }
-    } catch {
-      return { pid, killed: false } // already gone
-    }
-  })
-  cached = null
-  return results
+export async function getListeners(
+  fresh = false,
+): Promise<{ listeners: Listener[]; updatedAt: string }> {
+  const snap = await getSnapshot(fresh)
+  return { listeners: listenersOf(snap), updatedAt: snap.generatedAt }
 }

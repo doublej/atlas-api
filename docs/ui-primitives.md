@@ -29,7 +29,7 @@ Replaces every client-side `fetch(...)` + `res.ok` check + `res.json()`.
 import { HttpError, http } from '$lib/http'
 
 const { daemons } = await http.get<{ daemons: DaemonRow[] }>('/api/daemons')
-await http.post('/api/ports/kill', { pids })          // JSON body, content-type set for you
+await http.post('/api/processes/stop', { targets })  // JSON body, content-type set for you
 await http.put('/api/config', config)
 await http.patch('/api/atlas', { path, patch })
 await http.delete(`/api/disk/jobs/${id}`)
@@ -77,18 +77,18 @@ while the action runs. An action that settles after its dialog closed is ignored
 
 ```svelte
 <script lang="ts">
-let killing = $state<number[] | null>(null)
+let stopping = $state<Target[] | null>(null)
 </script>
 
-<Button variant="danger" onclick={() => (killing = sel.list)}>Kill</Button>
+<Button variant="danger" onclick={() => (stopping = targetsFor(sel.list))}>Stop</Button>
 <ConfirmDialog
-  open={killing !== null}
-  title="Kill {killing?.length} processes?"
-  items={rowsFor(killing)}
-  confirmLabel="Kill"
+  open={stopping !== null}
+  title="Stop {stopping?.length} processes?"
+  items={rowsFor(stopping)}
+  confirmLabel="Stop"
   danger
-  onconfirm={() => http.post('/api/ports/kill', { pids: killing })}
-  onclose={() => (killing = null)}
+  onconfirm={() => http.post('/api/processes/stop', { targets: stopping })}
+  onclose={() => (stopping = null)}
 />
 ```
 
