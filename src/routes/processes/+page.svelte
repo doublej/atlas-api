@@ -40,14 +40,18 @@ let search = $state<HTMLInputElement>()
 
 const procs = $derived(new Map((view?.processes ?? []).map((p) => [p.pid, p])))
 const rows = $derived(view?.rows ?? [])
-const kindCounts = $derived(countKinds(rows))
-const projects = $derived(
-  [
-    ...new Map(
-      rows.flatMap((r) => (r.project ? [[r.project.path, r.project.name]] : [])),
-    ).entries(),
-  ].sort((a, b) => a[1].localeCompare(b[1])),
-)
+// A filter from the URL or a process that just ended stays on screen at 0, so it can be switched off.
+const kindCounts = $derived.by(() => {
+  const counts = countKinds(rows)
+  const missing = kinds.filter((k) => !counts.some(([kind]) => kind === k))
+  return [...counts, ...missing.map((k): [string, number] => [k, 0])]
+})
+const projects = $derived.by(() => {
+  const named = new Map(rows.flatMap((r) => (r.project ? [[r.project.path, r.project.name]] : [])))
+  if (project && !named.has(project)) named.set(project, project.split('/').pop() ?? project)
+  return [...named].sort((a, b) => a[1].localeCompare(b[1]))
+})
+const filtered = $derived(Boolean(query.trim() || kinds.length || project))
 const visible = $derived(
   rows.filter(
     (r) =>
@@ -130,6 +134,12 @@ function toggleKind(kind: string) {
   kinds = kinds.includes(kind) ? kinds.filter((k) => k !== kind) : [...kinds, kind]
 }
 
+function clearFilters() {
+  query = ''
+  kinds = []
+  project = ''
+}
+
 const onKeydown = listKeys({
   search: () => search,
   stop: (key) => stop(sel.size ? sel.list : key ? [key] : []),
@@ -160,15 +170,6 @@ onMount(() => {
         : ''}
     </span>
     <span class="spacer"></span>
-    <input
-      bind:this={search}
-      class="search"
-      type="search"
-      placeholder="Filter name, pid, port, path…  ( / )"
-      aria-label="Filter processes"
-      bind:value={query}
-    />
-    <Chip pressed={all} onclick={toggleAll}>All processes</Chip>
     <Button onclick={() => load(true)}>Refresh</Button>
     <Button variant="danger" disabled={!sel.size} onclick={() => stop(sel.list)}>
       Stop selected ({sel.size})
@@ -180,13 +181,24 @@ onMount(() => {
       <ProcessSummary system={view.system} onpick={(name) => (query = name)} />
 
       <div class="filters">
-        {#each kindCounts as [kind, n] (kind)}
-          <Chip pressed={kinds.includes(kind)} onclick={() => toggleKind(kind)}>{kind} {n}</Chip>
-        {/each}
+        <input
+          bind:this={search}
+          class="search"
+          type="search"
+          placeholder="Filter name, pid, port, path…  ( / )"
+          aria-label="Filter processes"
+          bind:value={query}
+        />
         <select class="project" aria-label="Project" bind:value={project}>
           <option value="">All projects</option>
           {#each projects as [path, name] (path)}<option value={path}>{name}</option>{/each}
         </select>
+        <Chip pressed={all} onclick={toggleAll}>Include non-dev</Chip>
+        <span class="divider" aria-hidden="true"></span>
+        {#each kindCounts as [kind, n] (kind)}
+          <Chip pressed={kinds.includes(kind)} onclick={() => toggleKind(kind)}>{kind} {n}</Chip>
+        {/each}
+        {#if filtered}<Button onclick={clearFilters}>Clear filters</Button>{/if}
       </div>
 
       <ProcessGroups
@@ -200,7 +212,12 @@ onMount(() => {
         onstop={(picked, opts) => stop(picked.map((r) => r.id), opts)}
         onrestart={restart}
       />
-      {#if !groups.length}<p class="t-small muted">No processes match.</p>{/if}
+      {#if !groups.length}
+        <p class="t-small muted">
+          {filtered ? 'No processes match these filters.' : 'No processes.'}
+          {#if filtered}<Button onclick={clearFilters}>Clear filters</Button>{/if}
+        </p>
+      {/if}
     {/if}
   </PageState>
 </main>
@@ -236,6 +253,13 @@ onMount(() => {
 
   .filters {
     gap: var(--space-2);
+  }
+
+  .divider {
+    align-self: stretch;
+    width: var(--hairline);
+    margin-inline: var(--space-1);
+    background: var(--color-border);
   }
 
   .spacer {
