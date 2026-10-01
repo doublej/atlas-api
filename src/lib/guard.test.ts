@@ -14,6 +14,12 @@ const via = (host: string, origin?: string) => ({
 
 type Case = [name: string, method: string, route: string, headers: Record<string, string>]
 
+/** `route` is a route id, optionally with the request's query (`/api/projects?dir=…`). */
+const check = (method: string, route: string, headers: Record<string, string>) => {
+  const [id, search] = route.split('?')
+  return refusal(method, id, new Headers(headers), new URLSearchParams(search))
+}
+
 const allowed: Case[] = [
   ['atlas-cli (Bun fetch, no Origin)', 'POST', '/api/refresh', { host: 'localhost:47891' }],
   ['Raycast (Node fetch, no Origin)', 'POST', '/api/iterm', { host: 'localhost:47891' }],
@@ -38,6 +44,18 @@ const allowed: Case[] = [
   ['HEAD off-LAN', 'HEAD', '/api/health', via(REMOTE)],
   ['secret read on the LAN, no Origin', 'GET', '/api/env-files', via(LAN)],
   ['secret read on this Mac', 'GET', '/api/claude-tree', { host: 'localhost:47891' }],
+  [
+    'URL typed into the address bar',
+    'GET',
+    '/api/env-files',
+    { host: 'localhost:47891', 'sec-fetch-site': 'none' },
+  ],
+  [
+    'Raycast scans its own scanDirs',
+    'GET',
+    '/api/projects?dir=/Users/jurrejan/dev',
+    { host: 'localhost:47891', 'sec-fetch-mode': 'cors' },
+  ],
   // A GET outside the local-only list is not checked at all — reads stay open.
   ['GET from a rebinding Host', 'GET', '/api/projects', { host: 'evil.example' }],
 ]
@@ -79,6 +97,28 @@ const refused: [...Case, reason: RegExp][] = [
     /not this Mac/,
   ],
   ['no Host at all', 'POST', '/api/refresh', {}, /host \(none\)/],
+  [
+    'CSRF: <img> on another site scans a folder (no Origin)',
+    'GET',
+    '/api/projects?dir=/Users/jurrejan',
+    { host: 'localhost:47891', 'sec-fetch-site': 'cross-site' },
+    /Sec-Fetch-Site: cross-site/,
+  ],
+  [
+    'DNS rebinding scans a folder',
+    'GET',
+    '/api/projects?dir=/tmp',
+    { host: 'evil.example', origin: 'https://evil.example' },
+    /not this Mac/,
+  ],
+  [
+    'LAN browser on another site scans a folder',
+    'GET',
+    '/api/projects?dir=/Users/jurrejan',
+    via(LAN, 'https://evil.example'),
+    /cross-site request from https:\/\/evil\.example/,
+  ],
+  ['off-LAN folder scan', 'GET', '/api/projects?dir=/tmp', via(REMOTE), /^not available off-LAN$/],
   [
     'off-LAN write',
     'POST',
@@ -125,15 +165,14 @@ const refused: [...Case, reason: RegExp][] = [
 
 describe('refusal', () => {
   it.each(allowed)('lets through: %s', (_, method, route, headers) => {
-    expect(refusal(method, route, new Headers(headers))).toBeNull()
+    expect(check(method, route, headers)).toBeNull()
   })
   it.each(refused)('refuses: %s', (_, method, route, headers, reason) => {
-    expect(refusal(method, route, new Headers(headers))).toMatch(reason)
+    expect(check(method, route, headers)).toMatch(reason)
   })
   it('covers every route under a local-only id', () => {
-    expect(refusal('POST', '/api/claude-tree/agent', new Headers(via(REMOTE)))).toBe(
-      'read-only off-LAN',
-    )
-    expect(refusal('GET', '/api/env-filesx', new Headers(via(REMOTE)))).toBeNull()
+    expect(check('POST', '/api/claude-tree/agent', via(REMOTE))).toBe('read-only off-LAN')
+    expect(check('GET', '/api/env-filesx', via(REMOTE))).toBeNull()
+    expect(check('GET', '/api/projects?dir=', via(REMOTE))).toBeNull()
   })
 })

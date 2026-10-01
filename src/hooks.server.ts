@@ -21,6 +21,7 @@ export const init: ServerInit = () => {
 export const handle: Handle = ({ event, resolve }) => {
   if (event.isSubRequest) return resolve(event)
   const { method, headers } = event.request
-  const reason = refusal(method, event.route.id ?? event.url.pathname, headers)
+  const { pathname, searchParams } = event.url
+  const reason = refusal(method, event.route.id ?? pathname, headers, searchParams)
   return reason ? json({ error: reason }, { status: 403 }) : resolve(event)
 }

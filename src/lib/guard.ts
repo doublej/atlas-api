@@ -26,28 +26,43 @@ const LOCAL_ONLY = [
   '/api/finder',
 ]
 
-const isLocalOnly = (route: string) =>
+/** `/api/projects?dir=` walks any folder the daemon can reach and writes its cache file into it. */
+const isLocalOnly = (route: string, query: URLSearchParams) =>
+  (route === '/api/projects' && Boolean(query.get('dir'))) ||
   LOCAL_ONLY.some((r) => route === r || route.startsWith(`${r}/`))
 
 /**
- * A direct request: a loopback `Host` (DNS rebinding) and no `Origin` but its own (CSRF) — a page
- * from any other local dev server is just as foreign as one from the internet.
+ * A browser request from anywhere but `self` (CSRF). A cross-site `<img>` GET carries no `Origin`,
+ * but every current browser sends `Sec-Fetch-Site`; non-browser clients send neither.
  */
-function refuseDirect(headers: Headers, origin: string | null): string | null {
-  const host = headers.get('host') ?? '(none)'
-  if (!LOOPBACK_HOST.test(host)) return `host ${host} is not this Mac`
-  if (origin && origin !== `http://${host}`) return `cross-site request from ${origin}`
+function refuseForeign(headers: Headers, self: string): string | null {
+  const origin = headers.get('origin')
+  if (origin && origin !== self) return `cross-site request from ${origin}`
+  const site = headers.get('sec-fetch-site')
+  if (site && site !== 'same-origin' && site !== 'none')
+    return `cross-site request (Sec-Fetch-Site: ${site})`
   return null
 }
 
+/**
+ * A direct request: a loopback `Host` (DNS rebinding) and nothing from another origin (CSRF) — a
+ * page from any other local dev server is just as foreign as one from the internet.
+ */
+function refuseDirect(headers: Headers): string | null {
+  const host = headers.get('host') ?? '(none)'
+  if (!LOOPBACK_HOST.test(host)) return `host ${host} is not this Mac`
+  return refuseForeign(headers, `http://${host}`)
+}
+
 /** Through the NAS: a LAN hostname, and for a write that hostname's own `Origin`. */
-function refuseProxied(headers: Headers, origin: string | null, write: boolean): string | null {
+function refuseProxied(headers: Headers, write: boolean): string | null {
   const forwarded = headers.get('x-forwarded-host') ?? '(none)'
   if (forwarded === REMOTE_HOST) return write ? 'read-only off-LAN' : 'not available off-LAN'
   if (!LAN_HOSTS.includes(forwarded)) return `unknown forwarded host ${forwarded}`
+  const origin = headers.get('origin')
   if (write && origin !== `https://${forwarded}`)
     return `write via ${forwarded} needs Origin https://${forwarded}, got ${origin ?? 'none'}`
-  return null
+  return refuseForeign(headers, `https://${forwarded}`)
 }
 
 /**
@@ -55,11 +70,13 @@ function refuseProxied(headers: Headers, origin: string | null, write: boolean):
  * pass from this Mac or from a LAN hostname with that hostname's own `Origin`, which every
  * browser write carries. `route` is SvelteKit's route id, so an encoded path can't slip past.
  */
-export function refusal(method: string, route: string, headers: Headers): string | null {
+export function refusal(
+  method: string,
+  route: string,
+  headers: Headers,
+  query: URLSearchParams,
+): string | null {
   const write = method !== 'GET' && method !== 'HEAD'
-  if (!write && !isLocalOnly(route)) return null
-  const origin = headers.get('origin')
-  return headers.has('x-forwarded-for')
-    ? refuseProxied(headers, origin, write)
-    : refuseDirect(headers, origin)
+  if (!write && !isLocalOnly(route, query)) return null
+  return headers.has('x-forwarded-for') ? refuseProxied(headers, write) : refuseDirect(headers)
 }
