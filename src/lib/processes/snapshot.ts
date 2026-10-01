@@ -16,6 +16,7 @@ import { type Project, scan } from '../scanner'
 import { topBy } from './flags'
 import { buildRows, classifyRows, type Proc } from './groups'
 import {
+  type OpenFiles,
   PS_COLUMNS,
   type PsRow,
   parseLaunchctl,
@@ -173,6 +174,28 @@ async function readDocker(): Promise<Map<number, string>> {
   return map
 }
 
+const LSOF_ARGS = ['-b', '-w', '-a', '-d', 'cwd,1', '-Fpfn', '-p']
+/** `pid@startedAt` → its cwd and stdout, as lsof saw them when the process was first met. */
+const fileCache = new Map<string, OpenFiles>()
+
+/**
+ * cwd and fd 1 of the candidates. lsof runs only for processes not seen before, so a poll costs
+ * one ps instead of ps + lsof. ponytail: a shell that `cd`s later keeps its first cwd until it
+ * exits — attribution, not a live pwd; re-read per poll if that ever matters.
+ */
+async function readFiles(procs: Proc[]): Promise<Map<number, OpenFiles>> {
+  const fresh = procs.filter((p) => !fileCache.has(sessionKey(p)))
+  if (fresh.length) {
+    const found = parseLsof(
+      await optional('/usr/sbin/lsof', [...LSOF_ARGS, fresh.map((p) => p.pid).join(',')]),
+    )
+    for (const p of fresh) fileCache.set(sessionKey(p), found.get(p.pid) ?? {})
+  }
+  const live = new Set(procs.map(sessionKey))
+  for (const k of fileCache.keys()) if (!live.has(k)) fileCache.delete(k)
+  return new Map(procs.map((p) => [p.pid, fileCache.get(sessionKey(p)) ?? {}]))
+}
+
 // ponytail: grows with every distinct home directory seen in argv; cleared wholesale at the cap.
 const realDirs = new Map<string, string>()
 function realDir(dir: string): string {
@@ -216,18 +239,15 @@ async function build(): Promise<Snapshot> {
       listening.has(p.pid) ||
       (p.uid === uid && !p.zombie && p.role !== 'app' && p.role !== 'system'),
   )
-  const lsofArgs = ['-b', '-w', '-a', '-d', 'cwd,1', '-Fpfn', '-p']
-  const [lsof, sessions, docker] = await Promise.all([
-    candidates.length
-      ? optional('/usr/sbin/lsof', [...lsofArgs, candidates.map((p) => p.pid).join(',')])
-      : '',
+  const [files, sessions, docker] = await Promise.all([
+    readFiles(candidates),
     readSessions(candidates),
     readDocker(),
   ])
   const projects = atlas.projects.filter((p) => p.isLocal)
   const { processes, rows } = buildRows(procs, {
     now: Date.now(),
-    files: parseLsof(lsof),
+    files,
     ports: portsByPid(sockets),
     launchd,
     sessions,
