@@ -29,7 +29,7 @@ const allowed: Case[] = [
   [
     'console at http://127.0.0.1:47891',
     'POST',
-    '/api/ports/kill',
+    '/api/processes/stop',
     { host: '127.0.0.1:47891', origin: 'http://127.0.0.1:47891' },
   ],
   [
@@ -41,6 +41,8 @@ const allowed: Case[] = [
   ['console via https://atlas.jurrejan.com', 'POST', '/api/finder', via(LAN, `https://${LAN}`)],
   ['console via atlas.local', 'PUT', '/api/disk/config', via(LAN_LONG, `https://${LAN_LONG}`)],
   ['GET off-LAN', 'GET', '/api/projects', via(REMOTE)],
+  ['redacted process list off-LAN', 'GET', '/api/processes', via(REMOTE)],
+  ['redacted listeners off-LAN', 'GET', '/api/ports/listeners', via(REMOTE)],
   ['HEAD off-LAN', 'HEAD', '/api/health', via(REMOTE)],
   ['secret read on the LAN, no Origin', 'GET', '/api/env-files', via(LAN)],
   ['secret read on this Mac', 'GET', '/api/claude-tree', { host: 'localhost:47891' }],
@@ -85,7 +87,7 @@ const refused: [...Case, reason: RegExp][] = [
   [
     'DNS rebinding: Host evil.example',
     'POST',
-    '/api/ports/kill',
+    '/api/processes/stop',
     { host: 'evil.example:47891', origin: 'http://evil.example:47891' },
     /host evil\.example:47891 is not this Mac/,
   ],
@@ -130,7 +132,8 @@ const refused: [...Case, reason: RegExp][] = [
   ['off-LAN file read', 'GET', '/api/claude-tree', via(REMOTE), /^not available off-LAN$/],
   ['off-LAN CLAUDE.md read', 'GET', '/api/agent-files', via(REMOTE), /off-LAN/],
   ['off-LAN port reservation', 'GET', '/api/ports/allocate', via(REMOTE), /off-LAN/],
-  ['off-LAN process argv', 'GET', '/api/ports/listeners', via(REMOTE), /off-LAN/],
+  ['off-LAN dev server log', 'GET', '/api/processes/log', via(REMOTE), /off-LAN/],
+  ['off-LAN stop', 'POST', '/api/processes/stop', via(REMOTE, `https://${REMOTE}`), /off-LAN/],
   ['off-LAN screen action', 'POST', '/api/iterm', via(REMOTE, `https://${REMOTE}`), /off-LAN/],
   ['LAN write without Origin', 'POST', '/api/refresh', via(LAN), /needs Origin.*got none/],
   [

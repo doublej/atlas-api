@@ -12,16 +12,17 @@ const REMOTE_HOST = 'atlas.atlas.remote.jurrejan.com'
 
 /**
  * Route ids answered only to this Mac and the LAN, whatever the method: they hand out file
- * contents (`claude-tree?path=` reads any file under ~/dev, `.env` included) or full process argv
- * (`ports/listeners` — tokens get passed on command lines), reserve a port, or act on this Mac's
- * screen (`iterm`, `finder`). Every other GET is open, writes never are.
+ * contents (`claude-tree?path=` reads any file under ~/dev, `.env` included; `processes/log` a dev
+ * server's output), reserve a port, or act on this Mac's screen (`iterm`, `finder`). Every other
+ * GET is open — process lists included, since every command in them is redacted server-side —
+ * and writes never are.
  */
 const LOCAL_ONLY = [
   '/api/env-files',
   '/api/agent-files',
   '/api/claude-tree',
   '/api/ports/allocate',
-  '/api/ports/listeners',
+  '/api/processes/log',
   '/api/iterm',
   '/api/finder',
 ]

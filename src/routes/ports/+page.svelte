@@ -90,7 +90,10 @@ function kill(pids: number[], scope = '') {
 
 async function confirmKill() {
   const pids = killing?.pids ?? []
-  await http.post('/api/ports/kill', { pids })
+  const targets = listeners
+    .filter((l, i, all) => pids.includes(l.pid) && all.findIndex((x) => x.pid === l.pid) === i)
+    .map(({ pid, startedAt }) => ({ pid, startedAt }))
+  await http.post('/api/processes/stop', { targets })
   sel.set(pids, false)
   await load(true)
 }
