@@ -109,7 +109,7 @@ $effect(() => {
   {#if d.port}
     <span class="mono num">{d.port}</span>
     <div class="t-caption" class:muted-2={d.portInUse !== true}>
-      {d.portInUse === null ? 'check timed out' : d.portInUse ? 'listening' : 'not bound'}
+      {d.portInUse === null ? 'check failed' : d.portInUse ? 'listening' : 'not bound'}
     </div>
   {:else}
     <span class="muted-2">—</span>

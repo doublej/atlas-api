@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit'
-import { bootout, isScheduledPlist, kickstart, printLabel } from '$lib/launchctl'
+import { bootout, isScheduledPlist, jobState, kickstart, listJobs } from '$lib/launchctl'
 import { getDaemonByLabel } from '$shared/daemons'
 import type { RequestHandler } from './$types'
 
@@ -18,6 +18,6 @@ export const POST: RequestHandler = async ({ params, request }) => {
   else if (action === 'start' || action === 'restart') await kickstart(daemon.label)
   else return json({ error: 'invalid action' }, { status: 400 })
 
-  const state = await printLabel(daemon.label, await isScheduledPlist(daemon.plist))
+  const state = jobState(await listJobs(), daemon.label, await isScheduledPlist(daemon.plist))
   return json({ action, state })
 }
