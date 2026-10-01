@@ -3,6 +3,7 @@ import { invalidateAll } from '$app/navigation'
 import type { DiskResult, JobState } from '$lib/disk'
 import { errorMessage } from '$lib/format'
 import { HttpError, http } from '$lib/http'
+import { toast } from '$lib/toast.svelte'
 
 /** A side-effect-free `atlas disk … --json`; the CLI's own `exit: 'error'` throws too. */
 export async function readDisk(cmd: string, ...args: string[]): Promise<DiskResult> {
@@ -18,24 +19,21 @@ export const job = $state<{
   current: JobState | null
   text: string
   offset: number
-  error: string
   finished: number
 }>({
   current: null,
   text: '',
   offset: 0,
-  error: '',
   /** Counts finished jobs; sections that fetch their own data re-read when it moves. */
   finished: 0,
 })
 
 export async function runJob(command: string, args: string[]): Promise<void> {
-  job.error = ''
   try {
     const meta = await http.post<JobState>('/api/disk/jobs', { command, args })
     follow({ ...meta, done: false, exit: null })
   } catch (e) {
-    job.error = errorMessage(e)
+    toast(`atlas disk ${command} did not start: ${errorMessage(e)}`, 'error')
   }
 }
 
@@ -69,7 +67,9 @@ export async function poll(): Promise<boolean> {
 
 export const cancelJob = () =>
   job.current &&
-  http.delete(`/api/disk/jobs/${job.current.id}`).catch((e) => (job.error = errorMessage(e)))
+  http
+    .delete(`/api/disk/jobs/${job.current.id}`)
+    .catch((e) => toast(`Cancel failed: ${errorMessage(e)}`, 'error'))
 
 export const EXIT_NAMES: Record<number, string> = {
   0: 'ok',

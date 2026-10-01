@@ -1,11 +1,13 @@
 <script lang="ts">
 import { untrack } from 'svelte'
-import Badge from '$lib/components/ui/Badge.svelte'
+import PageState from '$lib/components/feedback/PageState.svelte'
+import Table from '$lib/components/table/Table.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Modal from '$lib/components/ui/Modal.svelte'
 import type { DiskItem } from '$lib/disk'
 import type { DiskSettings, ProjectRow } from '$lib/disk-types'
 import { errorMessage, tildify } from '$lib/format'
+import type { Column } from '$lib/table'
 import { human, readDisk, runJob } from './disk-client.svelte'
 
 let {
@@ -61,6 +63,22 @@ $effect(() => {
     .finally(() => (loading = false))
 })
 
+/** A planned project or a refused one; a risky project's tick lives in its note cell. */
+type Row = { id: string; bytes?: number; plan?: PlanRow; skipped?: string }
+const lines = $derived<Row[]>([
+  ...plan.map((p) => ({ id: p.id, bytes: p.bytes, plan: p })),
+  ...refused.map((r) => ({
+    id: r.item,
+    skipped: `Skipped: ${r.reason}${r.needs ? ` (needs ${r.needs})` : ''}`,
+  })),
+])
+const columns: Column<Row>[] = [
+  { key: 'project', label: 'Project', cell: projectCell },
+  { key: 'size', label: 'Size', align: 'right', cell: sizeCell },
+  { key: 'note', label: 'Note', wrap: true, cell: noteCell },
+]
+const skipped = (r: Row) => !r.plan || (risky(r.plan) && !dirtyOk.has(r.id))
+
 function toggleDirty(id: string, on: boolean) {
   const next = new Set(dirtyOk)
   on ? next.add(id) : next.delete(id)
@@ -82,45 +100,27 @@ function confirm() {
 }
 </script>
 
+{#snippet projectCell(r: Row)}<span class="mono">{r.id}</span>{/snippet}
+{#snippet sizeCell(r: Row)}<span class="num">{r.bytes === undefined ? '' : human(r.bytes)}</span>{/snippet}
+{#snippet noteCell(r: Row)}
+  {#if r.plan && risky(r.plan)}
+    <label class="risk">
+      <input type="checkbox" checked={dirtyOk.has(r.id)} onchange={(e) => toggleDirty(r.id, e.currentTarget.checked)} />
+      <span><strong class="warn">{riskText(r.plan)}</strong> live only in this folder. Tick to
+        archive anyway, otherwise it is skipped.</span>
+    </label>
+  {:else if r.skipped}
+    {r.skipped}
+  {/if}
+{/snippet}
+
 <Modal open {title} wide {onclose}>
-  {#if loading}
-    <p class="t-small muted">Measuring…</p>
-  {:else if error}
-    <p class="t-small err">{error}</p>
-  {:else}
+  <PageState {loading} loadingText="Measuring…" {error} empty={!!error}>
     <p class="t-small muted">
       Each project is packed into one compressed file, checked, and then removed from ~/dev. You can
       restore it any time under Archives.
     </p>
-    <div class="scroll">
-      <table>
-        <tbody>
-          {#each plan as p (p.id)}
-            <tr class="t-small" class:dim={risky(p) && !dirtyOk.has(p.id)}>
-              <td class="mono">{p.id}</td>
-              <td class="num right">{human(p.bytes)}</td>
-            </tr>
-            {#if risky(p)}
-              <tr class="t-small risk">
-                <td colspan="2" class="wrap">
-                  <label>
-                    <input type="checkbox" checked={dirtyOk.has(p.id)} onchange={(e) => toggleDirty(p.id, e.currentTarget.checked)} />
-                    <span><strong class="warn">{riskText(p)}</strong> live only in this folder. Tick to
-                      archive anyway, otherwise it is skipped.</span>
-                  </label>
-                </td>
-              </tr>
-            {/if}
-          {/each}
-          {#each refused as r (r.item)}
-            <tr class="t-small dim">
-              <td class="mono">{r.item}</td>
-              <td class="wrap">Skipped: {r.reason}{r.needs ? ` (needs ${r.needs})` : ''}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
+    <Table label="Projects to archive" rows={lines} key={(r) => r.id} {columns} dim={skipped} />
     {#if going.length}
       <p class="t-small">
         Frees up to <strong class="num">{human(total)}</strong> on this Mac.
@@ -152,7 +152,7 @@ function confirm() {
         <input class="mono" bind:value={to} />
       </label>
     </details>
-  {/if}
+  </PageState>
   {#snippet footer()}
     <Button onclick={onclose}>Cancel</Button>
     <Button variant="primary" disabled={loading || !going.length} onclick={confirm}>
@@ -162,12 +162,7 @@ function confirm() {
 </Modal>
 
 <style>
-  .risk td {
-    border-top: none;
-    padding-bottom: var(--space-2);
-  }
-
-  .risk label,
+  .risk,
   .opt {
     display: flex;
     align-items: baseline;

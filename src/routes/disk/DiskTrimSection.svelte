@@ -1,12 +1,13 @@
 <script lang="ts">
 import PageState from '$lib/components/feedback/PageState.svelte'
-import SortHeader from '$lib/components/table/SortHeader.svelte'
+import Table from '$lib/components/table/Table.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { DiskItem } from '$lib/disk'
 import type { DiskSettings, Operation } from '$lib/disk-types'
 import { errorMessage } from '$lib/format'
+import type { Column } from '$lib/table'
 import { TableSort } from '$lib/table-sort.svelte'
 import { human, job, readDisk, runJob } from './disk-client.svelte'
 
@@ -57,22 +58,78 @@ $effect(() => {
     .catch(() => (last = []))
 })
 
-const cache = (o: Operation, k: string) => o.end?.details?.[k] as number | undefined
-const sort = new TableSort<'step' | 'result' | 'before' | 'after' | 'freed'>(null, [
-  'before',
-  'after',
-  'freed',
+/** A plan step or a refused item: one row type, both kinds of skip drawn dim. */
+interface PlanRow {
+  id: string
+  name: string
+  skip?: string
+  command: string
+  cache: string
+  refused: boolean
+}
+const rows = $derived<PlanRow[]>([
+  ...plan.map((s) => ({
+    id: `step:${s.name}`,
+    name: s.name,
+    skip: s.skip,
+    command: s.cmd.join(' '),
+    cache: s.cache ?? '',
+    refused: false,
+  })),
+  ...refused.map((r) => ({
+    id: `refused:${r.item}`,
+    name: r.item,
+    command: `refused — needs ${r.needs}`,
+    cache: '',
+    refused: true,
+  })),
 ])
-const lastSorted = $derived(
-  sort.apply(last, {
-    step: (o) => o.start.item,
-    result: (o) => o.end?.outcome ?? 'interrupted',
-    before: (o) => cache(o, 'cacheBefore'),
-    after: (o) => cache(o, 'cacheAfter'),
-    freed: (o) => o.end?.freed ?? 0,
-  }),
-)
+const planColumns: Column<PlanRow>[] = [
+  { key: 'step', label: 'Step', cell: stepCell },
+  { key: 'command', label: 'Command', wrap: true, cell: commandCell },
+  { key: 'cache', label: 'Cache', hideBelow: 768, cell: cacheCell },
+]
+
+const cache = (o: Operation, k: string) => o.end?.details?.[k] as number | undefined
+const bytes = (n: number | undefined) => (n === undefined ? '–' : human(n))
+const sort = new TableSort<string>(null, ['before', 'after', 'freed'])
+const lastColumns: Column<Operation>[] = [
+  { key: 'step', label: 'Step', sort: (o) => o.start.item, cell: itemCell },
+  {
+    key: 'result',
+    label: 'Result',
+    sort: (o) => o.end?.outcome ?? 'interrupted',
+    wrap: true,
+    cell: resultCell,
+  },
+  {
+    key: 'before',
+    label: 'Before',
+    sort: (o) => cache(o, 'cacheBefore'),
+    align: 'right',
+    hideBelow: 768,
+    cell: beforeCell,
+  },
+  {
+    key: 'after',
+    label: 'After',
+    sort: (o) => cache(o, 'cacheAfter'),
+    align: 'right',
+    hideBelow: 768,
+    cell: afterCell,
+  },
+  { key: 'freed', label: 'Freed', sort: (o) => o.end?.freed ?? 0, align: 'right', cell: freedCell },
+]
 </script>
+
+{#snippet stepCell(r: PlanRow)}{r.name}{#if r.skip} <Badge>skip: {r.skip}</Badge>{/if}{/snippet}
+{#snippet commandCell(r: PlanRow)}<span class:mono={!r.refused} class:muted={!r.refused}>{r.command}</span>{/snippet}
+{#snippet cacheCell(r: PlanRow)}<span class="mono muted">{r.cache}</span>{/snippet}
+{#snippet itemCell(o: Operation)}{o.start.item}{/snippet}
+{#snippet resultCell(o: Operation)}{o.end?.outcome ?? 'interrupted'}{o.end?.message ? ` — ${o.end.message}` : ''}{/snippet}
+{#snippet beforeCell(o: Operation)}<span class="num">{bytes(cache(o, 'cacheBefore'))}</span>{/snippet}
+{#snippet afterCell(o: Operation)}<span class="num">{bytes(cache(o, 'cacheAfter'))}</span>{/snippet}
+{#snippet freedCell(o: Operation)}<span class="num">{human(o.end?.freed ?? 0)}</span>{/snippet}
 
 <section>
   <div class="bar">
@@ -84,53 +141,14 @@ const lastSorted = $derived(
   </div>
   <PageState loading={!loaded && !error} loadingText="Planning…" {error} empty={!loaded}>
     <Card flush>
-      <div class="scroll">
-        <table>
-          <thead><tr class="t-caption"><th>Step</th><th>Command</th><th>Cache</th></tr></thead>
-          <tbody>
-            {#each plan as s (s.name)}
-              <tr class="t-small" class:dim={s.skip}>
-                <td>{s.name}{#if s.skip} <Badge>skip: {s.skip}</Badge>{/if}</td>
-                <td class="mono muted">{s.cmd.join(' ')}</td>
-                <td class="mono muted">{s.cache ?? ''}</td>
-              </tr>
-            {/each}
-            {#each refused as r (r.item)}
-              <tr class="t-small dim"><td>{r.item}</td><td colspan="2">refused — needs {r.needs}</td></tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
+      <Table label="Trim plan" {rows} key={(r) => r.id} columns={planColumns} dim={(r) => Boolean(r.skip) || r.refused} />
     </Card>
   </PageState>
 
   {#if last.length}
     <h3 class="t-small last">Last run · {last[0].start.at.slice(0, 16).replace('T', ' ')}</h3>
     <Card flush>
-      <div class="scroll">
-        <table>
-          <thead>
-            <tr class="t-caption">
-              <SortHeader {sort} key="step" label="Step" />
-              <SortHeader {sort} key="result" label="Result" />
-              <SortHeader {sort} key="before" label="Before" class="right" />
-              <SortHeader {sort} key="after" label="After" class="right" />
-              <SortHeader {sort} key="freed" label="Freed" class="right" />
-            </tr>
-          </thead>
-          <tbody>
-            {#each lastSorted as o (o.start.id)}
-              <tr class="t-small">
-                <td>{o.start.item}</td>
-                <td>{o.end?.outcome ?? 'interrupted'}{o.end?.message ? ` — ${o.end.message}` : ''}</td>
-                <td class="num right">{cache(o, 'cacheBefore') === undefined ? '–' : human(cache(o, 'cacheBefore') ?? 0)}</td>
-                <td class="num right">{cache(o, 'cacheAfter') === undefined ? '–' : human(cache(o, 'cacheAfter') ?? 0)}</td>
-                <td class="num right">{human(o.end?.freed ?? 0)}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
+      <Table label="Last trim run" rows={last} key={(o) => o.start.id} columns={lastColumns} {sort} />
     </Card>
   {/if}
 </section>

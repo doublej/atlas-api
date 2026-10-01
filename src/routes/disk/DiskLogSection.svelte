@@ -1,9 +1,13 @@
 <script lang="ts">
+import Notice from '$lib/components/feedback/Notice.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
+import Table from '$lib/components/table/Table.svelte'
+import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { Operation, Pending } from '$lib/disk-types'
 import { errorMessage, tildify } from '$lib/format'
+import type { Column } from '$lib/table'
 import { human, job, readDisk, runJob } from './disk-client.svelte'
 
 let { pending }: { pending: Pending[] } = $props()
@@ -32,13 +36,35 @@ $effect(() => {
     .catch((e) => (error = errorMessage(e)))
 })
 
-const result = (o: Operation) =>
-  o.end ? `${o.end.outcome}${o.end.message ? `: ${o.end.message}` : ''}` : 'INTERRUPTED'
+const failed = (o: Operation) => !o.end || o.end.outcome === 'failed'
+/** Chronological within a run, so no sort. On a phone the item cell carries the result too. */
+const columns: Column<Operation>[] = [
+  { key: 'at', label: 'Time', hideBelow: 768, cell: timeCell },
+  { key: 'op', label: 'Operation', cell: opCell },
+  { key: 'item', label: 'Item', wrap: true, cell: itemCell },
+  { key: 'bytes', label: 'Size', align: 'right', hideBelow: 768, cell: sizeCell },
+  { key: 'result', label: 'Result', wrap: true, hideBelow: 768, cell: resultCell },
+]
 </script>
+
+{#snippet timeCell(o: Operation)}<span class="num muted">{o.start.at.slice(11, 19)}</span>{/snippet}
+{#snippet opCell(o: Operation)}<span class="mono">{o.start.op}</span>{/snippet}
+{#snippet itemCell(o: Operation)}
+  <span class="mono">{tildify(o.start.item)}{o.start.target ? ` → ${tildify(o.start.target)}` : ''}</span>
+  <div class="phone-only">{@render resultCell(o)}</div>
+{/snippet}
+{#snippet sizeCell(o: Operation)}<span class="num">{o.start.bytes ? human(o.start.bytes) : ''}</span>{/snippet}
+{#snippet resultCell(o: Operation)}
+  {#if failed(o)}<Badge tone="neg">{o.end?.outcome ?? 'interrupted'}</Badge>{:else}{o.end?.outcome}{/if}
+  {#if o.end?.message}<span>{o.end.message}</span>{/if}
+{/snippet}
 
 <section>
   {#if pending.length}
-    <div class="bar"><h2 class="t-h3 err">Interrupted operations</h2></div>
+    <Notice tone="error">
+      <strong>{pending.length} interrupted operation(s).</strong> Only Finish or Undo below may touch
+      them.
+    </Notice>
     <Card>
       {#each pending as p (p.start.id)}
         <div class="pending t-small">
@@ -77,21 +103,7 @@ const result = (o: Operation) =>
     {#each runs as [run, list] (run)}
       <Card flush>
         <div class="run t-caption muted mono">{run} · {list[0].start.actor} · {list.length} operation(s)</div>
-        <div class="scroll">
-          <table>
-            <tbody>
-              {#each list as o (o.start.id)}
-                <tr class="t-small">
-                  <td class="num muted">{o.start.at.slice(11, 19)}</td>
-                  <td class="mono">{o.start.op}</td>
-                  <td class="mono wrap">{tildify(o.start.item)}{o.start.target ? ` → ${tildify(o.start.target)}` : ''}</td>
-                  <td class="num right">{o.start.bytes ? human(o.start.bytes) : ''}</td>
-                  <td class="wrap result" class:err={!o.end || o.end.outcome === 'failed'}>{result(o)}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
+        <Table label="Run {run}" rows={list} key={(o) => o.start.id} {columns} />
       </Card>
     {/each}
   </PageState>
@@ -120,8 +132,14 @@ const result = (o: Operation) =>
     min-width: 140px;
   }
 
-  .result {
-    min-width: 14em;
+  .phone-only {
+    display: none;
+  }
+
+  @media (max-width: 768px) {
+    .phone-only {
+      display: block;
+    }
   }
 
   .run {

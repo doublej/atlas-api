@@ -6,6 +6,7 @@ import Card from '$lib/components/ui/Card.svelte'
 import type { DiskSettings } from '$lib/disk-types'
 import { errorMessage } from '$lib/format'
 import { http } from '$lib/http'
+import { toast } from '$lib/toast.svelte'
 
 let { settings }: { settings: DiskSettings } = $props()
 
@@ -35,7 +36,6 @@ let form = $state(
 )
 let saving = $state(false)
 let saved = $state(false)
-let saveError = $state('')
 
 function changes(): Record<string, unknown> {
   const next: Record<string, unknown> = {
@@ -58,21 +58,23 @@ function changes(): Record<string, unknown> {
 
 async function save() {
   const bad = NUMBERS.find((n) => !Number.isFinite(Number(form[n.key])) || Number(form[n.key]) < 0)
-  saveError = bad
+  const invalid = bad
     ? `${bad.label} needs a non-negative number`
     : form.keep.trim() && !(Number(form.keep) >= 1)
       ? 'Keep newest is empty (off) or at least 1'
       : ''
-  if (saveError) return
+  if (invalid) {
+    toast(invalid, 'error')
+    return
+  }
   saving = true
   saved = false
-  saveError = ''
   try {
     await http.put('/api/disk/config', { changes: changes() })
     saved = true
     await invalidateAll()
   } catch (e) {
-    saveError = errorMessage(e)
+    toast(`Save failed: ${errorMessage(e)}`, 'error')
   } finally {
     saving = false
   }
@@ -106,7 +108,6 @@ async function save() {
       <Button variant="primary" onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</Button>
       {#if saved}<span class="t-caption ok">Saved.</span>{/if}
     </div>
-    {#if saveError}<p class="t-caption err">{saveError}</p>{/if}
   </Card>
 </section>
 

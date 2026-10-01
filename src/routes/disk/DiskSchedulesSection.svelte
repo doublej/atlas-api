@@ -8,6 +8,7 @@ import Card from '$lib/components/ui/Card.svelte'
 import type { ScheduleStatus } from '$lib/disk-types'
 import { errorMessage } from '$lib/format'
 import { http } from '$lib/http'
+import { toast } from '$lib/toast.svelte'
 import { ago } from './disk-client.svelte'
 
 let { schedules }: { schedules: ScheduleStatus[] } = $props()
@@ -27,11 +28,9 @@ let edits = $state(
   ),
 )
 let busy = $state('')
-let error = $state('')
 
 async function change(verb: 'enable' | 'disable' | 'set', s: ScheduleStatus) {
   busy = s.job
-  error = ''
   const e = edits[s.job]
   try {
     await http.post('/api/disk/schedule', {
@@ -41,7 +40,7 @@ async function change(verb: 'enable' | 'disable' | 'set', s: ScheduleStatus) {
     })
     await invalidateAll()
   } catch (err) {
-    error = errorMessage(err)
+    toast(`Schedule ${verb} for ${s.job} failed: ${errorMessage(err)}`, 'error')
   } finally {
     busy = ''
   }
@@ -50,7 +49,6 @@ async function change(verb: 'enable' | 'disable' | 'set', s: ScheduleStatus) {
 
 <section>
   <div class="bar"><h2 class="t-h3">Schedules</h2><span class="t-caption muted">launchd jobs, run unattended under the approval policy</span></div>
-  {#if error}<p class="t-small err">{error}</p>{/if}
   <PageState empty={!schedules.length} emptyText="No schedules could be read.">
     <div class="cards">
       {#each schedules as s (s.job)}
