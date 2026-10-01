@@ -31,10 +31,70 @@ describe('redact', () => {
     ['curl -H Authorization: token abc https://x', 'Authorization: token REDACTED https'],
   ])('%s', (command, expected) => expect(redact(command)).toContain(expected))
 
-  it('leaves an ordinary command alone', () => {
-    const cmd = 'node node_modules/.bin/vite dev --host 0.0.0.0 --port 4123 --max-tokens 5'
-    expect(redact(cmd)).toBe(cmd)
+  // Assembled at run time, so no secret scanner takes this file for a leak.
+  const FAKE = 'FAKE'.repeat(6)
+  it.each([
+    ['mysql -uroot -pFAKEPW01 app', 'FAKEPW01'],
+    ['sshpass -p FAKEPW02 ssh host', 'FAKEPW02'],
+    ['redis-cli -a FAKEPW03 ping', 'FAKEPW03'],
+    ['curl -u jj:FAKEPW04 https://x', 'FAKEPW04'],
+    ['curl -H Cookie: theme=dark; sid=FAKEPW05 https://x', 'FAKEPW05'],
+    ['node x.js {"token":"FAKEPW06"}', 'FAKEPW06'],
+    ['env OPENAI_KEY=FAKEPW07 node x', 'FAKEPW07'],
+    ['aws-tool access_key=FAKEPW08', 'FAKEPW08'],
+    ['tool --pass FAKEPW09', 'FAKEPW09'],
+    ['tool --auth FAKEPW10', 'FAKEPW10'],
+    ['tool --pat FAKEPW11', 'FAKEPW11'],
+    ['tool --key=FAKEPW12', 'FAKEPW12'],
+    ['tool --private-key FAKEPW13', 'FAKEPW13'],
+    ['tool --credentials FAKEPW14', 'FAKEPW14'],
+    [`proxy sk-ant-api03-${FAKE}`, FAKE],
+    ['tool --token\tFAKEPW16', 'FAKEPW16'],
+    ['op item get x --session FAKEPW17', 'FAKEPW17'],
+    ['mcp-remote --header Authorization: Bearer FAKEPW18', 'FAKEPW18'],
+    ['ssh host DECKHAND_TOKEN=FAKEPW19 exec y', 'FAKEPW19'],
+    ['tool --api-key=FAKEPW20', 'FAKEPW20'],
+    ['tool --client-secret "FAKE PW21"', 'PW21'],
+    ['git clone https://jj:FAKEPW22@github.com/x.git', 'FAKEPW22'],
+    ['curl https://x/cb?a=1&access_token=FAKEPW23&b=2', 'FAKEPW23'],
+    ['curl -H x-api-key: FAKEPW24 https://x', 'FAKEPW24'],
+    ['env PGPASSWORD=FAKEPW25 psql', 'FAKEPW25'],
+    ['tool --password=FAKEPW26', 'FAKEPW26'],
+    ['gh auth login --with-token FAKEPW27', 'FAKEPW27'],
+    [`node x.js sk-${FAKE}`, FAKE],
+    [`git push https://x ghp_${FAKE}`, FAKE],
+    [`echo github_pat_${FAKE}`, FAKE],
+    [`glab x glpat-${FAKE}`, FAKE],
+    [`node bot.js xoxb-${FAKE}`, FAKE],
+    [`run AKIA${FAKE.slice(0, 16)}`, FAKE.slice(0, 16)],
+    ['env STRIPE_SECRET_KEY=FAKEPW34 node x', 'FAKEPW34'],
+    ['tool --apiKey FAKEPW35 --authToken=FAKEPW36', 'FAKEPW3'],
+    ['node x.js {"api_key": "FAKEPW37"}', 'FAKEPW37'],
+    ['mysqldump -u root --password FAKEPW38 db', 'FAKEPW38'],
+  ])('masks %s', (command, secret) => {
+    expect(redact(command)).not.toContain(secret)
+    expect(redact(command)).toContain('REDACTED')
   })
+
+  it.each([
+    'bun build/index.js',
+    'vite --port 5173',
+    'node --max-old-space-size=4096 x.js',
+    'python -m http.server 8000',
+    'node node_modules/.bin/vite dev --host 0.0.0.0 --port 4123 --max-tokens 5',
+    'claude --session-id 3f2a --resume',
+    'tmux new-session -s work',
+    'rsync -a --keep-dirlinks a b',
+    'ssh-agent --key-file id_ed25519',
+    'docker login --password-stdin -u jj registry',
+    'mysql -u root -p app',
+    'ssh -p 2222 host',
+    'git log --author=jj',
+    'env CLD_SESSION_NAME=atlas PATH=/usr/bin claude',
+    'sort -u words.txt',
+    'skills-cli --bypass x --no-auth server.js --port 3000',
+    'docker run -u 501:20 img',
+  ])('leaves %s alone', (command) => expect(redact(command)).toBe(command))
 })
 
 describe('parsers', () => {

@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { slugProblem } from './slug'
 
 const NAS_ETC = '/share/CACHEDEV1_DATA/Container/caddy/etc'
 const NAS_SITES_DIR = `${NAS_ETC}/sites`
@@ -123,8 +124,15 @@ async function runChange(what: string, script: string): Promise<NasResult> {
 const validateAndReload = `${NAS_DOCKER} exec caddy-porkbun caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 ${NAS_DOCKER} exec caddy-porkbun caddy reload --config /etc/caddy/Caddyfile --address localhost:2019`
 
+/** A slug is pasted into a remote shell line: one that is no DNS label never gets that far. */
+function assertSlug(slug: string): void {
+  const problem = slugProblem(slug)
+  if (problem) throw new Error(`NAS change refused for ${JSON.stringify(slug)}: ${problem}`)
+}
+
 /** Writes `<slug>-atlas.caddy` into the NAS's `etc/sites/` (auto-imported), then validates + reloads. */
 export function pushToNas(slug: string, content: string): Promise<NasResult> {
+  assertSlug(slug)
   return runChange(
     `NAS push for ${slug}`,
     `set -eu
@@ -137,6 +145,7 @@ ${validateAndReload}
 }
 
 export function removeFromNas(slug: string): Promise<NasResult> {
+  assertSlug(slug)
   return runChange(
     `NAS remove for ${slug}`,
     `set -eu

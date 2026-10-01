@@ -11,6 +11,8 @@ const via = (host: string, origin?: string) => ({
   'x-forwarded-host': host,
   ...(origin ? { origin } : {}),
 })
+/** A rebound page: its own name as `Host`, plus the forwarded headers it can add like any other. */
+const rebound = (host: string, origin?: string) => ({ ...via(host, origin), host: 'evil.example' })
 
 type Case = [name: string, method: string, route: string, headers: Record<string, string>]
 
@@ -45,6 +47,7 @@ const allowed: Case[] = [
   ['redacted listeners off-LAN', 'GET', '/api/ports/listeners', via(REMOTE)],
   ['HEAD off-LAN', 'HEAD', '/api/health', via(REMOTE)],
   ['secret read on the LAN, no Origin', 'GET', '/api/env-files', via(LAN)],
+  ['file read via atlas.local', 'GET', '/api/claude-tree', via(LAN_LONG)],
   ['secret read on this Mac', 'GET', '/api/claude-tree', { host: 'localhost:47891' }],
   [
     'URL typed into the address bar',
@@ -52,14 +55,55 @@ const allowed: Case[] = [
     '/api/env-files',
     { host: 'localhost:47891', 'sec-fetch-site': 'none' },
   ],
+  ['atlas-cli reads the catalog', 'GET', '/api/projects', { host: 'localhost:47891' }],
+  [
+    'Raycast reads the catalog (Node fetch: Sec-Fetch-Mode only)',
+    'GET',
+    '/api/projects',
+    { host: 'localhost:47891', 'sec-fetch-mode': 'cors' },
+  ],
+  [
+    'console reads the catalog',
+    'GET',
+    '/api/projects',
+    { host: '127.0.0.1:47891', 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors' },
+  ],
+  [
+    'a link on another site opens the catalog',
+    'GET',
+    '/api/projects',
+    { host: 'localhost:47891', 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate' },
+  ],
+  [
+    'a link on another site opens a page',
+    'GET',
+    '/processes',
+    { host: 'localhost:47891', 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate' },
+  ],
+  [
+    "a page's own data load",
+    'GET',
+    '/processes',
+    { host: 'localhost:47891', 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors' },
+  ],
+  [
+    "a page's own data load on the LAN",
+    'GET',
+    '/processes',
+    { ...via(LAN), 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors' },
+  ],
+  [
+    'a page off-LAN',
+    'GET',
+    '/',
+    { ...via(REMOTE), 'sec-fetch-site': 'none', 'sec-fetch-mode': 'navigate' },
+  ],
   [
     'Raycast scans its own scanDirs',
     'GET',
     '/api/projects?dir=/Users/jurrejan/dev',
     { host: 'localhost:47891', 'sec-fetch-mode': 'cors' },
   ],
-  // A GET outside the local-only list is not checked at all — reads stay open.
-  ['GET from a rebinding Host', 'GET', '/api/projects', { host: 'evil.example' }],
 ]
 
 const refused: [...Case, reason: RegExp][] = [
@@ -99,6 +143,102 @@ const refused: [...Case, reason: RegExp][] = [
     /not this Mac/,
   ],
   ['no Host at all', 'POST', '/api/refresh', {}, /host \(none\)/],
+  [
+    "another site's script reads the catalog",
+    'GET',
+    '/api/projects',
+    {
+      host: 'localhost:47891',
+      origin: 'https://evil.example',
+      'sec-fetch-site': 'cross-site',
+      'sec-fetch-mode': 'cors',
+    },
+    /cross-site request from https:\/\/evil\.example/,
+  ],
+  [
+    "another site's <img> runs a fresh process snapshot",
+    'GET',
+    '/api/processes',
+    { host: 'localhost:47891', 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'no-cors' },
+    /Sec-Fetch-Site: cross-site/,
+  ],
+  [
+    "another site's <img> runs the hostname doctor",
+    'GET',
+    '/api/hostnames/doctor',
+    { host: 'localhost:47891', 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'no-cors' },
+    /Sec-Fetch-Site: cross-site/,
+  ],
+  [
+    "another site's script reads a page's data",
+    'GET',
+    '/processes',
+    { host: 'localhost:47891', origin: 'https://evil.example', 'sec-fetch-mode': 'cors' },
+    /cross-site request from https:\/\/evil\.example/,
+  ],
+  [
+    'a dev hostname (same site) reads the catalog on the LAN',
+    'GET',
+    '/api/projects',
+    { ...via(LAN), origin: 'https://web.atlas.local.jurrejan.com', 'sec-fetch-site': 'same-site' },
+    /cross-site request from https:\/\/web\.atlas\.local/,
+  ],
+  [
+    'another site reads the catalog off-LAN',
+    'GET',
+    '/api/projects',
+    { ...via(REMOTE), 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors' },
+    /Sec-Fetch-Site: cross-site/,
+  ],
+  [
+    'DNS rebinding reads the catalog',
+    'GET',
+    '/api/projects',
+    { host: 'evil.example' },
+    /not this Mac/,
+  ],
+  [
+    'rebinding + forged LAN headers read a secret',
+    'GET',
+    '/api/env-files',
+    rebound(LAN),
+    /not this Mac/,
+  ],
+  [
+    'rebinding + forged LAN headers read a file',
+    'GET',
+    '/api/claude-tree',
+    rebound(LAN_LONG),
+    /not this Mac/,
+  ],
+  [
+    'rebinding + forged LAN headers read a log',
+    'GET',
+    '/api/processes/log',
+    rebound(LAN),
+    /not this Mac/,
+  ],
+  [
+    'rebinding + forged LAN headers read CLAUDE.md',
+    'GET',
+    '/api/agent-files',
+    rebound(LAN),
+    /not this Mac/,
+  ],
+  [
+    'rebinding + forged off-LAN headers read processes',
+    'GET',
+    '/api/processes',
+    rebound(REMOTE),
+    /not this Mac/,
+  ],
+  [
+    'rebinding + forged LAN headers write',
+    'POST',
+    '/api/processes/stop',
+    rebound(LAN, `https://${LAN}`),
+    /host evil\.example is not this Mac/,
+  ],
   [
     'CSRF: <img> on another site scans a folder (no Origin)',
     'GET',

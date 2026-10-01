@@ -1,6 +1,7 @@
 import { tildify } from '../format'
 import { type NasView, WILDCARD_FILE } from './nas'
 import type { HostnameEntry, Registry } from './registry'
+import { slugProblem } from './slug'
 import type { DriftItem } from './types'
 
 // Pure: every way the registry, the projects, the services and the NAS disagree. The doctor
@@ -148,7 +149,9 @@ function nasDrift(nas: NasView, rows: Registry): DriftItem[] {
   for (const { file } of nas.sites) {
     if (file === WILDCARD_FILE) continue
     const slug = file.match(/^(.+)-atlas\.caddy$/)?.[1]
-    if (!slug) out.push(item('orphan-site-file', file, 'legacy NAS file — ask JJ', null))
+    // A name no slug can have is not atlas's to delete, and must never reach `removeFromNas`.
+    if (!slug || slugProblem(slug))
+      out.push(item('orphan-site-file', file, 'legacy NAS file — ask JJ', null))
     else if (!rows[slug])
       out.push(
         item('orphan-site-file', file, `sites/${file} has no registry row`, 'Remove file', {

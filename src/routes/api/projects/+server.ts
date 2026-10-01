@@ -14,7 +14,7 @@ export const GET: RequestHandler = async ({ url }) => {
   if (path) {
     const project = index.projects.find((p) => p.path === path)
     if (!project) return json({ error: `no project at ${path}` }, { status: 404 })
-    return json(project, { headers: { 'Access-Control-Allow-Origin': '*' } })
+    return json(project)
   }
 
   // Same stale-while-revalidate bargain the local cache makes, one TTL up: never awaited, so
@@ -25,10 +25,5 @@ export const GET: RequestHandler = async ({ url }) => {
     index.projects = index.projects.filter((p) => !p.archived)
   }
 
-  return json(index, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'max-age=60',
-    },
-  })
+  return json(index, { headers: { 'Cache-Control': 'max-age=60' } })
 }
