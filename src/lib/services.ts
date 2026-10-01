@@ -4,6 +4,7 @@ import { connect, createServer, type Server } from 'node:net'
 import { promisify } from 'node:util'
 import { getServices, type ServiceDef } from '$shared/services'
 import { ensureRoute, lanIp, SlugTakenError } from './caddyDev'
+import { type Registry, readRegistry } from './hostnames/registry'
 import { createMutex } from './mutex'
 import { type BoundPort, isLoopback, listSockets, type Socket } from './ports'
 
@@ -151,6 +152,13 @@ async function syncOne(svc: ServiceDef, ip: string, sockets: Socket[]): Promise<
   return { ...base, ...(await route(svc)) }
 }
 
+/** Pure: the ports behind project hostnames — each needs a bridge again after a daemon restart. */
+export function routedProjectPorts(registry: Registry): number[] {
+  return [
+    ...new Set(Object.values(registry).flatMap((e) => (e.path && !e.release ? [e.port] : []))),
+  ]
+}
+
 const withSyncLock = createMutex()
 
 /**
@@ -164,8 +172,10 @@ export function syncServices(): Promise<ServiceState[]> {
     const sockets = await listSockets()
     const next: ServiceState[] = []
     for (const svc of getServices()) next.push(await syncOne(svc, ip, sockets))
-    for (const key of [...bridges.keys()]) {
-      if (key.startsWith(':')) await bridgeProject(Number(key.slice(1)), sockets)
+    // The bridges live in memory, so every routed project port is checked, not only open bridges.
+    const open = [...bridges.keys()].filter((k) => k.startsWith(':')).map((k) => Number(k.slice(1)))
+    for (const port of new Set([...routedProjectPorts(await readRegistry()), ...open])) {
+      await bridgeProject(port, sockets)
     }
     states = next
     return states

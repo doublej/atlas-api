@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { getServices } from '$shared/services'
 import { renderSiteBlock } from './hostnames/nas'
-import { listenersOn, routeMode } from './services'
+import { listenersOn, routedProjectPorts, routeMode } from './services'
 
 describe('routeMode', () => {
   it('routes a wildcard bind directly', () => {
@@ -98,5 +98,19 @@ describe('the atlas console block (decision 1, 2.4)', () => {
       /^atlas\.atlas\.remote\.jurrejan\.com \{\n\tencode zstd gzip\n\tbasic_auth \{/,
     )
     expect(remote).toContain('reverse_proxy 10.0.0.2:47891 {')
+  })
+})
+
+describe('routedProjectPorts', () => {
+  it('takes project rows once each and skips services and pending releases', () => {
+    const at = '2026-10-01T00:00:00Z'
+    expect(
+      routedProjectPorts({
+        a: { path: '/x/a', port: 4126, registeredAt: at },
+        b: { path: '/x/b', port: 4126, registeredAt: at },
+        c: { path: '/x/c', port: 4200, release: true, registeredAt: at },
+        atlas: { service: true, port: 47891, registeredAt: at },
+      }),
+    ).toEqual([4126])
   })
 })
