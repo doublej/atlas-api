@@ -1,4 +1,5 @@
 import { resolve4 } from 'node:dns/promises'
+import { existsSync } from 'node:fs'
 import { getServices } from '$shared/services'
 import { lanIp, moveRoute, removeRoute, retryRoute, rewriteRegistry } from '../caddyDev'
 import { DEV_FOLDER } from '../config'
@@ -8,7 +9,7 @@ import { currentSlug, scan } from '../scanner'
 import { slugAt } from './claims'
 import { findDrift, inRange } from './drift'
 import { readNas, removeFromNas } from './nas'
-import { hasAuthHash, readRawRegistry, readRegistry } from './registry'
+import { hasAuthHash, readRawRegistry, readRegistry, withRegistryLock } from './registry'
 import type { DriftItem } from './types'
 
 const WAN_TIMEOUT_MS = 5000
@@ -53,6 +54,7 @@ export async function diagnose(): Promise<DriftItem[]> {
     raw,
     rows,
     projects,
+    folders: new Set(paths.filter((p) => existsSync(p))),
     services: getServices(),
     listening: new Set(sockets.map((s) => s.port)),
     nas,
@@ -74,6 +76,17 @@ const removed = async (result: Promise<{ ok: boolean; error?: string }>) => {
   if (!r.ok) throw new Error(r.error ?? 'NAS removal failed')
 }
 
+/**
+ * A NAS file with no row goes — unless a push landed its row since the diagnosis. Checked under
+ * the registry lock: an `ensureRoute` in flight has pushed the file but not yet written the row.
+ */
+const removeOrphanFile = (slug: string) =>
+  withRegistryLock(async () =>
+    (await readRegistry())[slug]
+      ? { ok: false, error: `${slug} has a registry row now — check again` }
+      : removeFromNas(slug),
+  )
+
 /** The fix behind one drift item's button. Throws with the reason when it didn't take. */
 function applyFix(item: DriftItem): Promise<void> {
   const slug = item.slug ?? ''
@@ -83,7 +96,7 @@ function applyFix(item: DriftItem): Promise<void> {
     case 'orphan-row':
       return removed(removeRoute(slug))
     case 'orphan-site-file':
-      return removed(removeFromNas(slug))
+      return removed(removeOrphanFile(slug))
     case 'slug-drift':
       return slugAt(item.path ?? '').then((to) => settled(moveRoute(item.path ?? '', slug, to)))
     case 'unsynced':

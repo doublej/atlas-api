@@ -13,6 +13,8 @@ export interface DriftInput {
   rows: Registry
   /** Local project path → the slug it has now (`.atlas` or folder). */
   projects: Map<string, string>
+  /** Row paths whose folder is still on disk, catalogued or not. */
+  folders: Set<string>
   services: { slug: string; port: number }[]
   /** Ports something listens on right now. */
   listening: Set<number>
@@ -64,6 +66,11 @@ function serviceDrift(slug: string, input: DriftInput): DriftItem[] {
 function projectDrift(slug: string, entry: HostnameEntry, input: DriftInput): DriftItem[] {
   const path = entry.path
   const now = path ? input.projects.get(path) : undefined
+  if (now === undefined && path && input.folders.has(path)) {
+    // Out of the catalog (ignore, force:false, depth) is not gone: never one click from release.
+    const detail = `${tildify(path)} is still there but the scan skips it — release it by hand if meant`
+    return [item('orphan-row', slug, detail, null, { slug, path })]
+  }
   if (now === undefined) {
     const detail = `no project at ${tildify(path ?? '?')}`
     return [item('orphan-row', slug, detail, 'Release', { slug, path })]

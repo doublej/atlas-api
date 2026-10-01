@@ -28,6 +28,7 @@ function input(over: Partial<DriftInput> = {}): DriftInput {
     raw: structuredClone(rows),
     rows,
     projects: new Map([[`${DEV}/web/a`, 'web-a']]),
+    folders: new Set(),
     services: [],
     listening: new Set(),
     nas: { sites: [wildcard, site('web-a')], adminRanges: [] },
@@ -49,6 +50,12 @@ describe('findDrift', () => {
   it('flags a row whose project is gone, with a release fix', () => {
     const [d] = findDrift(input({ projects: new Map() }))
     expect(d).toMatchObject({ id: 'orphan-row:web-a', fix: { label: 'Release' } })
+  })
+
+  it('never offers to release a row whose folder is still there, only out of the catalog', () => {
+    const [d] = findDrift(input({ projects: new Map(), folders: new Set([`${DEV}/web/a`]) }))
+    expect(d).toMatchObject({ id: 'orphan-row:web-a', fix: null })
+    expect(d.detail).toContain('the scan skips it')
   })
 
   it("flags a slug the project no longer has (the route didn't move)", () => {
