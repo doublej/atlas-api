@@ -229,9 +229,10 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
     overflow-wrap: anywhere;
   }
 
-  /* Takes the table's slack and clips with an ellipsis, so a long value never widens the table. */
+  /* Claims 40% of the width and clips past it with an ellipsis, so a long value never widens the
+     table; `max-width: 0` is what lets a table cell shrink below its content. */
   td.fill {
-    width: 100%;
+    width: 40%;
     max-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -311,6 +312,12 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
   @media (max-width: 768px) {
     [data-hide='768'] {
       display: none;
+    }
+
+    /* A phone's width goes to the content, not to gutters. */
+    th,
+    td {
+      padding-inline: var(--space-2);
     }
   }
 </style>

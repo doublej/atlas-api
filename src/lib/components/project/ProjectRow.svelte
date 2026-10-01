@@ -219,4 +219,11 @@ const modified = $derived(new Date(project.modifiedAt).toLocaleDateString())
       opacity: 1;
     }
   }
+
+  /* A phone has no room beside the details: the actions go underneath. */
+  @media (max-width: 768px) {
+    .tools {
+      grid-column: 2 / -1;
+    }
+  }
 </style>

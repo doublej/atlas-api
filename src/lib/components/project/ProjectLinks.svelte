@@ -52,4 +52,12 @@ const umami = $derived(getDynamicActions('umami-open', project))
     color: var(--color-accent);
     text-decoration: underline;
   }
+
+  /* A long dev hostname breaks on a phone instead of running off the row. */
+  @media (max-width: 768px) {
+    .link {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+  }
 </style>

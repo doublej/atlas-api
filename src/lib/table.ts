@@ -21,7 +21,7 @@ export interface Column<T> {
   align?: 'right'
   /** Lets the cell wrap (anywhere) instead of staying on one line. */
   wrap?: boolean
-  /** Takes the table's spare width and ellipsizes past it — the one column that may shrink. */
+  /** Claims 40% of the width and ellipsizes past it — the one column that may shrink. */
   fill?: boolean
   /** Hides the column below this viewport width. */
   hideBelow?: 768 | 1100

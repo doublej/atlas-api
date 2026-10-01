@@ -66,6 +66,7 @@ const columns = $derived<Column<P>[]>([
     label: 'Links',
     sort: (p) =>
       Number(Boolean(runningPorts[p.path] || hostnames[p.slug])) + (p.domains?.length ?? 0),
+    hideBelow: 768,
     cell: linksCell,
   },
   {
@@ -119,7 +120,10 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
   {/if}
 {/snippet}
 
-{#snippet branchCell(p: P)}<span class="mono muted">{gitStatus[p.path]?.branch ?? ''}</span>{/snippet}
+{#snippet branchCell(p: P)}
+  {@const branch = gitStatus[p.path]?.branch ?? ''}
+  <span class="clip mono muted" title={branch}>{branch}</span>
+{/snippet}
 
 {#snippet hostCell(p: P)}<span class:remote={!p.isLocal}>{getHostById(p.host)?.label ?? p.host}</span>{/snippet}
 
@@ -204,13 +208,22 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
     color: var(--color-muted-2);
   }
 
-  /* A block, so the cell can cap it: a deep path ellipsizes instead of widening the table. */
-  .path {
+  /* A block, so the cell can cap it: a deep path or a long branch ellipsizes instead of
+     widening the table. */
+  .path,
+  .clip {
     display: block;
-    max-width: 280px;
+    max-width: 220px;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .path {
     color: var(--color-muted);
+  }
+
+  .clip {
+    max-width: 140px;
   }
 
   .mono {
