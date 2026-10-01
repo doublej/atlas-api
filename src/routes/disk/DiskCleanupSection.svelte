@@ -1,4 +1,5 @@
 <script lang="ts">
+import PageState from '$lib/components/feedback/PageState.svelte'
 import SortHeader from '$lib/components/table/SortHeader.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
@@ -70,48 +71,51 @@ function toggleRisk(r: Risk) {
     {/each}
   </div>
 
-  {#each groups as g (g.id)}
-    <Card flush>
-      <div class="group t-small">
-        <input
-          type="checkbox"
-          aria-label="Select all {g.id}"
-          checked={g.rows.every((r) => sel.has(r.path))}
-          onchange={(e) => sel.set(g.rows.filter((r) => !r.nested).map((r) => r.path), e.currentTarget.checked)}
-        />
-        <Badge tone={g.tone}>{g.id}</Badge>
-        <span class="muted">{g.note} · {g.rows.length} folders</span>
-      </div>
-      <div class="scroll">
-        <table>
-          <thead>
-            <tr class="t-caption">
-              <th></th>
-              <SortHeader {sort} key="size" label="Size" class="right" />
-              <SortHeader {sort} key="path" label="Folder" />
-              <SortHeader {sort} key="inUse" label="In use" />
-              <SortHeader {sort} key="why" label="What it is" />
-              <SortHeader {sort} key="restore" label="How it comes back" />
-            </tr>
-          </thead>
-          <tbody>
-            {#each g.rows as f (f.path)}
-              <tr class="t-small" class:selected={sel.has(f.path)} class:dim={f.nested} onclick={(e) => sel.click(f.path, e, ordered)}>
-                <td><input type="checkbox" aria-label="Select {f.path}" checked={sel.has(f.path)} onclick={(e) => e.stopPropagation()} onchange={() => sel.toggle(f.path)} /></td>
-                <td class="num right">{human(f.bytes)}</td>
-                <td class="mono" title={f.path}>{tildify(f.path)}{f.nested ? ' (nested)' : ''}</td>
-                <td>{#if f.inUse}<Badge tone="warn" title="something seems to use it">in use: {f.inUse}</Badge>{/if}</td>
-                <td class="muted">{f.why}</td>
-                <td class="muted mono">{f.restore}</td>
+  <PageState
+    empty={!groups.length}
+    emptyText={scan ? 'Nothing at these risk levels.' : 'Run a scan to list rebuildable folders under your home folder.'}
+  >
+    {#each groups as g (g.id)}
+      <Card flush>
+        <div class="group t-small">
+          <input
+            type="checkbox"
+            aria-label="Select all {g.id}"
+            checked={g.rows.every((r) => sel.has(r.path))}
+            onchange={(e) => sel.set(g.rows.filter((r) => !r.nested).map((r) => r.path), e.currentTarget.checked)}
+          />
+          <Badge tone={g.tone}>{g.id}</Badge>
+          <span class="muted">{g.note} · {g.rows.length} folders</span>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr class="t-caption">
+                <th></th>
+                <SortHeader {sort} key="size" label="Size" class="right" />
+                <SortHeader {sort} key="path" label="Folder" />
+                <SortHeader {sort} key="inUse" label="In use" />
+                <SortHeader {sort} key="why" label="What it is" />
+                <SortHeader {sort} key="restore" label="How it comes back" />
               </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    </Card>
-  {:else}
-    <p class="t-small muted">{scan ? 'Nothing at these risk levels.' : 'Run a scan to list rebuildable folders under your home folder.'}</p>
-  {/each}
+            </thead>
+            <tbody>
+              {#each g.rows as f (f.path)}
+                <tr class="t-small" class:selected={sel.has(f.path)} class:dim={f.nested} onclick={(e) => sel.click(f.path, e, ordered)}>
+                  <td><input type="checkbox" aria-label="Select {f.path}" checked={sel.has(f.path)} onclick={(e) => e.stopPropagation()} onchange={() => sel.toggle(f.path)} /></td>
+                  <td class="num right">{human(f.bytes)}</td>
+                  <td class="mono" title={f.path}>{tildify(f.path)}{f.nested ? ' (nested)' : ''}</td>
+                  <td>{#if f.inUse}<Badge tone="warn" title="something seems to use it">in use: {f.inUse}</Badge>{/if}</td>
+                  <td class="muted">{f.why}</td>
+                  <td class="muted mono">{f.restore}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    {/each}
+  </PageState>
 </section>
 
 {#if reviewing}

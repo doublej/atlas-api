@@ -1,4 +1,5 @@
 <script lang="ts">
+import Notice from '$lib/components/feedback/Notice.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
@@ -119,11 +120,13 @@ async function saveRegistry() {
   </header>
 
   {#if restartRequired}
-    <p class="banner warn t-small">
-      <strong>Restart required.</strong> `shared/hosts.json` is on disk, but the running daemon still
-      holds the copy it started with. Run <code class="mono">bun run daemon:reload</code> before the
-      new registry takes effect.
-    </p>
+    <div class="restart">
+      <Notice tone="warn">
+        <strong>Restart required.</strong> `shared/hosts.json` is on disk, but the running daemon
+        still holds the copy it started with. Run <code class="mono">bun run daemon:reload</code>
+        before the new registry takes effect.
+      </Notice>
+    </div>
   {/if}
 
   <div class="grid">
@@ -231,12 +234,8 @@ async function saveRegistry() {
     min-width: 200px;
   }
 
-  .banner {
-    padding: var(--space-3);
+  .restart {
     margin-bottom: var(--space-4);
-    border-radius: var(--radius-sm);
-    background: var(--color-warn-soft);
-    color: var(--color-warn);
   }
 
   .grid {

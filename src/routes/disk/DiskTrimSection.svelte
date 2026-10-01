@@ -1,10 +1,12 @@
 <script lang="ts">
+import PageState from '$lib/components/feedback/PageState.svelte'
 import SortHeader from '$lib/components/table/SortHeader.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { DiskItem } from '$lib/disk'
 import type { DiskSettings, Operation } from '$lib/disk-types'
+import { errorMessage } from '$lib/format'
 import { TableSort } from '$lib/table-sort.svelte'
 import { human, job, readDisk, runJob } from './disk-client.svelte'
 
@@ -22,6 +24,7 @@ let plan = $state<Step[]>([])
 let refused = $state<DiskItem[]>([])
 let last = $state<Operation[]>([])
 let error = $state('')
+let loaded = $state(false)
 
 const sweepArg = $derived(rustSweep && !settings?.rustSweep ? ['--rust-sweep'] : [])
 
@@ -32,8 +35,9 @@ $effect(() => {
       plan = (r.data as { plan: Step[] }).plan
       refused = r.items ?? []
       error = ''
+      loaded = true
     })
-    .catch((e: Error) => (error = e.message))
+    .catch((e) => (error = errorMessage(e)))
 })
 
 $effect(() => {
@@ -78,27 +82,27 @@ const lastSorted = $derived(
     <label class="t-small"><input type="checkbox" bind:checked={rustSweep} disabled={settings?.rustSweep} /> Rust sweep{settings?.rustSweep ? ' (always on)' : ''}</label>
     <Button variant="primary" disabled={!plan.length} onclick={() => runJob('trim', sweepArg)}>Run trim</Button>
   </div>
-  {#if error}<p class="t-small err">{error}</p>{/if}
-
-  <Card flush>
-    <div class="scroll">
-      <table>
-        <thead><tr class="t-caption"><th>Step</th><th>Command</th><th>Cache</th></tr></thead>
-        <tbody>
-          {#each plan as s (s.name)}
-            <tr class="t-small" class:dim={s.skip}>
-              <td>{s.name}{#if s.skip} <Badge>skip: {s.skip}</Badge>{/if}</td>
-              <td class="mono muted">{s.cmd.join(' ')}</td>
-              <td class="mono muted">{s.cache ?? ''}</td>
-            </tr>
-          {/each}
-          {#each refused as r (r.item)}
-            <tr class="t-small dim"><td>{r.item}</td><td colspan="2">refused — needs {r.needs}</td></tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  </Card>
+  <PageState loading={!loaded && !error} loadingText="Planning…" {error} empty={!loaded}>
+    <Card flush>
+      <div class="scroll">
+        <table>
+          <thead><tr class="t-caption"><th>Step</th><th>Command</th><th>Cache</th></tr></thead>
+          <tbody>
+            {#each plan as s (s.name)}
+              <tr class="t-small" class:dim={s.skip}>
+                <td>{s.name}{#if s.skip} <Badge>skip: {s.skip}</Badge>{/if}</td>
+                <td class="mono muted">{s.cmd.join(' ')}</td>
+                <td class="mono muted">{s.cache ?? ''}</td>
+              </tr>
+            {/each}
+            {#each refused as r (r.item)}
+              <tr class="t-small dim"><td>{r.item}</td><td colspan="2">refused — needs {r.needs}</td></tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  </PageState>
 
   {#if last.length}
     <h3 class="t-small last">Last run · {last[0].start.at.slice(0, 16).replace('T', ' ')}</h3>

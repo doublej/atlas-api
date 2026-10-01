@@ -1,4 +1,5 @@
 <script lang="ts">
+import PageState from '$lib/components/feedback/PageState.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { PageData } from './$types'
@@ -14,57 +15,57 @@ let { audit }: { audit: PageData['audit'] } = $props()
     </span>
   </header>
 
-  <Card>
-    <h3 class="t-small heading">Collisions</h3>
-    {#if !audit}
-      <p class="t-small err">The scan failed, so no audit could be run.</p>
-    {:else if audit.collisions.length === 0}
-      <p class="t-small ok">
-        <Badge tone="pos" dot="currentColor">clear</Badge>
-        No port collisions — every declared port is claimed by exactly one daemon or project.
-      </p>
-    {:else}
-      <ul class="collisions">
-        {#each audit.collisions as c (c.port)}
-          <li>
-            <span class="mono num port">{c.port}</span>
-            <div class="sources">
-              {#each c.sources as s (s.kind + s.label)}
-                <div class="t-caption">
-                  <Badge tone={s.kind === 'daemon' ? 'info' : 'neutral'}>{s.kind}</Badge>
-                  <span>{s.name}</span>
-                  <code class="mono muted-2">{s.label}</code>
-                </div>
-              {/each}
-            </div>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-
+  <PageState error={audit ? null : 'The scan failed, so no audit could be run.'} empty={!audit}>
     {#if audit}
-      <h3 class="t-small heading spaced">
-        Unmanaged listeners
-        <span class="t-caption muted">({audit.unmanaged.length})</span>
-      </h3>
-      <p class="t-caption muted note">
-        Port-bearing frameworks with no declared port. Harmless until two of them pick the same
-        default — <code class="mono">POST /api/run</code> assigns one on first launch.
-      </p>
-      {#if audit.unmanaged.length === 0}
-        <p class="t-small ok">Every port-bearing project declares a port.</p>
-      {:else}
-        <ul class="unmanaged">
-          {#each audit.unmanaged as u (u.path)}
-            <li class="t-caption">
-              <code class="mono">{u.relativePath}</code>
-              <Badge tone="neutral">{u.framework}</Badge>
-            </li>
-          {/each}
-        </ul>
-      {/if}
+      <Card>
+        <h3 class="t-small heading">Collisions</h3>
+        {#if audit.collisions.length === 0}
+          <p class="t-small ok">
+            <Badge tone="pos" dot="currentColor">clear</Badge>
+            No port collisions — every declared port is claimed by exactly one daemon or project.
+          </p>
+        {:else}
+          <ul class="collisions">
+            {#each audit.collisions as c (c.port)}
+              <li>
+                <span class="mono num port">{c.port}</span>
+                <div class="sources">
+                  {#each c.sources as s (s.kind + s.label)}
+                    <div class="t-caption">
+                      <Badge tone={s.kind === 'daemon' ? 'info' : 'neutral'}>{s.kind}</Badge>
+                      <span>{s.name}</span>
+                      <code class="mono muted-2">{s.label}</code>
+                    </div>
+                  {/each}
+                </div>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+
+        <h3 class="t-small heading spaced">
+          Unmanaged listeners
+          <span class="t-caption muted">({audit.unmanaged.length})</span>
+        </h3>
+        <p class="t-caption muted note">
+          Port-bearing frameworks with no declared port. Harmless until two of them pick the same
+          default — <code class="mono">POST /api/run</code> assigns one on first launch.
+        </p>
+        {#if audit.unmanaged.length === 0}
+          <p class="t-small ok">Every port-bearing project declares a port.</p>
+        {:else}
+          <ul class="unmanaged">
+            {#each audit.unmanaged as u (u.path)}
+              <li class="t-caption">
+                <code class="mono">{u.relativePath}</code>
+                <Badge tone="neutral">{u.framework}</Badge>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </Card>
     {/if}
-  </Card>
+  </PageState>
 </section>
 
 <style>
@@ -97,10 +98,6 @@ let { audit }: { audit: PageData['audit'] } = $props()
     flex-wrap: wrap;
     color: var(--color-fg-2);
   }
-  .err {
-    color: var(--color-neg);
-  }
-
   .collisions {
     display: flex;
     flex-direction: column;

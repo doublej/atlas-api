@@ -1,6 +1,7 @@
 <script lang="ts">
 import { untrack } from 'svelte'
 import { invalidateAll } from '$app/navigation'
+import PageState from '$lib/components/feedback/PageState.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
@@ -50,34 +51,36 @@ async function change(verb: 'enable' | 'disable' | 'set', s: ScheduleStatus) {
 <section>
   <div class="bar"><h2 class="t-h3">Schedules</h2><span class="t-caption muted">launchd jobs, run unattended under the approval policy</span></div>
   {#if error}<p class="t-small err">{error}</p>{/if}
-  <div class="cards">
-    {#each schedules as s (s.job)}
-      <Card>
-        <div class="bar">
-          <h3 class="t-small name">{s.job}</h3>
-          <Badge tone={s.enabled ? 'pos' : 'neutral'}>{s.enabled ? 'on' : 'off'}</Badge>
-          {#if s.problem}<Badge tone="warn">{s.problem}</Badge>{/if}
-          <span class="spacer"></span>
-          <Button variant={s.enabled ? 'ghost' : 'primary'} disabled={busy === s.job} onclick={() => change(s.enabled ? 'disable' : 'enable', s)}>
-            {s.enabled ? 'Turn off' : 'Turn on'}
-          </Button>
-        </div>
-        <p class="t-caption muted">{WHAT[s.job]}</p>
-        <div class="bar t-small">
-          <select bind:value={edits[s.job].day}>
-            {#each DAYS as d (d)}<option value={d}>{d}</option>{/each}
-          </select>
-          <input type="time" bind:value={edits[s.job].time} />
-          <Button disabled={busy === s.job} onclick={() => change('set', s)}>Save time</Button>
-        </div>
-        <p class="t-caption">
-          next {s.nextRun ? new Date(s.nextRun).toLocaleString() : '—'} · last
-          {s.lastRun ? `${ago(s.lastRun.finishedAt)} → ${s.lastRun.result}` : 'never'}
-        </p>
-        {#if s.lastRun}<p class="t-caption mono muted">{s.lastRun.log}</p>{/if}
-      </Card>
-    {/each}
-  </div>
+  <PageState empty={!schedules.length} emptyText="No schedules could be read.">
+    <div class="cards">
+      {#each schedules as s (s.job)}
+        <Card>
+          <div class="bar">
+            <h3 class="t-small name">{s.job}</h3>
+            <Badge tone={s.enabled ? 'pos' : 'neutral'}>{s.enabled ? 'on' : 'off'}</Badge>
+            {#if s.problem}<Badge tone="warn">{s.problem}</Badge>{/if}
+            <span class="spacer"></span>
+            <Button variant={s.enabled ? 'ghost' : 'primary'} disabled={busy === s.job} onclick={() => change(s.enabled ? 'disable' : 'enable', s)}>
+              {s.enabled ? 'Turn off' : 'Turn on'}
+            </Button>
+          </div>
+          <p class="t-caption muted">{WHAT[s.job]}</p>
+          <div class="bar t-small">
+            <select bind:value={edits[s.job].day}>
+              {#each DAYS as d (d)}<option value={d}>{d}</option>{/each}
+            </select>
+            <input type="time" bind:value={edits[s.job].time} />
+            <Button disabled={busy === s.job} onclick={() => change('set', s)}>Save time</Button>
+          </div>
+          <p class="t-caption">
+            next {s.nextRun ? new Date(s.nextRun).toLocaleString() : '—'} · last
+            {s.lastRun ? `${ago(s.lastRun.finishedAt)} → ${s.lastRun.result}` : 'never'}
+          </p>
+          {#if s.lastRun}<p class="t-caption mono muted">{s.lastRun.log}</p>{/if}
+        </Card>
+      {/each}
+    </div>
+  </PageState>
 </section>
 
 <style>
