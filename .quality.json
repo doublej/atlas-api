@@ -1,5 +1,12 @@
 {
-  "loc": { "warn": 300, "error": 400 },
-  "dir": { "max_files": 6 },
-  "globs": ["src/lib/components/**/*.svelte", "src/lib/browser/**/*.ts", "src/routes/+*.svelte"]
+  "loc": {
+    "warn": 300,
+    "error": 400,
+    "globs": ["src/**/*.svelte", "src/lib/**/*.ts"],
+    "exempt": ["src/lib/scanner.ts"]
+  },
+  "dir": {
+    "max_files": 6,
+    "globs": ["src/lib/components/**/*.svelte", "src/lib/browser/**/*.ts", "src/routes/+*.svelte"]
+  }
 }
