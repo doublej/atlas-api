@@ -32,27 +32,38 @@ const {
 
 let busy = $state(false)
 let error = $state('')
+/** Bumped by every close. An action that settles after its dialog closed — a second Escape in a
+ *  row gets past the cancel block in Chrome — then leaves the next dialog alone. */
+let generation = 0
 
 function close() {
+  generation++
+  busy = false
   error = ''
   onclose()
 }
 
+/** A running action cannot be cancelled, so Escape waits for it like the Cancel button does. */
+function cancel(e: Event) {
+  if (busy) e.preventDefault()
+}
+
 async function confirm() {
+  const mine = generation
   busy = true
   error = ''
   try {
     await onconfirm()
-    close()
+    if (mine === generation) close()
   } catch (e) {
+    if (mine !== generation) return
     error = errorMessage(e)
-  } finally {
     busy = false
   }
 }
 </script>
 
-<Modal {open} {title} onclose={close}>
+<Modal {open} {title} onclose={close} oncancel={cancel}>
   {#if message}<p class="t-small">{message}</p>{/if}
   {#if items.length}
     <ul class="items mono t-small">

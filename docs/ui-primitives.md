@@ -70,9 +70,10 @@ Replaces native `confirm()` and hand-built "are you sure" `Modal`s.
 | `confirmLabel?` | `string` | default `Confirm` — use the verb: `Kill`, `Delete`, `Discard` |
 | `danger?` | `boolean` | red confirm button; use it for anything that deletes, kills or discards |
 | `onconfirm` | `() => unknown` | may be async: buttons are disabled and the confirm reads `Working…` until it settles; on success the dialog calls `onclose`, on a throw it shows `errorMessage(e)` and stays open |
-| `onclose` | `() => void` | Cancel, Escape, or a successful confirm — set your `open` state false here |
+| `onclose` | `() => void` | Cancel, Escape, or a successful confirm — set your `open` state false here; it may be called twice, so make it idempotent |
 
-Cancel has the focus when it opens (Enter right away never confirms); Escape cancels.
+Cancel has the focus when it opens (Enter right away never confirms); Escape cancels, except
+while the action runs. An action that settles after its dialog closed is ignored by the dialog.
 
 ```svelte
 <script lang="ts">
