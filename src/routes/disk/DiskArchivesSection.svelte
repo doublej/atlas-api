@@ -117,6 +117,7 @@ function act(verb: string, ids: string[]) {
       {sort}
       selection={sel}
       empty={noArchives}
+      maxHeight="70vh"
     />
   </Card>
 </section>

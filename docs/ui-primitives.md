@@ -198,7 +198,7 @@ row-click selection code.
 | `dim?` | `(row) => boolean` | faded row (skipped, nested, refused) |
 | `expanded?` | snippet `(row)` | full-width content under an opened row (one open at a time) |
 | `empty?` | snippet | body when `rows` is empty; default `Nothing to show.` |
-| `maxHeight?` | CSS length | caps the height; the header sticks while the body scrolls |
+| `maxHeight?` | CSS length | caps the height; the header sticks while the body scrolls. Without it the header scrolls away with the page (the frame always scrolls sideways, so it cannot stick to the page) — pass it (`70vh`) on any list that can outgrow the screen |
 
 `Column<T>` (`$lib/table`):
 

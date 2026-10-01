@@ -87,6 +87,7 @@ $effect(() => sel.prune((analysis?.projects ?? []).map((p) => p.id)))
         {sort}
         selection={sel}
         empty={noRows}
+        maxHeight="70vh"
       />
     </Card>
   </PageState>
