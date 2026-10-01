@@ -109,19 +109,36 @@ function psSessions(pids: number[]): Promise<Map<number, string>> {
   })
 }
 
-/** Session names for `procs`, reading `ps -E` only for processes not seen before. */
+const sessionKey = (p: Proc) => `${p.pid}@${p.startedAt}`
+let sessionRead: Promise<void> | null = null
+
+/** Reads the session names of processes not seen before into the cache, one read at a time. */
+function learnSessions(procs: Proc[]): Promise<void> {
+  const fresh = procs.filter((p) => !sessionCache.has(sessionKey(p)))
+  if (sessionRead || !fresh.length) return sessionRead ?? Promise.resolve()
+  sessionRead = psSessions(fresh.map((p) => p.pid))
+    .then((found) => {
+      for (const p of fresh) sessionCache.set(sessionKey(p), found.get(p.pid) ?? null)
+    })
+    .finally(() => {
+      sessionRead = null
+    })
+  return sessionRead
+}
+
+/**
+ * Session names for `procs`. `ps -E` walks every process again (~80–100ms) and on a busy Mac
+ * there is always a new pid, so after the first snapshot it runs off the critical path: a
+ * process born since shows its session one snapshot later.
+ */
 async function readSessions(procs: Proc[]): Promise<Map<number, string>> {
-  const key = (p: Proc) => `${p.pid}@${p.startedAt}`
-  const fresh = procs.filter((p) => !sessionCache.has(key(p)))
-  if (fresh.length) {
-    const found = await psSessions(fresh.map((p) => p.pid))
-    for (const p of fresh) sessionCache.set(key(p), found.get(p.pid) ?? null)
-  }
-  const live = new Set(procs.map(key))
+  const reading = learnSessions(procs)
+  if (!sessionCache.size) await reading
+  const live = new Set(procs.map(sessionKey))
   for (const k of sessionCache.keys()) if (!live.has(k)) sessionCache.delete(k)
   const names = new Map<number, string>()
   for (const p of procs) {
-    const name = sessionCache.get(key(p))
+    const name = sessionCache.get(sessionKey(p))
     if (name) names.set(p.pid, name)
   }
   return names
