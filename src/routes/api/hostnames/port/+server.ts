@@ -9,10 +9,13 @@ export const GET: RequestHandler = async ({ url }) => {
     return json({ error: 'port must be an integer 1–65535' }, { status: 400 })
   }
   const on = (await listSockets()).filter((s) => s.port === port)
+  // atlas's own NAS bridge sits on the LAN IP; judge the server by its own sockets.
+  const own = on.filter((s) => s.pid !== process.pid)
+  const server = own.length ? own : on
   return json({
     port,
     listening: on.length > 0,
-    lanReachable: on.some((s) => !isLoopback(s.address)),
-    ...(on.length ? { command: on[0].command } : {}),
+    lanReachable: server.some((s) => !isLoopback(s.address)),
+    ...(on.length ? { command: server[0].command } : {}),
   })
 }

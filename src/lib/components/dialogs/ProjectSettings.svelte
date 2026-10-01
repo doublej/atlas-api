@@ -88,14 +88,32 @@ const value = (v: string): string | null => (v.trim() === '' ? null : v.trim())
 
 /** Why the form can't be saved yet, or null. The server checks all of it again. */
 function blocker(): string | null {
-  if (verdict?.status === 'invalid') return `Slug: ${verdict.reason}`
-  if (verdict?.status === 'taken') return `Slug: ${verdict.reason}`
+  if (verdict?.status === 'invalid' || verdict?.status === 'taken') return verdict.reason ?? null
   const port = portProblem(form.port)
   return port ? `Dev port: ${port}` : null
 }
 
+/** Does `patch` change what the route serves — its slug, port or devPublic? */
+const movesRoute = (patch: Meta): boolean =>
+  (['slug', 'port', 'devPublic'] as const).some((k) => patch[k] !== (meta[k] ?? null))
+
+function saved(target: Project, res: { atlas: Meta; hostname?: HostnameState }): void {
+  meta = res.atlas
+  onsaved()
+  if (!res.hostname) {
+    toast('Saved')
+    onclose()
+    return
+  }
+  // The route moved: stay open so the pill can follow it to live.
+  hostname = res.hostname
+  setChip(target.path, res.hostname)
+  toast(`Saved — hostname is now ${hostOf(res.hostname.local)}`)
+}
+
 async function save(): Promise<void> {
-  if (!project || saving) return
+  const target = project
+  if (!target || saving) return
   status = blocker()
   if (status) return
   saving = true
@@ -109,24 +127,16 @@ async function save(): Promise<void> {
     archived: form.archived || null,
     devPublic: form.devPublic || null,
   }
+  // The pill says the NAS is being asked; its poll settles it whichever way the call goes.
+  if (hostname && movesRoute(patch)) hostname = { ...hostname, state: 'syncing', error: undefined }
 
   try {
     const res = await http.patch<{ atlas: Meta; hostname?: HostnameState }>('/api/atlas', {
-      path: project.path,
+      path: target.path,
       patch,
     })
-    meta = res.atlas
     await overrides?.save()
-    onsaved()
-    if (res.hostname) {
-      // The route moved: stay open so the pill can follow it to live.
-      hostname = res.hostname
-      setChip(project.path, res.hostname)
-      toast(`Saved — hostname is now ${hostOf(res.hostname.local)}`)
-    } else {
-      toast('Saved')
-      onclose()
-    }
+    saved(target, res)
   } catch (e) {
     status = errorMessage(e)
   } finally {

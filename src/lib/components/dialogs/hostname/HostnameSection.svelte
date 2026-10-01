@@ -30,6 +30,9 @@ let {
   hostname = $bindable(),
 }: Props = $props()
 
+// The preview follows every keystroke; the verdict catches up after the debounce.
+const shown = $derived(slug.trim() || verdict?.slug || '')
+
 let releasing = $state(false)
 let busy = $state(false)
 
@@ -46,8 +49,7 @@ $effect(() => {
   const h = hostname
   if (!h || (h.state !== 'syncing' && h.state !== 'issuing')) return
   const timer = setTimeout(() => {
-    http
-      .get<HostnameState>(`/api/hostnames/status?slug=${encodeURIComponent(h.slug)}`)
+    status(h.slug)
       .then((next) => {
         if (hostname?.slug === next.slug) show(next)
       })
@@ -80,8 +82,17 @@ async function copy(url: string): Promise<void> {
   toast(`Copied ${hostOf(url)}`)
 }
 
+const status = (slug: string) =>
+  http.get<HostnameState>(`/api/hostnames/status?slug=${encodeURIComponent(slug)}`)
+
 async function release(): Promise<void> {
-  await http.delete('/api/hostnames', { path: project.path })
+  try {
+    await http.delete('/api/hostnames', { path: project.path })
+  } catch (e) {
+    // A failed NAS removal keeps the route as unsynced: the pill shows it, with Retry.
+    if (hostname) show(await status(hostname.slug).catch(() => hostname))
+    throw e
+  }
   show(null)
   toast('Hostname released')
 }
@@ -112,12 +123,26 @@ async function release(): Promise<void> {
 
   <div class="grid">
     <div class="col">
-      <SlugField path={project.path} bind:value={slug} {devPublic} bind:verdict />
+      <SlugField path={project.path} bind:value={slug} bind:verdict current={hostname?.slug} />
     </div>
     <div class="col">
       <PortField bind:value={port} />
     </div>
   </div>
+
+  {#if shown && verdict?.status !== 'invalid'}
+    <ul class="preview t-caption" aria-label="URLs this slug gets">
+      <li><span class="mono">{shown}.atlas.local.jurrejan.com</span> <span class="muted-2">LAN</span></li>
+      <li>
+        {#if verdict?.remote === null}
+          <span class="muted-2">no atlas.remote — the daemon has no password hash to gate it</span>
+        {:else}
+          <span class="mono">{shown}.atlas.remote.jurrejan.com</span>
+          <span class="muted-2">off-LAN, {devPublic ? 'no password' : 'password'}</span>
+        {/if}
+      </li>
+    </ul>
+  {/if}
 
   <label class="toggle">
     <input type="checkbox" bind:checked={devPublic} />
@@ -174,6 +199,16 @@ async function release(): Promise<void> {
     flex-direction: column;
     gap: 4px;
     min-width: 0;
+  }
+
+  .preview {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-wrap: anywhere;
   }
 
   .toggle {

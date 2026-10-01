@@ -34,12 +34,9 @@ const chip = $derived(
     gap: 5px;
     height: 18px;
     padding: 0 6px;
-    max-width: 100%;
-    overflow: hidden;
     font-size: 11px;
     color: var(--color-muted);
     text-decoration: none;
-    text-overflow: ellipsis;
     white-space: nowrap;
     border: var(--hairline) solid var(--color-border);
     border-radius: var(--radius-full);

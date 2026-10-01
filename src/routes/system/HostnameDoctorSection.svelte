@@ -24,10 +24,13 @@ let error = $state<string | null>(null)
 /** The id being fixed, or `*` for "fix all" — one at a time, each one reloads Caddy. */
 let fixing = $state<string | null>(null)
 
+/** The slug, else what the id names (a NAS file, `admin-ranges`, …). */
+const subject = (i: DriftItem): string => i.slug ?? i.id.slice(i.kind.length + 1)
+
 const fixable = $derived(report?.items.filter((i) => i.fix) ?? [])
 const columns: Column<DriftItem>[] = [
   { key: 'kind', label: 'Drift', sort: (i) => i.kind, cell: kindCell },
-  { key: 'slug', label: 'Slug', sort: (i) => i.slug, cell: slugCell, hideBelow: 768 },
+  { key: 'subject', label: 'What', sort: subject, cell: subjectCell },
   { key: 'detail', label: 'Detail', wrap: true, cell: detailCell },
   { key: 'fix', label: 'Fix', hideLabel: true, cell: fixCell },
 ]
@@ -65,8 +68,8 @@ $effect(() => {
   <Badge tone={i.fix ? 'warn' : 'neutral'}>{i.kind}</Badge>
 {/snippet}
 
-{#snippet slugCell(i: DriftItem)}
-  <code class="mono">{i.slug ?? '—'}</code>
+{#snippet subjectCell(i: DriftItem)}
+  <code class="mono">{subject(i)}</code>
 {/snippet}
 
 {#snippet detailCell(i: DriftItem)}
