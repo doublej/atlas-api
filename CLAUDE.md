@@ -141,8 +141,8 @@ Scripts, just recipes, domains and umami links come from `getDynamicActions`.
   through the NAS Caddy on `atlas.jurrejan.com`/`atlas.atlas.local` with that hostname's own
   `Origin`. `atlas.atlas.remote` (off-LAN, password-gated) is read-only
 - `LOCAL_ONLY` route ids answer only this Mac and the LAN, for *every* method: file contents (`env-files`,
-  `agent-files`, `claude-tree` — its `?path=` reads any file under ~/dev), `ports/allocate` (reserves
-  a port) and the screen actions `iterm`/`finder`. Refusals are 403 `{ error }`. A load's own
+  `agent-files`, `claude-tree` — its `?path=` reads any file under ~/dev), `ports/listeners` (full
+  argv, tokens included), `ports/allocate` (reserves a port) and the screen actions `iterm`/`finder`. Refusals are 403 `{ error }`. A load's own
   `fetch` (`isSubRequest`) is not re-checked — its page already was
 
 **API Endpoints (`src/routes/api/`)**

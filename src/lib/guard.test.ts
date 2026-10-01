@@ -83,6 +83,7 @@ const refused: [...Case, reason: RegExp][] = [
   ['off-LAN file read', 'GET', '/api/claude-tree', via(REMOTE), /^not available off-LAN$/],
   ['off-LAN CLAUDE.md read', 'GET', '/api/agent-files', via(REMOTE), /off-LAN/],
   ['off-LAN port reservation', 'GET', '/api/ports/allocate', via(REMOTE), /off-LAN/],
+  ['off-LAN process argv', 'GET', '/api/ports/listeners', via(REMOTE), /off-LAN/],
   ['off-LAN screen action', 'POST', '/api/iterm', via(REMOTE, `https://${REMOTE}`), /off-LAN/],
   ['LAN write without Origin', 'POST', '/api/refresh', via(LAN), /needs Origin.*got none/],
   [
