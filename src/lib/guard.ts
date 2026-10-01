@@ -14,8 +14,8 @@ const REMOTE_HOST = 'atlas.atlas.remote.jurrejan.com'
  * Route ids answered only to this Mac and the LAN, whatever the method: they hand out file
  * contents (`claude-tree?path=` reads any file under ~/dev, `.env` included; `processes/log` a dev
  * server's output), reserve a port, or act on this Mac's screen (`iterm`, `finder`). Every other
- * GET is open — process lists included, since every command in them is redacted server-side —
- * and writes never are.
+ * GET is open to any client here or on the LAN — process lists included, since every command in
+ * them is redacted server-side — though not to another site's script; writes never are.
  */
 const LOCAL_ONLY = [
   '/api/env-files',
@@ -44,6 +44,10 @@ function refuseForeign(headers: Headers, self: string): string | null {
     return `cross-site request (Sec-Fetch-Site: ${site})`
   return null
 }
+
+/** An open read: a link from anywhere may open it, another site's script or `<img>` may not. */
+const refuseOpenRead = (headers: Headers, self: string) =>
+  headers.get('sec-fetch-mode') === 'navigate' ? null : refuseForeign(headers, self)
 
 /** Through the NAS (`forwarded` is a known hostname): for a write that hostname's own `Origin`. */
 function refuseProxied(headers: Headers, forwarded: string, write: boolean): string | null {
@@ -76,10 +80,9 @@ export function refusal(
   // it gets nothing — not even the open reads.
   if (proxied && forwarded !== REMOTE_HOST && !LAN_HOSTS.includes(forwarded))
     return `unknown forwarded host ${forwarded}`
-  if (!write && !isLocalOnly(route, query)) return null
+  const self = proxied ? `https://${forwarded}` : `http://${host}`
+  if (!write && !isLocalOnly(route, query)) return refuseOpenRead(headers, self)
   // Direct: nothing from another origin (CSRF) — a page from any other local dev server is just
   // as foreign as one from the internet.
-  return proxied
-    ? refuseProxied(headers, forwarded, write)
-    : refuseForeign(headers, `http://${host}`)
+  return proxied ? refuseProxied(headers, forwarded, write) : refuseForeign(headers, self)
 }
