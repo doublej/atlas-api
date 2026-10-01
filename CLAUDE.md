@@ -148,11 +148,13 @@ Scripts, just recipes, domains and umami links come from `getDynamicActions`.
   `atlas.atlas.remote` (off-LAN, password-gated) is read-only; any other forwarded host gets
   nothing, reads included
 - `LOCAL_ONLY` route ids answer only this Mac and the LAN, for *every* method: file contents (`env-files`,
-  `agent-files`, `claude-tree` — its `?path=` reads any file under ~/dev), `ports/listeners` (full
-  argv, tokens included), `ports/allocate` (reserves a port) and the screen actions `iterm`/`finder`.
+  `agent-files`, `claude-tree` — its `?path=` reads any file under ~/dev — and `processes/log`),
+  `ports/allocate` (reserves a port) and the screen actions `iterm`/`finder`.
   So does `GET /api/projects?dir=` (Raycast's `scanDirs`): it walks any folder and writes
   `.atlas-cache.json` into it. Refusals are 403 `{ error }`. A load's own
   `fetch` (`isSubRequest`) is not re-checked — its page already was
+- `GET /api/processes` and `/api/ports/listeners` are readable off-LAN because every command and
+  name in them is redacted server-side (`redact()` in `$lib/processes/parse`)
 
 **API Endpoints (`src/routes/api/`)**
 - `GET /api/projects` - Main data endpoint with caching
@@ -170,9 +172,11 @@ Scripts, just recipes, domains and umami links come from `getDynamicActions`.
   keeps its start-up copy until `bun run daemon:reload`, which the response says as `restartRequired`
 - `POST /api/iterm` also takes an optional `command`, which is what backs every web launcher
 - `GET /api/daemons` - List launchd daemons joined with live `launchctl` state, port check, stale-path detection
-- `GET /api/ports/listeners` - every TCP listener on this Mac joined with its owner (project by cwd, service by port, docker container), 10s cache, `?fresh=1` skips it. Backs the `/ports` page, which replaced the Active Ports Raycast web dashboard
+- `GET /api/processes` - this Mac's processes as app rows (wrapper chains folded, CPU/RSS summed), with flags and a memory summary; development rows unless `?all=1`, plus `?kind=a,b`, `?project=<path|name|slug>`, `?history=1` (sparkline samples) and `?fresh=1`. Types in `src/lib/processes/types.ts`. Backs `/processes`
+- `POST /api/processes/stop` - `{ targets: [{ pid, startedAt }], tree?, force?, dryRun? }`: SIGTERM, wait up to 5s, SIGKILL only with `force`. Checked against a fresh snapshot (pid + start time); refuses pid ≤ 1, atlas-api itself or its group, other users' processes and launchd jobs. `dryRun` lists what would end, children included
+- `GET /api/processes/log?slug=` - the tail of `~/dev/.atlas-logs/<slug>.log`, read-only, confined to that folder
+- `GET /api/ports/listeners` - every TCP listener on this Mac joined with its owner (project by cwd, service by port, docker container), from the same ~2s process snapshot (`src/lib/processes/snapshot.ts`), `?fresh=1` skips it. Backs the `/ports` page, which replaced the Active Ports Raycast web dashboard
   Listeners come from `netstat -anv` (`listSockets` in `$lib/ports`), never `lsof -iTCP`: lsof walks every process and hangs in uninterruptible wait, past any timeout, when a NAS SMB mount stalls. That made the page read "0 listening"
-- `POST /api/ports/kill` - `{ pids }` → SIGKILL, only for pids the listener scan saw, never atlas-api's own
 - `GET/POST /api/services` - service hostname states / sync now. `src/lib/services.ts` runs the sync from `src/hooks.server.ts` (`init`, every 60s, skipped under `vite dev`) and holds the loopback bridges in memory
 - `POST /api/daemons/:label` - Lifecycle actions (`{action: 'start'|'stop'|'restart'}`); gated by `ATLAS_DAEMON_WRITE=1`
 
