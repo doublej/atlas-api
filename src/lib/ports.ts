@@ -124,6 +124,8 @@ export interface PortAudit {
  */
 export function auditPorts(atlas: ProjectAtlas): PortAudit {
   const bySource = new Map<number, PortSource[]>()
+  // Ports are per host: a twin catalogued on fractal or ubuntu clashes with nothing here.
+  const local = atlas.projects.filter((p) => p.isLocal)
 
   for (const d of getDaemons()) {
     if (!d.port) continue
@@ -132,7 +134,7 @@ export function auditPorts(atlas: ProjectAtlas): PortAudit {
     bySource.set(d.port, sources)
   }
 
-  for (const p of atlas.projects) {
+  for (const p of local) {
     if (!p.port) continue
     const sources = bySource.get(p.port) ?? []
     sources.push({ kind: 'project', label: p.relativePath, name: p.name })
@@ -144,7 +146,7 @@ export function auditPorts(atlas: ProjectAtlas): PortAudit {
     .map(([port, sources]) => ({ port, sources }))
     .sort((a, b) => a.port - b.port)
 
-  const unmanaged: UnmanagedProject[] = atlas.projects
+  const unmanaged: UnmanagedProject[] = local
     .filter((p) => p.framework && PORT_BEARING_FRAMEWORKS.has(p.framework) && !p.port)
     .map((p) => ({ path: p.path, relativePath: p.relativePath, framework: p.framework! }))
 

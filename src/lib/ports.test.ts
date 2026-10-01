@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { devFlags, parseListeners, parseNetstat, pickPort } from './ports'
+import { auditPorts, devFlags, parseListeners, parseNetstat, pickPort } from './ports'
+import type { Project, ProjectAtlas } from './scanner'
 
 describe('parseListeners', () => {
   it('reads addresses and folds both stacks of one port together', () => {
@@ -74,5 +75,22 @@ describe('parseNetstat', () => {
       { address: '*', port: 5185, command: 'node', pid: 33772 },
       { address: '::1', port: 4190, command: 'swift', pid: 99926 },
     ])
+  })
+})
+
+describe('auditPorts', () => {
+  it('counts only this Mac: a twin on another host is no collision', () => {
+    const project = (name: string, host: string, isLocal?: true) =>
+      ({ name, relativePath: name, path: `/x/${name}`, host, isLocal, port: 4991 }) as Project
+    const atlas = {
+      projects: [
+        project('openjev', 'm2', true),
+        project('openjev', 'fractal'),
+        project('b', 'ubuntu'),
+      ],
+    } as ProjectAtlas
+    expect(auditPorts(atlas).collisions.filter((c) => c.port === 4991)).toEqual([])
+    atlas.projects.push(project('c', 'm2', true))
+    expect(auditPorts(atlas).collisions.find((c) => c.port === 4991)?.sources).toHaveLength(2)
   })
 })
