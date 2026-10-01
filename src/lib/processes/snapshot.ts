@@ -29,6 +29,8 @@ import { record } from './view'
 
 const TTL_MS = 2_000
 const TIMEOUT_MS = 5_000
+/** A paused or Resource-Saver Docker Desktop must not hold every process view for 5s. */
+const DOCKER_TIMEOUT_MS = 1_500
 /** ps prints `%cpu` and `lstart` with a decimal comma and Dutch day names under nl_NL. */
 const ENV = { LC_ALL: 'C', HOME: homedir() }
 export const LOG_DIR = join(DEV_FOLDER, '.atlas-logs')
@@ -38,6 +40,8 @@ const DOCKER_SOCKETS = [
   join(homedir(), '.docker/run/docker.sock'),
   join(homedir(), '.colima/default/docker.sock'),
 ]
+/** Homebrew's CLI, else Docker Desktop's. */
+const DOCKER_BINS = ['/opt/homebrew/bin/docker', '/usr/local/bin/docker']
 
 export interface Snapshot {
   generatedAt: string
@@ -66,6 +70,17 @@ function read(cmd: string, args: string[], tolerant = false, encoding: 'utf8' | 
       if (error && !(tolerant && exited)) reject(error)
       else resolve(String(stdout))
     })
+  })
+}
+
+/**
+ * Enrichment the snapshot can do without (lsof's cwd, docker's container names): a missing
+ * binary, a timeout or a signal reads as nothing found, keeping whatever stdout came first.
+ */
+function optional(cmd: string, args: string[], timeout = TIMEOUT_MS) {
+  return new Promise<string>((resolve) => {
+    const opts = { env: ENV, timeout, maxBuffer: 64 * 1024 * 1024 }
+    execFile(cmd, args, opts, (_error, stdout) => resolve(String(stdout ?? '')))
   })
 }
 
@@ -148,12 +163,9 @@ async function readSessions(procs: Proc[]): Promise<Map<number, string>> {
 async function readDocker(): Promise<Map<number, string>> {
   const map = new Map<number, string>()
   const running = DOCKER_SOCKETS.some((s) => existsSync(s) && statSync(s).isSocket())
-  if (!running) return map
-  const out = await read(
-    '/opt/homebrew/bin/docker',
-    ['ps', '--format', '{{.Names}}\t{{.Ports}}'],
-    true,
-  )
+  const bin = DOCKER_BINS.find((b) => existsSync(b))
+  if (!running || !bin) return map
+  const out = await optional(bin, ['ps', '--format', '{{.Names}}\t{{.Ports}}'], DOCKER_TIMEOUT_MS)
   for (const line of out.split('\n')) {
     const [container, ports = ''] = line.split('\t')
     for (const m of ports.matchAll(/:(\d+)->/g)) map.set(Number(m[1]), container)
@@ -206,7 +218,7 @@ async function build(): Promise<Snapshot> {
   const lsofArgs = ['-b', '-w', '-a', '-d', 'cwd,1', '-Fpfn', '-p']
   const [lsof, sessions, docker] = await Promise.all([
     candidates.length
-      ? read('/usr/sbin/lsof', [...lsofArgs, candidates.map((p) => p.pid).join(',')], true)
+      ? optional('/usr/sbin/lsof', [...lsofArgs, candidates.map((p) => p.pid).join(',')])
       : '',
     readSessions(candidates),
     readDocker(),
