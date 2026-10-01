@@ -4,7 +4,8 @@ import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Modal from '$lib/components/ui/Modal.svelte'
 import type { FolderRow, Preview } from '$lib/disk-types'
-import { human, readDisk, runJob, tildify } from './disk-client.svelte'
+import { tildify } from '$lib/format'
+import { human, readDisk, runJob } from './disk-client.svelte'
 
 let { rows, onclose, ondone }: { rows: FolderRow[]; onclose: () => void; ondone: () => void } =
   $props()

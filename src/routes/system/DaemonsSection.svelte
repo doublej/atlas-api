@@ -3,6 +3,8 @@ import SortHeader from '$lib/components/table/SortHeader.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
+import { errorMessage } from '$lib/format'
+import { http } from '$lib/http'
 import { TableSort } from '$lib/table-sort.svelte'
 import type { PageData } from './$types'
 
@@ -31,8 +33,6 @@ let loadError = $state('')
 let pending = $state('')
 let actionError = $state<Record<string, string>>({})
 
-const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
-
 const TONE: Record<string, 'pos' | 'neg' | 'warn' | 'neutral'> = {
   running: 'pos',
   error: 'neg',
@@ -42,12 +42,10 @@ const TONE: Record<string, 'pos' | 'neg' | 'warn' | 'neutral'> = {
 
 async function refresh() {
   try {
-    const res = await fetch('/api/daemons')
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    polled = ((await res.json()) as { daemons: DaemonRow[] }).daemons
+    polled = (await http.get<{ daemons: DaemonRow[] }>('/api/daemons')).daemons
     loadError = ''
   } catch (e) {
-    loadError = message(e)
+    loadError = errorMessage(e)
   }
 }
 
@@ -55,20 +53,16 @@ async function act(label: string, action: Action) {
   pending = `${label}:${action}`
   actionError = { ...actionError, [label]: '' }
   try {
-    const res = await fetch(`/api/daemons/${encodeURIComponent(label)}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action }),
-    })
-    const body = await res.json().catch(() => ({}))
-    if (res.ok) return
-    throw new Error(
-      body.error === 'writes disabled'
-        ? 'writes disabled — set ATLAS_DAEMON_WRITE=1 in the plist and reload the daemon'
-        : (body.error ?? `HTTP ${res.status}`),
-    )
+    await http.post(`/api/daemons/${encodeURIComponent(label)}`, { action })
   } catch (e) {
-    actionError = { ...actionError, [label]: message(e) }
+    const text = errorMessage(e)
+    actionError = {
+      ...actionError,
+      [label]:
+        text === 'writes disabled'
+          ? 'writes disabled — set ATLAS_DAEMON_WRITE=1 in the plist and reload the daemon'
+          : text,
+    }
   } finally {
     pending = ''
     await refresh()

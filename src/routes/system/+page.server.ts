@@ -1,5 +1,6 @@
 import { type AtlasConfig, DEFAULT_CONFIG, readConfig } from '$lib/atlasFile'
 import { DEV_FOLDER } from '$lib/config'
+import { errorMessage } from '$lib/format'
 import type { LaunchctlState } from '$lib/launchctl'
 import { auditPorts } from '$lib/ports'
 import { scan } from '$lib/scanner'
@@ -16,8 +17,6 @@ export type DaemonRow = DaemonDef & {
   stale: boolean
 }
 
-const reason = (e: unknown): string => (e instanceof Error ? e.message : String(e))
-
 /**
  * Four independent readings of the machine. Each one is allowed to fail on its own — a dead
  * `launchctl` must not take the hosts card down with it — so every source resolves to a value
@@ -29,11 +28,11 @@ export const load: PageServerLoad = async ({ fetch }) => {
   const [atlas, config, daemons] = await Promise.all([
     // Cached, stale-while-revalidate — no new fs walk. Carries `hosts[]` and feeds the audit.
     scan(DEV_FOLDER, { skipGit: true }).catch((e) => {
-      errors.push(`scan: ${reason(e)}`)
+      errors.push(`scan: ${errorMessage(e)}`)
       return null
     }),
     readConfig(DEV_FOLDER).catch((e) => {
-      errors.push(`scanner config: ${reason(e)}`)
+      errors.push(`scanner config: ${errorMessage(e)}`)
       return { ...DEFAULT_CONFIG, depth: {}, force: {} } as AtlasConfig
     }),
     fetch('/api/daemons')
@@ -42,7 +41,7 @@ export const load: PageServerLoad = async ({ fetch }) => {
         return ((await r.json()) as { daemons: DaemonRow[] }).daemons
       })
       .catch((e) => {
-        errors.push(`daemons: ${reason(e)}`)
+        errors.push(`daemons: ${errorMessage(e)}`)
         return null
       }),
   ])

@@ -1,27 +1,16 @@
 /** The /disk page's client side: CLI reads, the running job, and number formatting. */
 import { invalidateAll } from '$app/navigation'
 import type { DiskResult, JobState } from '$lib/disk'
+import { errorMessage } from '$lib/format'
+import { HttpError, http } from '$lib/http'
 
+/** A side-effect-free `atlas disk … --json`; the CLI's own `exit: 'error'` throws too. */
 export async function readDisk(cmd: string, ...args: string[]): Promise<DiskResult> {
   const q = new URLSearchParams({ cmd })
   for (const a of args) q.append('arg', a)
-  const res = await fetch(`/api/disk/read?${q}`)
-  const body = await res.json()
-  if (!res.ok || body.exit === 'error')
-    throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`)
+  const body = await http.get<DiskResult>(`/api/disk/read?${q}`)
+  if (body.exit === 'error') throw new Error(body.error ?? body.message ?? 'error')
   return body
-}
-
-/** A quick change (config, schedule): JSON in, JSON out, the error text thrown. */
-export async function send(url: string, method: string, body: unknown): Promise<unknown> {
-  const res = await fetch(url, {
-    method,
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  const out = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(out.error ?? out.message ?? `HTTP ${res.status}`)
-  return out
 }
 
 /** The one job the panel follows. The CLI's lock refuses a second one (exit 4), which the panel shows. */
@@ -43,10 +32,10 @@ export const job = $state<{
 export async function runJob(command: string, args: string[]): Promise<void> {
   job.error = ''
   try {
-    const meta = (await send('/api/disk/jobs', 'POST', { command, args })) as JobState
+    const meta = await http.post<JobState>('/api/disk/jobs', { command, args })
     follow({ ...meta, done: false, exit: null })
   } catch (e) {
-    job.error = (e as Error).message
+    job.error = errorMessage(e)
   }
 }
 
@@ -60,10 +49,14 @@ export function follow(state: JobState): void {
 export async function poll(): Promise<boolean> {
   const id = job.current?.id
   if (!id) return false
-  const res = await fetch(`/api/disk/jobs/${id}?offset=${job.offset}`)
-  // A 5xx (the NAS proxy mid-reload, a daemon restart) is passing; only a 4xx ends the watch.
-  if (!res.ok) return res.status >= 500
-  const s = (await res.json()) as JobState & { text: string; offset: number }
+  let s: JobState & { text: string; offset: number }
+  try {
+    s = await http.get(`/api/disk/jobs/${id}?offset=${job.offset}`)
+  } catch (e) {
+    // A 5xx (the NAS proxy mid-reload, a daemon restart) is passing; only a 4xx ends the watch.
+    if (e instanceof HttpError) return e.status >= 500
+    throw e
+  }
   job.text += s.text
   job.offset = s.offset
   job.current = s
@@ -75,7 +68,8 @@ export async function poll(): Promise<boolean> {
 }
 
 export const cancelJob = () =>
-  job.current && fetch(`/api/disk/jobs/${job.current.id}`, { method: 'DELETE' })
+  job.current &&
+  http.delete(`/api/disk/jobs/${job.current.id}`).catch((e) => (job.error = errorMessage(e)))
 
 export const EXIT_NAMES: Record<number, string> = {
   0: 'ok',
@@ -104,8 +98,6 @@ export function ago(iso: string | null | undefined): string {
   if (mins < 48 * 60) return `${Math.round(mins / 60)}h ago`
   return `${Math.round(mins / 1440)}d ago`
 }
-
-export const tildify = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
 
 /** The /ports selection model: click toggles, shift extends from the last click, a group sets many. */
 export class Selection {

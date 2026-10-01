@@ -2,6 +2,7 @@
 import { onMount } from 'svelte'
 import { page } from '$app/state'
 import type { JobState } from '$lib/disk'
+import { http } from '$lib/http'
 import type { PageData } from './$types'
 import DiskArchivesSection from './DiskArchivesSection.svelte'
 import DiskCleanupSection from './DiskCleanupSection.svelte'
@@ -60,9 +61,8 @@ const active = $derived<Tab>(
 // A reload picks a running job back up; the CLI's lock means there is at most one.
 onMount(async () => {
   if (job.current) return
-  const res = await fetch('/api/disk/jobs')
-  if (!res.ok) return
-  const running = ((await res.json()) as { jobs: JobState[] }).jobs.find((j) => !j.done)
+  const { jobs } = await http.get<{ jobs: JobState[] }>('/api/disk/jobs')
+  const running = jobs.find((j) => !j.done)
   if (running) follow(running)
 })
 </script>

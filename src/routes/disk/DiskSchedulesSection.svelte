@@ -5,7 +5,9 @@ import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { ScheduleStatus } from '$lib/disk-types'
-import { ago, send } from './disk-client.svelte'
+import { errorMessage } from '$lib/format'
+import { http } from '$lib/http'
+import { ago } from './disk-client.svelte'
 
 let { schedules }: { schedules: ScheduleStatus[] } = $props()
 
@@ -31,14 +33,14 @@ async function change(verb: 'enable' | 'disable' | 'set', s: ScheduleStatus) {
   error = ''
   const e = edits[s.job]
   try {
-    await send('/api/disk/schedule', 'POST', {
+    await http.post('/api/disk/schedule', {
       verb,
       job: s.job,
       at: verb === 'disable' ? undefined : `${e.day} ${e.time}`,
     })
     await invalidateAll()
   } catch (err) {
-    error = (err as Error).message
+    error = errorMessage(err)
   } finally {
     busy = ''
   }

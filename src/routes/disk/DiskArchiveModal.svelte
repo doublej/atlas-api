@@ -5,6 +5,7 @@ import Button from '$lib/components/ui/Button.svelte'
 import Modal from '$lib/components/ui/Modal.svelte'
 import type { DiskItem } from '$lib/disk'
 import type { DiskSettings, ProjectRow } from '$lib/disk-types'
+import { tildify } from '$lib/format'
 import { human, readDisk, runJob } from './disk-client.svelte'
 
 let {
@@ -39,9 +40,7 @@ const title = $derived(
   rows.length === 1 ? `Archive ${rows[0].id.split('/').pop()}` : `Archive ${rows.length} projects`,
 )
 const folder = $derived(
-  to
-    .replace(/^.*\/Mobile Documents\/com~apple~CloudDocs/, 'iCloud Drive')
-    .replace(/^\/Users\/[^/]+/, '~'),
+  tildify(to.replace(/^.*\/Mobile Documents\/com~apple~CloudDocs/, 'iCloud Drive')),
 )
 const icloud = $derived(folder.startsWith('iCloud Drive'))
 

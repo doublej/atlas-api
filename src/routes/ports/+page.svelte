@@ -4,6 +4,8 @@ import SortHeader from '$lib/components/table/SortHeader.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
+import { errorMessage, tildify } from '$lib/format'
+import { http } from '$lib/http'
 import type { Listener, ListenerGroup } from '$lib/listeners'
 import { TableSort } from '$lib/table-sort.svelte'
 
@@ -53,21 +55,19 @@ const sections = $derived(
 const ordered = $derived(sections.flatMap((s) => s.rows.map((r) => r.pid)))
 const allSelected = $derived(ordered.length > 0 && ordered.every((pid) => selected.has(pid)))
 
-const tildify = (path: string | undefined) => path?.replace(/^\/Users\/[^/]+\//, '~/') ?? ''
-
 async function load(fresh = false) {
   loading = true
   try {
-    const res = await fetch(`/api/ports/listeners${fresh ? '?fresh=1' : ''}`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const body = (await res.json()) as { listeners: Listener[]; updatedAt: string }
+    const body = await http.get<{ listeners: Listener[]; updatedAt: string }>(
+      `/api/ports/listeners${fresh ? '?fresh=1' : ''}`,
+    )
     listeners = body.listeners
     updatedAt = new Date(body.updatedAt).toLocaleTimeString()
     const alive = new Set(listeners.map((l) => l.pid))
     selected = new Set([...selected].filter((pid) => alive.has(pid)))
     error = ''
   } catch (e) {
-    error = e instanceof Error ? e.message : String(e)
+    error = errorMessage(e)
   } finally {
     loading = false
   }
@@ -238,7 +238,7 @@ onMount(() => {
                   >
                 </td>
                 <td class="mono num muted">{l.pid}</td>
-                <td class="mono muted path" title={l.cwd}>{tildify(l.project?.path ?? l.cwd)}</td>
+                <td class="mono muted path" title={l.cwd}>{tildify(l.project?.path ?? l.cwd ?? '')}</td>
                 <td class="host">
                   {#if l.hostname}
                     <a class="mono" href={l.hostname} target="_blank" rel="noreferrer"

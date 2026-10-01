@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto'
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { tildify } from './format'
 
 const SKIP = new Set([
   '.git',
@@ -97,12 +98,6 @@ export interface HistoryEntry {
 export const sha = (text: string): string =>
   createHash('sha256').update(text).digest('hex').slice(0, 12)
 
-/** Display path with the home dir collapsed to `~`. */
-export function shortLabel(p: string): string {
-  const home = homedir()
-  return p.startsWith(home) ? '~' + p.slice(home.length) : p
-}
-
 /**
  * Rough token estimate — an indicator, not a precise count.
  * ~2.5 chars/token, calibrated against Claude Code's /context figures for
@@ -119,10 +114,10 @@ export const estimateTokens = (text: string): number => Math.round(text.length /
 function nodeLabel(root: string, path: string, kind: NodeKind): string {
   if (kind === 'rule') return 'rules/' + basename(path, '.md') // the rule's own name, not its folder
   const dir = dirname(path)
-  if (kind === 'root' || kind === 'ancestor') return shortLabel(dir)
+  if (kind === 'root' || kind === 'ancestor') return tildify(dir)
   const rel = relative(root, dir)
   if (rel === '') return basename(root)
-  if (rel.startsWith('..')) return shortLabel(dir) // outside the root (e.g. an ancestor glossary)
+  if (rel.startsWith('..')) return tildify(dir) // outside the root (e.g. an ancestor glossary)
   return rel
 }
 

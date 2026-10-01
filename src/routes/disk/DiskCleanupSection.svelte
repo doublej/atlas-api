@@ -5,9 +5,10 @@ import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import Chip from '$lib/components/ui/Chip.svelte'
 import type { Risk, Scan } from '$lib/disk-types'
+import { tildify } from '$lib/format'
 import { TableSort } from '$lib/table-sort.svelte'
 import DiskCleanModal from './DiskCleanModal.svelte'
-import { ago, human, runJob, Selection, tildify } from './disk-client.svelte'
+import { ago, human, runJob, Selection } from './disk-client.svelte'
 
 let { scan }: { scan: Scan | null } = $props()
 

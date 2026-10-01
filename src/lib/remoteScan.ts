@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { getHostById, getRemoteHosts, type HostDef } from '$shared/hosts'
 import { DEV_FOLDER } from './config'
+import { errorMessage } from './format'
 import { type HostFragment, hostFragmentPath, type Project, writeJsonAtomic } from './scanner'
 
 const execFileAsync = promisify(execFile)
@@ -77,7 +78,7 @@ async function runRemoteScan(host: HostDef): Promise<Project[]> {
     ;({ stdout } = await attempt())
   } catch (error) {
     // First run on a fresh host, or after the bundle moved: push it once and retry.
-    const message = error instanceof Error ? error.message : String(error)
+    const message = errorMessage(error)
     if (!/Cannot find module|ENOENT|cannot be loaded|is not recognized/i.test(message)) throw error
     await syncAgent(host)
     ;({ stdout } = await attempt())
@@ -116,7 +117,7 @@ export async function scanHost(host: HostDef): Promise<HostFragment> {
       projects,
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = errorMessage(error)
     const previous = await readFragment(path)
     fragment = {
       hostId: host.id,

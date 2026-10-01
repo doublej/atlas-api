@@ -2,7 +2,8 @@
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { Operation, Pending } from '$lib/disk-types'
-import { human, job, readDisk, runJob, tildify } from './disk-client.svelte'
+import { tildify } from '$lib/format'
+import { human, job, readDisk, runJob } from './disk-client.svelte'
 
 let { pending }: { pending: Pending[] } = $props()
 

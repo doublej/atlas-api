@@ -4,7 +4,8 @@ import { invalidateAll } from '$app/navigation'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { DiskSettings } from '$lib/disk-types'
-import { send } from './disk-client.svelte'
+import { errorMessage } from '$lib/format'
+import { http } from '$lib/http'
 
 let { settings }: { settings: DiskSettings } = $props()
 
@@ -67,11 +68,11 @@ async function save() {
   saved = false
   saveError = ''
   try {
-    await send('/api/disk/config', 'PUT', { changes: changes() })
+    await http.put('/api/disk/config', { changes: changes() })
     saved = true
     await invalidateAll()
   } catch (e) {
-    saveError = (e as Error).message
+    saveError = errorMessage(e)
   } finally {
     saving = false
   }

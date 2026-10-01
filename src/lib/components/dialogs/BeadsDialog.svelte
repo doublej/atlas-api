@@ -1,6 +1,8 @@
 <script lang="ts">
 import Button from '$lib/components/ui/Button.svelte'
 import Modal from '$lib/components/ui/Modal.svelte'
+import { errorMessage } from '$lib/format'
+import { http } from '$lib/http'
 import type { Project } from '$lib/scanner'
 
 interface Props {
@@ -20,21 +22,18 @@ async function create(): Promise<void> {
   if (!project || saving || !title.trim()) return
   saving = true
   status = null
-  const res = await fetch('/api/beads', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  try {
+    await http.post('/api/beads', {
       path: project.path,
       title: title.trim(),
       description: description.trim() || undefined,
       priority: Number(priority),
-    }),
-  })
-  const body = await res.json()
-  saving = false
-  if (!res.ok) {
-    status = body.error ?? 'could not create the ticket'
+    })
+  } catch (e) {
+    status = errorMessage(e)
     return
+  } finally {
+    saving = false
   }
   title = ''
   description = ''
