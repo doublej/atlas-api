@@ -124,7 +124,7 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
   on reload. The CLI's lock keeps it to one job; its refusal (exit 4) shows in the panel
 - Every argument goes through `checkArgs` (a per-command allowlist; `--unattended`/`--include-dirty`
   are not on it) and `isRead` decides read vs job. Jobs always get `--confirmed`, because the page
-  showed the plan first. `requireLocalRequest` refuses writes through the NAS proxy, except on `atlas.jurrejan.com`/`atlas.atlas.local` (IP-gated to the LAN)
+  showed the plan first. Who may write is the request guard's call, not the disk routes' (below)
 - `ATLAS_BIN` (default `~/.bun/bin/atlas`) and `ATLAS_DISK_HOME` pass through; test against a scratch
   state with `ATLAS_DISK_HOME`, `ATLAS_DISK_SCAN_ROOT`, `ATLAS_DISK_LAUNCHCTL`, `ATLAS_DISK_PLIST_DIR`
   and `ATLAS_DISK_LAUNCH_AGENTS` set on a `vite dev --port 47990`, never on the daemon
@@ -138,6 +138,21 @@ dialog-backed ones (`rename`, `move`, `project-settings`, `beads-create`) are ha
 Scripts, just recipes, domains and umami links come from `getDynamicActions`.
 - Project cards show: git status, scripts, just recipes, dev command
 - Actions: run dev server, open iTerm, open Finder, rename, move
+
+**Request guard (`src/lib/guard.ts`, `handle` in `src/hooks.server.ts`)**
+- One check for every route, no login. Every non-GET/HEAD passes only from this Mac (no
+  `x-forwarded-for`, a loopback `Host` against DNS rebinding, nothing from another origin against
+  CSRF — `Origin` must be `http://<Host>` itself, and a browser's `Sec-Fetch-Site` `same-origin`
+  or `none`, so a page on another localhost port or a cross-site `<img>` is refused) or through
+  the NAS Caddy on `atlas.jurrejan.com`/`atlas.atlas.local` with that hostname's own `Origin`.
+  `atlas.atlas.remote` (off-LAN, password-gated) is read-only; any other forwarded host gets
+  nothing, reads included
+- `LOCAL_ONLY` route ids answer only this Mac and the LAN, for *every* method: file contents (`env-files`,
+  `agent-files`, `claude-tree` — its `?path=` reads any file under ~/dev), `ports/listeners` (full
+  argv, tokens included), `ports/allocate` (reserves a port) and the screen actions `iterm`/`finder`.
+  So does `GET /api/projects?dir=` (Raycast's `scanDirs`): it walks any folder and writes
+  `.atlas-cache.json` into it. Refusals are 403 `{ error }`. A load's own
+  `fetch` (`isSubRequest`) is not re-checked — its page already was
 
 **API Endpoints (`src/routes/api/`)**
 - `GET /api/projects` - Main data endpoint with caching

@@ -5,7 +5,6 @@ import {
   isQuickWrite,
   isRead,
   listJobs,
-  requireLocalRequest,
   startJob,
   withConfirmed,
 } from '$lib/disk'
@@ -16,7 +15,6 @@ export const GET: RequestHandler = () => json({ jobs: listJobs() })
 
 /** `{ command, args }` → a detached `atlas disk` job. The page confirmed it, so it runs `--confirmed`. */
 export const POST: RequestHandler = async ({ request }) => {
-  requireLocalRequest(request)
   const { command, args = [] } = await request.json()
   if (typeof command !== 'string' || !Array.isArray(args))
     error(400, 'body is { command, args: string[] }')

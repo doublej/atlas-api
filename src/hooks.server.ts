@@ -1,5 +1,6 @@
-import type { ServerInit } from '@sveltejs/kit'
+import { type Handle, json, type ServerInit } from '@sveltejs/kit'
 import { building, dev } from '$app/environment'
+import { refusal } from '$lib/guard'
 import { syncServices } from '$lib/services'
 
 const SERVICE_SYNC_MS = 60_000
@@ -14,4 +15,13 @@ export const init: ServerInit = () => {
     syncServices().catch((e) => console.warn(`services: sync failed — ${(e as Error).message}`))
   sync()
   setInterval(sync, SERVICE_SYNC_MS).unref()
+}
+
+/** One guard for every route (see `$lib/guard`). A load's own `fetch` was let in with its page. */
+export const handle: Handle = ({ event, resolve }) => {
+  if (event.isSubRequest) return resolve(event)
+  const { method, headers } = event.request
+  const { pathname, searchParams } = event.url
+  const reason = refusal(method, event.route.id ?? pathname, headers, searchParams)
+  return reason ? json({ error: reason }, { status: 403 }) : resolve(event)
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkArgs, ID, isQuickWrite, isRead, requireLocalRequest, withConfirmed } from './disk'
+import { checkArgs, ID, isQuickWrite, isRead, withConfirmed } from './disk'
 
 const status = (fn: () => void) => {
   try {
@@ -65,59 +65,5 @@ describe('read or write', () => {
   it('--confirmed goes before the free-text separator', () => {
     expect(withConfirmed(['web/app'])).toEqual(['web/app', '--confirmed'])
     expect(withConfirmed(['note', '--', 'x'])).toEqual(['note', '--confirmed', '--', 'x'])
-  })
-})
-
-describe('requireLocalRequest', () => {
-  const req = (headers: Record<string, string>) =>
-    new Request('http://localhost:47891/api/disk/jobs', { method: 'POST', headers })
-  it('allows this Mac', () => {
-    expect(status(() => requireLocalRequest(req({ host: 'localhost:47891' })))).toBe(200)
-    expect(
-      status(() =>
-        requireLocalRequest(req({ host: '127.0.0.1:47891', origin: 'http://127.0.0.1:47891' })),
-      ),
-    ).toBe(200)
-  })
-  it('allows the console LAN hostnames through the NAS proxy', () => {
-    const short = {
-      host: 'localhost',
-      'x-forwarded-for': '1.2.3.4',
-      'x-forwarded-host': 'atlas.jurrejan.com',
-    }
-    expect(
-      status(() => requireLocalRequest(req({ ...short, origin: 'https://atlas.jurrejan.com' }))),
-    ).toBe(200)
-    const lan = 'atlas.atlas.local.jurrejan.com'
-    const proxied = { host: 'localhost', 'x-forwarded-for': '192.168.1.2', 'x-forwarded-host': lan }
-    expect(status(() => requireLocalRequest(req(proxied)))).toBe(200)
-    expect(status(() => requireLocalRequest(req({ ...proxied, origin: `https://${lan}` })))).toBe(
-      200,
-    )
-    expect(
-      status(() => requireLocalRequest(req({ ...proxied, origin: 'https://evil.example' }))),
-    ).toBe(403)
-    expect(
-      status(() =>
-        requireLocalRequest(
-          req({ ...proxied, 'x-forwarded-host': 'atlas.atlas.remote.jurrejan.com' }),
-        ),
-      ),
-    ).toBe(403)
-  })
-  it('refuses the NAS proxy, other hosts and other origins', () => {
-    expect(
-      status(() =>
-        requireLocalRequest(req({ host: 'localhost:47891', 'x-forwarded-for': '192.168.1.2' })),
-      ),
-    ).toBe(403)
-    expect(status(() => requireLocalRequest(req({ host: 'atlas.atlas.local.jurrejan.com' })))).toBe(
-      403,
-    )
-    expect(
-      status(() =>
-        requireLocalRequest(req({ host: 'localhost:47891', origin: 'https://evil.example' })),
-      ),
-    ).toBe(403)
   })
 })
