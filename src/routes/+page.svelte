@@ -55,12 +55,16 @@ let settingsFor = $state<Project | null>(null)
 let beadsFor = $state<Project | null>(null)
 let viewMode = $state<ViewMode>('table')
 let expandedFolders = $state<Set<string>>(new Set())
-// Seeded from the cache's git state, so the server-rendered dots are real; a probe adds the rest.
-let gitStatus = $derived<Record<string, { status: GitStatus; branch?: string }>>(
-  Object.fromEntries(
-    projects.flatMap((p) => (p.git ? [[p.path, { status: p.git, branch: p.gitBranch }]] : [])),
+type GitState = { status: GitStatus; branch?: string }
+let probedGit = $state<Record<string, GitState>>({})
+// The page data's git state (the cache's) makes the server-rendered dots real; a probe fills in
+// the rest. Not `projects`: a settings save swaps in a rescan made without git, which blanked them.
+const gitStatus = $derived<Record<string, GitState>>({
+  ...probedGit,
+  ...Object.fromEntries(
+    data.projects.flatMap((p) => (p.git ? [[p.path, { status: p.git, branch: p.gitBranch }]] : [])),
   ),
-)
+})
 let hostnames = $state<Record<string, { local: string; remote: string }>>({})
 
 const criteria = $derived<FilterCriteria>({
@@ -119,7 +123,7 @@ onMount(() => {
       projects.filter((p) => p.isLocal && !p.git).map((p) => p.path),
       (results) => {
         const probed = results.map((r) => [r.path, { status: r.status, branch: r.branch }])
-        gitStatus = { ...gitStatus, ...Object.fromEntries(probed) }
+        probedGit = { ...probedGit, ...Object.fromEntries(probed) }
       },
     )
     .catch(fail)
