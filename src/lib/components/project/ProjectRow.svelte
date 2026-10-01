@@ -42,9 +42,11 @@ const GIT_TITLES: Record<string, string> = {
   'no-repo': 'Not a git repository',
   error: 'Git error',
   loading: 'Loading git status',
+  'not scanned': 'Not scanned for git on this host',
 }
 
-const status = $derived(git?.status ?? 'loading')
+// A remote project without git state was scanned without git (Fractal); it is not loading.
+const status = $derived(git?.status ?? (project.isLocal ? 'loading' : 'not scanned'))
 const modified = $derived(new Date(project.modifiedAt).toLocaleDateString())
 </script>
 
@@ -128,7 +130,8 @@ const modified = $derived(new Date(project.modifiedAt).toLocaleDateString())
   .git[data-status='error'] {
     background: var(--status-error);
   }
-  .git[data-status='loading'] {
+  .git[data-status='loading'],
+  .git[data-status='not scanned'] {
     background: var(--color-disabled);
   }
 
