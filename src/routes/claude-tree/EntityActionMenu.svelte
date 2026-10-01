@@ -234,7 +234,7 @@ function submitInput() {
 	.em-send {
 		border: none;
 		background: var(--color-accent);
-		color: var(--color-accent-fg, #fff);
+		color: var(--color-accent-fg);
 		border-radius: var(--radius-sm);
 		padding: 0 10px;
 		cursor: pointer;
