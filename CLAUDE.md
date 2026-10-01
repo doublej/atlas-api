@@ -85,13 +85,17 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 | Directory | Holds |
 |---|---|
 | `src/lib/components/ui/` | `Button`, `Chip`, `Badge`, `Menu`, `Modal`, `Card` — the Tooling primitives |
-| `src/lib/components/browser/` | `BrowserHeader`, `Toolbar`, `FilterPanel`, `FolderTree`, `HostBanner`, `Notice` |
+| `src/lib/components/browser/` | `BrowserHeader`, `Toolbar`, `FilterPanel`, `FolderTree`, `HostBanner` |
+| `src/lib/components/feedback/` | `Notice`, `PageState`, `ConfirmDialog`, `Toaster` — page state, confirms and action toasts (see `docs/ui-primitives.md`) |
 | `src/lib/components/dialogs/` | `RenameDialog`, `MoveDialog`, `ProjectSettings`, `BeadsDialog` |
 | `src/lib/components/project/` | `ProjectRow`, `ProjectBadges`, `ProjectDetails`, `ProjectActions`, `ProjectLinks`, `ClaudeSetup` |
-| `src/lib/components/table/` | `ProjectTable` (sortable, full-width, default view) + `ProjectLine` (one 30px line); opening a line renders the full `ProjectRow` below it |
+| `src/lib/components/table/` | `Table` (the shared data table) · `ProjectTable` (sortable, full-width, default view) + `ProjectLine` (one 30px line); opening a line renders the full `ProjectRow` below it |
 | `src/lib/components/icons/` | `Icon.svelte` + `paths.ts` — a vendored Lucide subset (no icon dependency) |
 | `src/lib/browser/` | `filters.ts`, `tree.ts`, `api.ts`, `colors.ts` + their tests — pure logic, no runes |
 
+- **`docs/ui-primitives.md`** is the contract for every page: `$lib/http` (the only client
+  fetch), `$lib/format` (`errorMessage`, `tildify`), `$lib/toast.svelte`, `$lib/selection.svelte`
+  (one click rule), `Table`, `SideNav`, `ConfirmDialog`, `Notice`, `PageState`.
 - Design tokens live in `src/lib/styles/tokens.css` (the Tooling design system) and are the single
   source of colour, type, spacing, density and motion. Both routes read them; there is no second
   token layer. Plain CSS only — no Tailwind.
