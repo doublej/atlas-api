@@ -14,6 +14,7 @@ import '@xyflow/svelte/dist/style.css'
 import type { Reference, SearchHit, SearchMatch, TreeNode } from '$lib/claude-tree'
 import { type AgentEngine, getAction } from '$lib/claude-tree-actions'
 import { type Entity, replaceLines } from '$lib/claude-tree-entities'
+import ConfirmDialog from '$lib/components/feedback/ConfirmDialog.svelte'
 import { errorMessage } from '$lib/format'
 import { http } from '$lib/http'
 import { theme } from '$lib/theme.svelte'
@@ -79,6 +80,13 @@ const editingLabel = $derived(
 
 // Right-click context menu
 let menu = $state<{ x: number; y: number; node: TreeNode } | null>(null)
+// A yes/no the page is waiting on (discard, overwrite, revert); one ConfirmDialog renders it.
+let asking = $state<{
+  title: string
+  message: string
+  confirmLabel: string
+  run: () => unknown
+} | null>(null)
 
 // Find: a scope toggle (Tree = server-side over every file, File = client-side
 // over the live editor content) feeding a snippet list that jumps to the line.
@@ -153,6 +161,7 @@ onMount(() => {
   void loadTree()
 
   const onKey = (e: KeyboardEvent) => {
+    if (asking) return // the confirm dialog owns the keyboard while it is open
     if (e.key === 'Escape') {
       menu = null
       findOpen = false
@@ -401,13 +410,25 @@ function markSelected(id: string) {
   nodes = nodes.map((n) => ({ ...n, selected: n.id === id }))
 }
 
+/** Runs `then` now, or after a yes in the discard dialog while the editor holds unsaved edits. */
+function unlessDirty(then: () => unknown) {
+  if (!dirty || !current) return void then()
+  asking = {
+    title: 'Discard unsaved changes?',
+    message: `Your edits to ${editingLabel} are not saved.`,
+    confirmLabel: 'Discard',
+    run: then,
+  }
+}
+
 function closeEditor() {
-  if (dirty && current && !confirm(`Discard unsaved changes to ${editingLabel}?`)) return
-  current = null
-  activePath = ''
-  dirty = false
-  if (refsMode === 'selected') rebuild()
-  else nodes = nodes.map((n) => ({ ...n, selected: false }))
+  unlessDirty(() => {
+    current = null
+    activePath = ''
+    dirty = false
+    if (refsMode === 'selected') rebuild()
+    else nodes = nodes.map((n) => ({ ...n, selected: false }))
+  })
 }
 
 function openMenu(event: MouseEvent, nodeId: string) {
@@ -465,23 +486,25 @@ function folderOf(path: string): string {
 }
 
 /** Re-root the tree at this node's folder — ancestors above, descendants below, refetched. */
-async function navigateTo(node: TreeNode) {
+function navigateTo(node: TreeNode) {
   menu = null
-  if (dirty && current && !confirm(`Discard unsaved changes to ${editingLabel}?`)) return
-  root = folderOf(node.path)
-  const url = new URL(location.href)
-  url.searchParams.set('root', root)
-  window.history.replaceState(null, '', url)
-  current = null
-  activePath = ''
-  dirty = false
-  await loadTree()
+  unlessDirty(async () => {
+    root = folderOf(node.path)
+    const url = new URL(location.href)
+    url.searchParams.set('root', root)
+    window.history.replaceState(null, '', url)
+    current = null
+    activePath = ''
+    dirty = false
+    await loadTree()
+  })
 }
 
 /** Open a specific file (a node's primary, or one of its CLAUDE.md/AGENTS.md tabs) in the editor. */
 async function openFile(node: TreeNode, path: string, skipGuard = false) {
   const switching = node.id !== current?.id || path !== activePath
-  if (!skipGuard && dirty && switching && !confirm(`Discard unsaved changes to ${editingLabel}?`)) {
+  if (!skipGuard && dirty && switching) {
+    unlessDirty(() => openFile(node, path, true))
     return
   }
   current = node
@@ -531,26 +554,38 @@ async function save() {
     await loadHistory()
   } catch (e) {
     const msg = (e as Error).message
-    if (msg === 'disk changed' && confirm('File changed on disk. Overwrite anyway?')) {
-      const r = await postOp({ op: 'save', path: activePath, content, force: true })
-      diskSha = r.sha
-      dirty = false
-      status = `saved · sha ${r.sha}`
-      await loadHistory()
-    } else {
-      status = `save failed: ${msg}`
+    status = `save failed: ${msg}`
+    if (msg !== 'disk changed') return
+    asking = {
+      title: 'File changed on disk',
+      message: `${editingLabel} changed on disk after you opened it. Overwrite it with your version?`,
+      confirmLabel: 'Overwrite',
+      run: async () => {
+        const r = await postOp({ op: 'save', path: activePath, content, force: true })
+        diskSha = r.sha
+        dirty = false
+        status = `saved · sha ${r.sha}`
+        await loadHistory()
+      },
     }
   }
 }
 
-async function revert() {
-  if (!current) return
-  if (!confirm(`Revert ${editingLabel} to last snapshot?`)) return
-  try {
-    await postOp({ op: 'revert', path: activePath })
-    await openFile(current, activePath, true)
-  } catch (e) {
-    status = `revert failed: ${(e as Error).message}`
+function revert() {
+  const node = current
+  if (!node) return
+  asking = {
+    title: 'Revert to the last snapshot?',
+    message: `${editingLabel} goes back to its last snapshot on disk.`,
+    confirmLabel: 'Revert',
+    run: async () => {
+      try {
+        await postOp({ op: 'revert', path: activePath })
+        await openFile(node, activePath, true)
+      } catch (e) {
+        status = `revert failed: ${(e as Error).message}`
+      }
+    },
   }
 }
 
@@ -995,6 +1030,16 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		onClose={() => (agentPanel = null)}
 	/>
 {/if}
+
+<ConfirmDialog
+	open={asking !== null}
+	title={asking?.title ?? ''}
+	message={asking?.message}
+	confirmLabel={asking?.confirmLabel}
+	danger
+	onconfirm={() => asking?.run()}
+	onclose={() => (asking = null)}
+/>
 
 
 <style>
