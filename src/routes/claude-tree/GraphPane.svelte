@@ -74,6 +74,7 @@ setContext('atlas-zoom', () => viewport.zoom)
 	.flow :global(.svelte-flow) {
 		--xy-background-color: var(--color-bg);
 		--xy-background-pattern-color: var(--color-border);
+		--xy-minimap-background-color: var(--color-bg-elev);
 		--xy-minimap-node-background-color: var(--color-border-strong);
 		--xy-minimap-mask-background-color: color-mix(in srgb, var(--color-bg) 70%, transparent);
 
