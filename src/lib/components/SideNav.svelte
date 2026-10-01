@@ -30,6 +30,24 @@ interface Props {
 }
 
 const { title, label, tabs, active, summary, class: cls = '', children }: Props = $props()
+
+let nav = $state<HTMLElement>()
+
+// Below 768px the menu scrolls sideways: keep the open tab in view (a no-op as a column). On
+// every resize too: a page scrollbar that appears once the content loads narrows the menu.
+$effect(() => {
+  const current = nav?.querySelector<HTMLElement>(`[href="?tab=${active}"]`)
+  if (!nav || !current) return
+  const menu = nav
+  const center = () => {
+    const offset = current.getBoundingClientRect().left - menu.getBoundingClientRect().left
+    menu.scrollLeft += offset - (menu.clientWidth - current.offsetWidth) / 2
+  }
+  center()
+  const observer = new ResizeObserver(center)
+  observer.observe(menu)
+  return () => observer.disconnect()
+})
 </script>
 
 <!-- A page of tabs down the side (?tab=), one shown at a time. The menu doubles as a status
@@ -39,7 +57,7 @@ const { title, label, tabs, active, summary, class: cls = '', children }: Props 
   <aside>
     <h1 class="t-h2">{title}</h1>
     {#if summary}<div class="summary t-caption muted">{@render summary()}</div>{/if}
-    <nav aria-label={label}>
+    <nav aria-label={label} bind:this={nav}>
       {#each tabs as tab (tab.id)}
         <a href="?tab={tab.id}" aria-current={active === tab.id ? 'page' : undefined}>
           <span class="label">

@@ -129,9 +129,11 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
 {/snippet}
 
 {#snippet nameCell(p: P, row: RowState)}
-  <button type="button" class="name" aria-expanded={row.open} onclick={row.toggleOpen}>{p.name}</button>
-  <HostnameChip path={p.path} />
-  {#if p.description}<span class="desc">{p.description}</span>{/if}
+  <span class="namecell">
+    <button type="button" class="name" aria-expanded={row.open} onclick={row.toggleOpen}>{p.name}</button>
+    <HostnameChip path={p.path} />
+    {#if p.description}<span class="desc">{p.description}</span>{/if}
+  </span>
 {/snippet}
 
 {#snippet pathCell(p: P)}<span class="path mono" title={p.path}>{p.relativePath}</span>{/snippet}
@@ -216,7 +218,29 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
     background: var(--status-idle);
   }
 
+  /* The name keeps its width first; the hostname chip gives way next (down to its dot and a few
+     letters), the description takes only what is left. */
+  .namecell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .namecell > :global(.chip) {
+    min-width: 4rem;
+  }
+
+  .name,
+  .desc {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Capped, never shrunk: a flex shrink of a fraction of a pixel would already cut it with "…". */
   .name {
+    flex: none;
+    max-width: 100%;
     padding: 0;
     font: inherit;
     font-weight: 500;
@@ -226,8 +250,12 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
     cursor: pointer;
   }
 
+  .namecell:has(> :global(.chip)) > .name {
+    max-width: calc(100% - 4rem - var(--space-2));
+  }
+
   .desc {
-    margin-left: var(--space-2);
+    flex: 1 1 0;
     color: var(--color-muted-2);
   }
 
@@ -325,8 +353,10 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
     list-style: none;
   }
 
+  /* A phone's name column has no room beside the name; the opened row shows the chip. */
   @media (max-width: 768px) {
-    .desc {
+    .desc,
+    .namecell > :global(.chip) {
       display: none;
     }
   }

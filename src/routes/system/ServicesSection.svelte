@@ -72,4 +72,13 @@ const failing = $derived(services.filter((s) => s.error))
     flex-wrap: wrap;
     overflow-wrap: anywhere;
   }
+
+  a {
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
 </style>

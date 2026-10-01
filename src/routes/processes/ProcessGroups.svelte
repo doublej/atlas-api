@@ -1,4 +1,5 @@
 <script lang="ts">
+import { hostOf } from '$lib/components/dialogs/hostname/hostname.svelte'
 import Table from '$lib/components/table/Table.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Card from '$lib/components/ui/Card.svelte'
@@ -114,7 +115,8 @@ const columns: Column<AppRow>[] = [
       <a class="mono num" href="http://localhost:{port}" target="_blank" rel="noreferrer">:{port}</a>
     {/each}
     {#if row.atlasRun?.hostname}
-      <a href={row.atlasRun.hostname} target="_blank" rel="noreferrer">{row.atlasRun.slug ?? 'hostname'}</a>
+      <!-- The slug the route has now; `atlasRun.slug` names the log file, which keeps the old one. -->
+      <a href={row.atlasRun.hostname} target="_blank" rel="noreferrer">{hostOf(row.atlasRun.hostname).split('.')[0]}</a>
     {/if}
   </span>
 {/snippet}

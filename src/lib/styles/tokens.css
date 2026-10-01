@@ -160,6 +160,7 @@
   --color-bg-elev: #131316;
   --color-card: #111114;
   --color-card-2: #18181b;
+  --color-hover: rgba(255, 255, 255, 0.1); /* the dark border tint: one step above any surface */
   --color-overlay: rgba(0, 0, 0, 0.6);
 
   --color-fg: #fafafa;

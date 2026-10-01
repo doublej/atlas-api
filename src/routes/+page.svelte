@@ -354,5 +354,11 @@ async function doMove(targetFolder: string): Promise<void> {
 		main {
 			padding: 0 var(--space-4) var(--space-12);
 		}
+
+		/* A phone can't spare a quarter of its height to the band: only the nav stays put. */
+		.topbar {
+			position: relative;
+			top: 0;
+		}
 	}
 </style>

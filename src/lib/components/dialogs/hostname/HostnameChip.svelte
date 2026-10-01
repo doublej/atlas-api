@@ -23,13 +23,15 @@ const chip = $derived(
     title="{chip.local} — {chip.state}"
   >
     <span class="dot"></span>
-    {hostOf(chip.local)}
+    <span class="host">{hostOf(chip.local)}</span>
   </a>
 {/if}
 
 <style>
+  /* Never wider than its line: the hostname ellipsizes, the dot stays. */
   .chip {
     display: inline-flex;
+    max-width: 100%;
     align-items: center;
     gap: 5px;
     height: 18px;
@@ -40,6 +42,11 @@ const chip = $derived(
     white-space: nowrap;
     border: var(--hairline) solid var(--color-border);
     border-radius: var(--radius-full);
+  }
+
+  .host {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .chip:hover {

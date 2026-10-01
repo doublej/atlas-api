@@ -130,6 +130,12 @@ function toggleAll() {
   load()
 }
 
+/** A top consumer is mostly an app (Slack, Chrome): without a dev row by that name, show all. */
+function pick(name: string) {
+  query = name
+  if (!all && !rows.some((r) => matches(r, procs, name))) toggleAll()
+}
+
 function toggleKind(kind: string) {
   kinds = kinds.includes(kind) ? kinds.filter((k) => k !== kind) : [...kinds, kind]
 }
@@ -178,7 +184,7 @@ onMount(() => {
 
   <PageState {error} onretry={() => load(true)} empty={!view} emptyText="No snapshot yet.">
     {#if view}
-      <ProcessSummary system={view.system} onpick={(name) => (query = name)} />
+      <ProcessSummary system={view.system} onpick={pick} />
 
       <div class="filters">
         <input

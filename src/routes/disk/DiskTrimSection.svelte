@@ -6,7 +6,7 @@ import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { DiskItem } from '$lib/disk'
 import type { DiskSettings, Operation } from '$lib/disk-types'
-import { errorMessage } from '$lib/format'
+import { errorMessage, tildify } from '$lib/format'
 import type { Column } from '$lib/table'
 import { TableSort } from '$lib/table-sort.svelte'
 import { human, job, readDisk, runJob } from './disk-client.svelte'
@@ -72,7 +72,8 @@ const rows = $derived<PlanRow[]>([
     id: `step:${s.name}`,
     name: s.name,
     skip: s.skip,
-    command: s.cmd.join(' '),
+    // A skipped step has no command; its reason goes there, where the column wraps.
+    command: s.skip ?? s.cmd.join(' '),
     cache: s.cache ?? '',
     refused: false,
   })),
@@ -131,9 +132,12 @@ const lastColumns: Column<Operation>[] = [
 ]
 </script>
 
-{#snippet stepCell(r: PlanRow)}{r.name}{#if r.skip} <Badge>skip: {r.skip}</Badge>{/if}{/snippet}
-{#snippet commandCell(r: PlanRow)}<span class:mono={!r.refused} class:muted={!r.refused}>{r.command}</span>{/snippet}
-{#snippet cacheCell(r: PlanRow)}<span class="mono muted" title={r.cache}>{r.cache}</span>{/snippet}
+{#snippet stepCell(r: PlanRow)}{r.name}{#if r.skip} <Badge>skip</Badge>{/if}{/snippet}
+{#snippet commandCell(r: PlanRow)}
+  {@const cmd = !r.refused && !r.skip}
+  <span class:mono={cmd} class:muted={cmd}>{r.command}</span>
+{/snippet}
+{#snippet cacheCell(r: PlanRow)}<span class="mono muted" title={r.cache}>{tildify(r.cache)}</span>{/snippet}
 {#snippet itemCell(o: Operation)}{o.start.item}{/snippet}
 {#snippet resultCell(o: Operation)}{o.end?.outcome ?? 'interrupted'}{o.end?.message ? ` — ${o.end.message}` : ''}{/snippet}
 {#snippet beforeCell(o: Operation)}<span class="num">{bytes(cache(o, 'cacheBefore'))}</span>{/snippet}

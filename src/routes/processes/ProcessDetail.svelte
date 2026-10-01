@@ -79,7 +79,7 @@ async function reveal(path: string) {
     {#each members as p (p.pid)}
       <li class:primary={p.pid === row.primary}>
         <span class="mono num muted">{p.pid}</span>
-        <span class="name">{p.name}<span class="muted"> · {p.kind}</span></span>
+        <span class="name">{p.name} <span class="muted">· {p.kind}</span></span>
         <span class="num">{p.cpu.toFixed(1)}%</span>
         <span class="num">{bytes(p.rss)}</span>
         <span class="num muted">{duration(p.uptime)}</span>

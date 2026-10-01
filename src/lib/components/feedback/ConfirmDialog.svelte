@@ -2,6 +2,7 @@
 import Button from '$lib/components/ui/Button.svelte'
 import Modal from '$lib/components/ui/Modal.svelte'
 import { errorMessage } from '$lib/format'
+import Notice from './Notice.svelte'
 
 interface Props {
   open: boolean
@@ -70,7 +71,7 @@ async function confirm() {
       {#each items as item, i (i)}<li>{item}</li>{/each}
     </ul>
   {/if}
-  {#if error}<p class="t-small err" role="alert">{error}</p>{/if}
+  {#if error}<Notice tone="error">{error}</Notice>{/if}
   {#snippet footer()}
     <!-- The safe choice takes the focus, so Enter right after opening never confirms. -->
     <Button autofocus disabled={busy} onclick={close}>Cancel</Button>
@@ -89,11 +90,6 @@ async function confirm() {
     list-style: none;
     background: var(--color-card-2);
     border-radius: var(--radius-sm);
-    overflow-wrap: anywhere;
-  }
-
-  .err {
-    color: var(--color-neg);
     overflow-wrap: anywhere;
   }
 </style>

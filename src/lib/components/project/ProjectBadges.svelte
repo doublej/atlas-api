@@ -73,7 +73,7 @@ const scaffoldBehind = $derived(
 {#if git?.branch}
   <span class="branch t-caption" title="Current branch">
     <Icon name="gitBranch" size={11} />
-    {git.branch}
+    <span class="clip">{git.branch}</span>
   </span>
 {/if}
 
@@ -102,6 +102,13 @@ const scaffoldBehind = $derived(
     font-family: var(--font-mono);
     color: var(--color-muted-2);
     white-space: nowrap;
+    max-width: 100%;
+  }
+
+  /* A long branch ellipsizes instead of pushing the card sideways. */
+  .clip {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .template-link {

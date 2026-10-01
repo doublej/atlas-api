@@ -5,6 +5,7 @@ import type { HostnameStatus } from '$lib/hostnames/types'
 
 interface Props {
   status: HostnameStatus
+  /** The badge's tooltip; HostnameSection shows it in a Notice while `failed`. */
   error?: string
   /** Shown as a Retry button while `failed`. */
   onretry?: () => unknown
@@ -34,19 +35,11 @@ const TONE = {
     <Button onclick={onretry}>Retry</Button>
   {/if}
 </span>
-{#if status === 'failed' && error}
-  <span class="t-caption err">{error}</span>
-{/if}
 
 <style>
   .pill {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-  }
-
-  .err {
-    color: var(--color-neg);
-    overflow-wrap: anywhere;
   }
 </style>

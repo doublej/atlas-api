@@ -55,11 +55,6 @@ const { variant = 'ghost', size = 'sm', children, ...rest }: Props = $props()
     transform: translateY(0.5px);
   }
 
-  .btn:disabled {
-    color: var(--color-disabled);
-    cursor: not-allowed;
-  }
-
   /* Primary carries the catch-light border: white-tinted top, dark-tinted bottom. */
   .btn[data-variant='primary'] {
     background: var(--color-accent);
@@ -85,6 +80,15 @@ const { variant = 'ghost', size = 'sm', children, ...rest }: Props = $props()
   .btn[data-variant='danger']:hover:not(:disabled) {
     background: var(--color-neg-soft);
     color: var(--color-neg);
+  }
+
+  /* After the variants (same specificity), so a disabled primary or danger button looks it. */
+  .btn:disabled {
+    color: var(--color-disabled);
+    background: var(--color-card);
+    border-color: var(--color-border);
+    box-shadow: none;
+    cursor: not-allowed;
   }
 
   @media (max-width: 768px) {
