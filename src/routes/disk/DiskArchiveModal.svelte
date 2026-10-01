@@ -5,7 +5,7 @@ import Button from '$lib/components/ui/Button.svelte'
 import Modal from '$lib/components/ui/Modal.svelte'
 import type { DiskItem } from '$lib/disk'
 import type { DiskSettings, ProjectRow } from '$lib/disk-types'
-import { tildify } from '$lib/format'
+import { errorMessage, tildify } from '$lib/format'
 import { human, readDisk, runJob } from './disk-client.svelte'
 
 let {
@@ -57,7 +57,7 @@ $effect(() => {
       plan = d.plan
       refused = d.refused
     })
-    .catch((e: Error) => (error = e.message))
+    .catch((e) => (error = errorMessage(e)))
     .finally(() => (loading = false))
 })
 

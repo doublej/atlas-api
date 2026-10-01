@@ -228,7 +228,7 @@ async function runTreeSearch(q: string) {
     findError = null
   } catch (e) {
     treeHits = []
-    findError = (e as Error).message
+    findError = errorMessage(e)
   } finally {
     findBusy = false
   }
@@ -245,7 +245,7 @@ async function loadTree() {
     rebuild()
     // Editor starts closed — it opens only when a node is clicked.
   } catch (e) {
-    error = (e as Error).message
+    error = errorMessage(e)
   } finally {
     loading = false
   }
@@ -525,7 +525,7 @@ async function openFile(node: TreeNode, path: string, skipGuard = false) {
     status = `sha ${r.sha}`
     await loadHistory()
   } catch (e) {
-    status = `error: ${(e as Error).message}`
+    status = `error: ${errorMessage(e)}`
   }
 }
 
@@ -553,7 +553,7 @@ async function save() {
     status = `saved · sha ${r.sha}`
     await loadHistory()
   } catch (e) {
-    const msg = (e as Error).message
+    const msg = errorMessage(e)
     status = `save failed: ${msg}`
     if (msg !== 'disk changed') return
     asking = {
@@ -583,7 +583,7 @@ function revert() {
         await postOp({ op: 'revert', path: activePath })
         await openFile(node, activePath, true)
       } catch (e) {
-        status = `revert failed: ${(e as Error).message}`
+        status = `revert failed: ${errorMessage(e)}`
       }
     },
   }
@@ -608,7 +608,7 @@ async function syncToAgents() {
     if (current && activePath === r.path) await openFile(current, r.path, true)
     toast('Synced CLAUDE.md → AGENTS.md')
   } catch (e) {
-    status = `sync failed: ${(e as Error).message}`
+    status = `sync failed: ${errorMessage(e)}`
   }
 }
 
@@ -768,7 +768,7 @@ async function runEntityAction(p: { actionId: string; locked: boolean; question?
       agentPanel = { title: label, busy: false, text: res.text, error: null }
     else applyAgentEdit(entity, res, p.locked, action.label)
   } catch (e) {
-    const msg = (e as Error).message
+    const msg = errorMessage(e)
     if (action.mode === 'answer') agentPanel = { title: label, busy: false, text: '', error: msg }
     else toast(`Agent failed: ${msg}`, 'error')
     status = `agent failed: ${msg}`

@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit'
 import { checkArgs, checkCleanPaths, diskJson, isRead } from '$lib/disk'
+import { errorMessage } from '$lib/format'
 import type { RequestHandler } from './$types'
 
 /** `?cmd=<sub>&arg=…&arg=…` → `atlas disk <sub> <args> --json`, side-effect-free commands only. */
@@ -12,6 +13,6 @@ export const GET: RequestHandler = async ({ url }) => {
   try {
     return json(await diskJson([cmd, ...args]))
   } catch (e) {
-    return json({ error: (e as Error).message }, { status: 502 })
+    return json({ error: errorMessage(e) }, { status: 502 })
   }
 }

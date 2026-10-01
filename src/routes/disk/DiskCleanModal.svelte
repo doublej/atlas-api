@@ -4,7 +4,7 @@ import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Modal from '$lib/components/ui/Modal.svelte'
 import type { FolderRow, Preview } from '$lib/disk-types'
-import { tildify } from '$lib/format'
+import { errorMessage, tildify } from '$lib/format'
 import { human, readDisk, runJob } from './disk-client.svelte'
 
 let { rows, onclose, ondone }: { rows: FolderRow[]; onclose: () => void; ondone: () => void } =
@@ -27,7 +27,7 @@ $effect(() => {
   const paths = untrack(() => rows.map((r) => r.path))
   readDisk('clean', ...paths, '--dry-run')
     .then((r) => (previews = (r.data as { preview: Preview[] }).preview))
-    .catch((e: Error) => (error = e.message))
+    .catch((e) => (error = errorMessage(e)))
     .finally(() => (loading = false))
 })
 

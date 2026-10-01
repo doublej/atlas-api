@@ -4,6 +4,7 @@ import Button from '$lib/components/ui/Button.svelte'
 import Modal from '$lib/components/ui/Modal.svelte'
 import type { DiskItem } from '$lib/disk'
 import type { ArchiveVersion } from '$lib/disk-types'
+import { errorMessage } from '$lib/format'
 import { human, readDisk, runJob } from './disk-client.svelte'
 
 let {
@@ -27,7 +28,7 @@ $effect(() => {
       skipped = d?.skipped ?? []
       message = r.message ?? ''
     })
-    .catch((e: Error) => (message = e.message))
+    .catch((e) => (message = errorMessage(e)))
     .finally(() => (loading = false))
 })
 
