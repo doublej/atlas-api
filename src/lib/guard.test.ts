@@ -51,6 +51,13 @@ const refused: [...Case, reason: RegExp][] = [
     /cross-site request from https:\/\/evil\.example/,
   ],
   [
+    'CSRF: page on another localhost port posts to the daemon',
+    'POST',
+    '/api/services',
+    { host: 'localhost:47891', origin: 'http://localhost:5173' },
+    /cross-site request from http:\/\/localhost:5173/,
+  ],
+  [
     'CSRF: sandboxed frame sends Origin null',
     'POST',
     '/api/iterm',

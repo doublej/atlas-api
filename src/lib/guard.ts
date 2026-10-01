@@ -5,7 +5,6 @@
 // values are dropped; its only trusted proxy is its own loopback), which is what tells them apart.
 
 const LOOPBACK_HOST = /^(localhost|127(\.\d{1,3}){3}|\[::1\])(:\d+)?$/
-const LOOPBACK_ORIGIN = /^http:\/\/(localhost|127(\.\d{1,3}){3}|\[::1\])(:\d+)?$/
 /** The console's LAN hostnames. The NAS Caddy lets only LAN (and household) IPs through. */
 const LAN_HOSTS = ['atlas.jurrejan.com', 'atlas.atlas.local.jurrejan.com']
 /** Off-LAN, behind a Caddy password: read-only. */
@@ -30,11 +29,14 @@ const LOCAL_ONLY = [
 const isLocalOnly = (route: string) =>
   LOCAL_ONLY.some((r) => route === r || route.startsWith(`${r}/`))
 
-/** A direct request: a loopback `Host` (DNS rebinding) and no foreign `Origin` (CSRF). */
+/**
+ * A direct request: a loopback `Host` (DNS rebinding) and no `Origin` but its own (CSRF) — a page
+ * from any other local dev server is just as foreign as one from the internet.
+ */
 function refuseDirect(headers: Headers, origin: string | null): string | null {
   const host = headers.get('host') ?? '(none)'
   if (!LOOPBACK_HOST.test(host)) return `host ${host} is not this Mac`
-  if (origin && !LOOPBACK_ORIGIN.test(origin)) return `cross-site request from ${origin}`
+  if (origin && origin !== `http://${host}`) return `cross-site request from ${origin}`
   return null
 }
 
