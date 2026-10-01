@@ -216,11 +216,14 @@ export interface ProjectAtlas {
  * each other's Caddy route. Same known ambiguity as `claudeSessionDir`: `web/a-b` and
  * `web-a/b` collapse to the same slug; rare enough in practice not to solve here.
  */
-function slugify(name: string): string {
-  return name
+export function slugify(name: string): string {
+  const slug = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/^-+/, '')
+    .slice(0, 63) // one DNS label; a clash after the cut is refused as one (409), never merged
+    .replace(/-+$/, '')
+  return slug || 'project' // a name of only punctuation still needs a label
 }
 
 async function detectRunner(fullPath: string): Promise<Project['runner'] | undefined> {
