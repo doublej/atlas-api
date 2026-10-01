@@ -95,6 +95,15 @@ describe('classify: kinds, names and tools', () => {
     expect(of(pid).tool).toBe(tool)
   })
 
+  it('finds the app bundle of a binary whose name has spaces and is clipped', () => {
+    const args =
+      '/Users/x/Library/Caches/ms-playwright/chromium-1/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing --user-data-dir=/Users/x/dev/web/a/.pw'
+    expect(classify({ exe: 'Google Chrome fo', args, uid: ME }, ME)).toMatchObject({
+      kind: 'app',
+      name: 'Google Chrome for Testing',
+    })
+  })
+
   it('reads an ssh multiplexer (`ssh: <socket> [mux]`) as ssh', () => {
     const row = { exe: 'ssh', args: 'ssh: /Users/x/.ssh/cm-nas [mux]', uid: ME }
     expect(classify(row, ME)).toMatchObject({ role: 'tool', name: 'ssh' })

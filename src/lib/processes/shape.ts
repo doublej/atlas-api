@@ -57,10 +57,15 @@ const basename = (p: string) => p.replace(/\/+$/, '').split('/').pop() ?? p
 
 /**
  * argv[0], even when its path holds spaces (`/Applications/Google Chrome.app/…`): an absolute
- * argv[0] runs up to the first space after the kernel's name for it; anything else is one token.
+ * argv[0] runs up to the first space after the kernel's name for it, looked for from its app
+ * bundle on (`…/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`).
+ * Anything else is one token.
  */
 function argv0Of(args: string, exe: string): string {
-  const at = args.startsWith('/') ? args.indexOf(`/${exe}`) : -1
+  if (!args.startsWith('/')) return args.split(/\s/)[0]
+  const bundle = args.indexOf('.app/Contents/')
+  const from = bundle > 0 && !/ [-/]/.test(args.slice(0, bundle)) ? bundle : 0
+  const at = args.indexOf(`/${exe}`, from)
   const end = at < 0 ? args.search(/\s/) : args.indexOf(' ', at + exe.length + 1)
   return end < 0 ? args : args.slice(0, end)
 }
