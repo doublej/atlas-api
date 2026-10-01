@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { Snippet } from 'svelte'
 import { frameworkColor, typeColor } from '$lib/browser/colors'
+import HostnameChip from '$lib/components/dialogs/hostname/HostnameChip.svelte'
 import Icon from '$lib/components/icons/Icon.svelte'
 import type { ProjectSummary } from '$lib/project-summary'
 import type { GitStatus } from '$lib/scanner'
@@ -108,6 +109,7 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
 
 {#snippet nameCell(p: P, row: RowState)}
   <button type="button" class="name" aria-expanded={row.open} onclick={row.toggleOpen}>{p.name}</button>
+  <HostnameChip path={p.path} />
   {#if p.description}<span class="desc">{p.description}</span>{/if}
 {/snippet}
 
