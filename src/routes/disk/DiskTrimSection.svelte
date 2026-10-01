@@ -85,9 +85,9 @@ const rows = $derived<PlanRow[]>([
   })),
 ])
 const planColumns: Column<PlanRow>[] = [
-  { key: 'step', label: 'Step', cell: stepCell },
+  { key: 'step', label: 'Step', wrap: true, cell: stepCell },
   { key: 'command', label: 'Command', wrap: true, cell: commandCell },
-  { key: 'cache', label: 'Cache', hideBelow: 768, cell: cacheCell },
+  { key: 'cache', label: 'Cache', fill: true, hideBelow: 768, cell: cacheCell },
 ]
 
 const cache = (o: Operation, k: string) => o.end?.details?.[k] as number | undefined
@@ -124,7 +124,7 @@ const lastColumns: Column<Operation>[] = [
 
 {#snippet stepCell(r: PlanRow)}{r.name}{#if r.skip} <Badge>skip: {r.skip}</Badge>{/if}{/snippet}
 {#snippet commandCell(r: PlanRow)}<span class:mono={!r.refused} class:muted={!r.refused}>{r.command}</span>{/snippet}
-{#snippet cacheCell(r: PlanRow)}<span class="mono muted">{r.cache}</span>{/snippet}
+{#snippet cacheCell(r: PlanRow)}<span class="mono muted" title={r.cache}>{r.cache}</span>{/snippet}
 {#snippet itemCell(o: Operation)}{o.start.item}{/snippet}
 {#snippet resultCell(o: Operation)}{o.end?.outcome ?? 'interrupted'}{o.end?.message ? ` — ${o.end.message}` : ''}{/snippet}
 {#snippet beforeCell(o: Operation)}<span class="num">{bytes(cache(o, 'cacheBefore'))}</span>{/snippet}

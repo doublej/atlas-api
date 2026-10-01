@@ -28,7 +28,7 @@ const sel = new Selection<string>()
 const sort = new TableSort<string>(null, ['size'])
 const columns: Column<FolderRow>[] = [
   { key: 'size', label: 'Size', sort: (f) => f.bytes, align: 'right', cell: sizeCell },
-  { key: 'path', label: 'Folder', sort: (f) => f.path, cell: pathCell },
+  { key: 'path', label: 'Folder', sort: (f) => f.path, fill: true, cell: pathCell },
   { key: 'inUse', label: 'In use', sort: (f) => f.inUse, cell: inUseCell },
   { key: 'why', label: 'What it is', sort: (f) => f.why, hideBelow: 768, cell: whyCell },
   {
@@ -105,6 +105,7 @@ function toggleRisk(r: Risk) {
           selection={sel}
           order={ordered}
           dim={(f) => f.nested}
+          maxHeight="60vh"
         />
       </Card>
     {/each}
