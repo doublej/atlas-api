@@ -12,11 +12,12 @@ type Claimant = Pick<Project, 'path' | 'slug' | 'name' | 'isLocal'>
 
 /**
  * Who holds `slug` against the project at `path`: a registry row, a service, or another local
- * project whose (scanned) slug it already is. Null when it is free for this project.
+ * project whose (scanned) slug it already is. Null when it is free for this project. Without
+ * `path` nobody claims it, so any holder counts.
  */
 export async function slugHolder(
   slug: string,
-  path: string,
+  path: string | undefined,
   projects: Claimant[] = [],
 ): Promise<Holder | null> {
   const row = rowHolder(slug, (await readRegistry())[slug], { path })
@@ -35,10 +36,10 @@ export async function assertSlugFree(
   if (holder) throw new SlugTakenError(slug, holder)
 }
 
-/** The verdict on `slug` for the project at `path`, with the URLs it would get. */
+/** The verdict on `slug` for the project at `path` (none: never `current`), with its URLs. */
 export async function checkSlug(
   slug: string,
-  path: string,
+  path: string | undefined,
   projects: Claimant[],
 ): Promise<SlugCheck> {
   const names = hostnamesFor(slug)
@@ -47,7 +48,9 @@ export async function checkSlug(
   const holder = await slugHolder(slug, path, projects)
   if (holder)
     return { slug, status: 'taken', reason: describeHolder(slug, holder), holder, ...names }
-  const own = (await readRegistry())[slug]?.path === path || (await slugAt(path)) === slug
+  const own =
+    path !== undefined &&
+    ((await readRegistry())[slug]?.path === path || (await slugAt(path)) === slug)
   return { slug, status: own ? 'current' : 'free', ...names }
 }
 
