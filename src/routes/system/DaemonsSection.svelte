@@ -7,6 +7,7 @@ import Card from '$lib/components/ui/Card.svelte'
 import { errorMessage } from '$lib/format'
 import { http } from '$lib/http'
 import type { Column } from '$lib/table'
+import { toast } from '$lib/toast.svelte'
 import type { PageData } from './$types'
 
 type DaemonRow = NonNullable<PageData['daemons']>[number]
@@ -31,7 +32,6 @@ const columns: Column<DaemonRow>[] = [
 let loadError = $state('')
 /** `<label>:<action>` while a lifecycle call is in flight — one at a time, on purpose. */
 let pending = $state('')
-let actionError = $state<Record<string, string>>({})
 
 const TONE: Record<string, 'pos' | 'neg' | 'warn' | 'neutral'> = {
   running: 'pos',
@@ -51,18 +51,16 @@ async function refresh() {
 
 async function act(label: string, action: Action) {
   pending = `${label}:${action}`
-  actionError = { ...actionError, [label]: '' }
   try {
     await http.post(`/api/daemons/${encodeURIComponent(label)}`, { action })
+    toast(`${label}: ${action} sent`)
   } catch (e) {
     const text = errorMessage(e)
-    actionError = {
-      ...actionError,
-      [label]:
-        text === 'writes disabled'
-          ? 'writes disabled — set ATLAS_DAEMON_WRITE=1 in the plist and reload the daemon'
-          : text,
-    }
+    const hint =
+      text === 'writes disabled'
+        ? 'writes disabled — set ATLAS_DAEMON_WRITE=1 in the plist and reload the daemon'
+        : text
+    toast(`${label} ${action} failed: ${hint}`, 'error')
   } finally {
     pending = ''
     await refresh()
@@ -70,7 +68,7 @@ async function act(label: string, action: Action) {
 }
 
 // Poll while the tab is actually being looked at — a background tab polling launchctl every
-// 10s buys nothing and each tick spawns a process per daemon.
+// 10s buys nothing (each tick runs launchctl list and netstat).
 $effect(() => {
   const timer = setInterval(() => {
     if (document.visibilityState === 'visible') refresh()
@@ -91,9 +89,6 @@ $effect(() => {
     {#if d.logs?.stdout}<div>out {d.logs.stdout}</div>{/if}
     {#if d.logs?.stderr}<div>err {d.logs.stderr}</div>{/if}
   </div>
-  {#if actionError[d.label]}
-    <p class="t-caption err">{actionError[d.label]}</p>
-  {/if}
 {/snippet}
 
 {#snippet stateCell(d: DaemonRow)}
@@ -182,11 +177,5 @@ $effect(() => {
   .actions {
     display: inline-flex;
     gap: var(--space-1);
-  }
-
-  .err {
-    margin-top: var(--space-2);
-    color: var(--color-neg);
-    overflow-wrap: anywhere;
   }
 </style>

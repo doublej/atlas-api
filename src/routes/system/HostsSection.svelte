@@ -7,6 +7,7 @@ import Modal from '$lib/components/ui/Modal.svelte'
 import { errorMessage } from '$lib/format'
 import { http } from '$lib/http'
 import type { HostState } from '$lib/scanner'
+import { toast } from '$lib/toast.svelte'
 import type { HostDef } from '$shared/hosts'
 
 let { hosts, states }: { hosts: HostDef[]; states: HostState[] } = $props()
@@ -31,7 +32,6 @@ let rescanned = $state<HostState[] | null>(null)
 const liveStates = $derived(rescanned ?? states)
 
 let rescanning = $state<string | null>(null)
-let rescanError = $state<Record<string, string>>({})
 
 let editing = $state(false)
 let forms = $state<HostForm[]>([])
@@ -52,14 +52,13 @@ function age(iso: string | undefined): string {
 
 async function rescan(id: string) {
   rescanning = id
-  rescanError = { ...rescanError, [id]: '' }
   try {
     const body = await http.post<{ hosts?: HostState[] }>(
       `/api/refresh?host=${encodeURIComponent(id)}&force=true`,
     )
     if (Array.isArray(body.hosts)) rescanned = body.hosts
   } catch (e) {
-    rescanError = { ...rescanError, [id]: errorMessage(e) }
+    toast(`Rescan of ${id} failed: ${errorMessage(e)}`, 'error')
   } finally {
     rescanning = null
   }
@@ -154,10 +153,7 @@ async function saveRegistry() {
         </dl>
 
         {#if s?.error}
-          <p class="t-caption err">{s.error}</p>
-        {/if}
-        {#if rescanError[host.id]}
-          <p class="t-caption err">{rescanError[host.id]}</p>
+          <div class="host-error"><Notice tone="error">{s.error}</Notice></div>
         {/if}
 
         <div class="foot">
@@ -209,8 +205,9 @@ async function saveRegistry() {
         </label>
       </fieldset>
     {/each}
+    <!-- In the dialog, not a toast: a modal dialog sits above the toasts. -->
     {#if saveError}
-      <p class="t-caption err">{saveError}</p>
+      <Notice tone="error">{saveError}</Notice>
     {/if}
   </div>
   {#snippet footer()}
@@ -281,10 +278,8 @@ async function saveRegistry() {
     overflow-wrap: anywhere;
   }
 
-  .err {
-    margin-top: var(--space-2);
-    color: var(--color-neg);
-    overflow-wrap: anywhere;
+  .host-error {
+    margin-top: var(--space-3);
   }
 
   .foot {

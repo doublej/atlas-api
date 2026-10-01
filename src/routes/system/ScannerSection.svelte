@@ -5,6 +5,7 @@ import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import { errorMessage } from '$lib/format'
 import { http } from '$lib/http'
+import { toast } from '$lib/toast.svelte'
 
 let { config }: { config: AtlasConfig } = $props()
 
@@ -18,20 +19,16 @@ let ignoreRows = $state(untrack(() => config.ignore.map((pattern) => ({ pattern 
 
 let saving = $state(false)
 let saved = $state(false)
-let saveError = $state('')
-
 let rescanning = $state(false)
-let rescanError = $state('')
 
 async function save() {
   const bad = depthRows.find((r) => r.k.trim() && !Number.isInteger(Number(r.v)))
   if (bad) {
-    saveError = `depth "${bad.k}" is not an integer — the server would drop that row silently`
+    toast(`depth "${bad.k}" is not an integer — the server would drop that row silently`, 'error')
     return
   }
   saving = true
   saved = false
-  saveError = ''
   try {
     await http.put('/api/config', {
       maxDepth: Number(maxDepth),
@@ -43,7 +40,7 @@ async function save() {
     })
     saved = true
   } catch (e) {
-    saveError = errorMessage(e)
+    toast(`Save failed: ${errorMessage(e)}`, 'error')
   } finally {
     saving = false
   }
@@ -51,12 +48,12 @@ async function save() {
 
 async function rescan() {
   rescanning = true
-  rescanError = ''
   try {
     await http.post('/api/refresh?force=true')
     saved = false
+    toast('Rescanned with the new config')
   } catch (e) {
-    rescanError = errorMessage(e)
+    toast(`Rescan failed: ${errorMessage(e)}`, 'error')
   } finally {
     rescanning = false
   }
@@ -146,12 +143,6 @@ async function rescan() {
         </Button>
       {/if}
     </div>
-    {#if saveError}
-      <p class="t-caption err">{saveError}</p>
-    {/if}
-    {#if rescanError}
-      <p class="t-caption err">{rescanError}</p>
-    {/if}
   </Card>
 </section>
 
@@ -232,10 +223,5 @@ async function rescan() {
 
   .ok {
     color: var(--color-pos);
-  }
-  .err {
-    margin-top: var(--space-2);
-    color: var(--color-neg);
-    overflow-wrap: anywhere;
   }
 </style>
