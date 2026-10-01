@@ -229,8 +229,8 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
     overflow-wrap: anywhere;
   }
 
-  /* Claims 40% of the width and clips past it with an ellipsis, so a long value never widens the
-     table; `max-width: 0` is what lets a table cell shrink below its content. */
+  /* Takes the width the other columns leave, up to 40%, and clips past it with an ellipsis, so a
+     long value never widens the table; `max-width: 0` lets a table cell shrink below its content. */
   td.fill {
     width: 40%;
     max-width: 0;

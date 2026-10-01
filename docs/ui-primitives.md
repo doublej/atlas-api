@@ -211,7 +211,7 @@ row-click selection code.
 | `sort?` | `(row) => string \| number \| null \| undefined` — makes the header a sort button; blanks sort last |
 | `align?` | `'right'` for numbers and sizes |
 | `wrap?` | lets the cell wrap anywhere (min 12rem) instead of one line |
-| `fill?` | the column claims 40% of the width and ellipsizes past it, so a long value never widens the table — one per table (a project's name) |
+| `fill?` | the column takes the width the other columns leave, up to 40%, and ellipsizes past it, so a long value never widens the table — one per table (a project's name) |
 | `hideBelow?` | `768 \| 1100` — hide the column below that viewport width |
 | `hideLabel?` | header label for screen readers only (icon columns) |
 
