@@ -237,7 +237,7 @@ Rules that keep it that way:
   `ATLAS_SERVICE_SYNC=0` (keeps it off the shared NAS Caddy).
 - **The build can die with SIGTRAP** (Bun 1.3.8 on Darwin 27, worse under load): `bun run build`
   exits 133 and `daemon:reload` never reaches the kickstart, so the old build keeps serving.
-  Rerun it; `RAYON_NUM_THREADS=1 bun run daemon:reload` fails less often. Check `build/` changed.
+  Rerun it; `daemon:reload` pins `RAYON_NUM_THREADS=1`, which fails less often. Check `build/` changed.
 - **A poller must not start a rescan.** The process snapshot reads the catalog with
   `scan(…, { revalidate: false })`: `scan()`'s stale-while-revalidate re-walks ~/dev with ~2,000
   git spawns, and a page polling every few seconds turned that into one full rescan a minute.

@@ -8,7 +8,7 @@
     "dev": "vite dev",
     "build": "bun --bun vite build",
     "start": "bun build/index.js",
-    "daemon:reload": "bun run build && launchctl kickstart -k gui/$(id -u)/com.jurrejan.atlas-api",
+    "daemon:reload": "RAYON_NUM_THREADS=1 bun run build && launchctl kickstart -k gui/$(id -u)/com.jurrejan.atlas-api",
     "preview": "vite preview",
     "scan": "bun src/lib/scanner.ts",
     "agent:build": "bun build src/lib/scanner.ts --target=node --outfile ../shared/agent/atlas-scan.mjs",
