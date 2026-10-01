@@ -68,7 +68,12 @@ function read(cmd: string, args: string[], tolerant = false, encoding: 'utf8' | 
     const opts = { env: ENV, encoding, timeout: TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024 }
     execFile(cmd, args, opts, (error, stdout) => {
       const exited = error && typeof error.code === 'number' && !error.killed
-      if (error && !(tolerant && exited)) reject(error)
+      if (error && !(tolerant && exited))
+        reject(
+          error.killed
+            ? new Error(`${cmd} took over ${TIMEOUT_MS / 1000}s (load ${loadavg()[0].toFixed(0)})`)
+            : error,
+        )
       else resolve(String(stdout))
     })
   })
