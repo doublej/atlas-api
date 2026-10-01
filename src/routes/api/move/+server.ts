@@ -1,8 +1,10 @@
 import { rename } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { json } from '@sveltejs/kit'
-import { removeRouteByPath } from '$lib/caddyDev'
+import { moveRoute } from '$lib/caddyDev'
 import { resolveLocal } from '$lib/config'
+import { planFolderMove } from '$lib/hostnames/claims'
+import { answeringTaken } from '$lib/hostnames/taken'
 import type { RequestHandler } from './$types'
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -22,7 +24,11 @@ export const POST: RequestHandler = async ({ request }) => {
   const name = basename(sourcePath)
   const newPath = join(targetDir, name)
 
-  await removeRouteByPath(sourcePath)
-  await rename(sourcePath, newPath)
-  return json({ moved: true, newPath })
+  // The dev hostname follows the folder: same slug when `.atlas` pins it, else the new path's.
+  return answeringTaken(async () => {
+    const route = await planFolderMove(sourcePath, newPath)
+    await rename(sourcePath, newPath)
+    const hostname = route ? await moveRoute(newPath, route.from, route.to) : undefined
+    return json({ moved: true, newPath, ...(hostname ? { hostname } : {}) })
+  })
 }

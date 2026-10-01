@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { renderSiteBlock } from './caddyDev'
+import { getServices } from '$shared/services'
+import { renderSiteBlock } from './hostnames/nas'
 import { listenersOn, routeMode } from './services'
 
 describe('routeMode', () => {
@@ -24,23 +25,70 @@ describe('listenersOn', () => {
     ]
     expect(routeMode(listenersOn(sockets, 47823, '10.0.0.2'))).toBe('bridge')
   })
+
+  it('bridges a loopback-only project dev server the same way (3.10)', () => {
+    const sockets = [{ port: 4321, pid: 7, address: '127.0.0.1', command: 'bun' }]
+    expect(routeMode(listenersOn(sockets, 4321))).toBe('bridge')
+  })
 })
+
+const block = { slug: 'x', port: 1, ip: '10.0.0.2', devPublic: false, remote: true }
 
 describe('renderSiteBlock', () => {
   it('serves a service host next to its atlas.local name', () => {
-    expect(renderSiteBlock('x', 1, '10.0.0.2', false, false, 'x.jurrejan.com')).toContain(
+    expect(renderSiteBlock({ ...block, remote: false, host: 'x.jurrejan.com' })).toContain(
       'x.jurrejan.com, x.atlas.local.jurrejan.com {',
     )
   })
-  process.env.CADDY_DEV_AUTH_HASH = 'hash'
+
+  it('has no remote half without an auth hash, even when asked', () => {
+    delete process.env.CADDY_DEV_AUTH_HASH
+    expect(renderSiteBlock(block)).not.toContain('atlas.remote')
+  })
 
   it('publishes atlas.remote by default', () => {
-    expect(renderSiteBlock('x', 1, '10.0.0.2', false)).toContain('x.atlas.remote.')
+    process.env.CADDY_DEV_AUTH_HASH = 'hash'
+    expect(renderSiteBlock(block)).toContain('x.atlas.remote.')
   })
 
   it('drops atlas.remote when remote is off', () => {
-    const block = renderSiteBlock('x', 1, '10.0.0.2', false, false)
-    expect(block).toContain('x.atlas.local.')
-    expect(block).not.toContain('atlas.remote')
+    process.env.CADDY_DEV_AUTH_HASH = 'hash'
+    const out = renderSiteBlock({ ...block, remote: false })
+    expect(out).toContain('x.atlas.local.')
+    expect(out).not.toContain('atlas.remote')
+  })
+
+  it('compresses both halves of a service block, never a project block (2.6)', () => {
+    process.env.CADDY_DEV_AUTH_HASH = 'hash'
+    const service = renderSiteBlock({ ...block, compress: true })
+    expect(service.match(/^\tencode zstd gzip$/gm)).toHaveLength(2)
+    expect(renderSiteBlock(block)).not.toContain('encode')
+  })
+})
+
+describe('the atlas console block (decision 1, 2.4)', () => {
+  const atlas = getServices().find((s) => s.slug === 'atlas')
+
+  it('is published off-LAN', () => {
+    expect(atlas?.remote).toBe(true)
+  })
+
+  it('serves atlas.atlas.remote behind the password, compressed, on the short LAN name too', () => {
+    process.env.CADDY_DEV_AUTH_HASH = 'hash'
+    const out = renderSiteBlock({
+      slug: 'atlas',
+      port: atlas?.port ?? 0,
+      ip: '10.0.0.2',
+      devPublic: false,
+      remote: atlas?.remote ?? false,
+      host: atlas?.host,
+      compress: true,
+    })
+    expect(out).toContain('atlas.jurrejan.com, atlas.atlas.local.jurrejan.com {')
+    const remote = out.slice(out.indexOf('atlas.atlas.remote.jurrejan.com {'))
+    expect(remote).toMatch(
+      /^atlas\.atlas\.remote\.jurrejan\.com \{\n\tencode zstd gzip\n\tbasic_auth \{/,
+    )
+    expect(remote).toContain('reverse_proxy 10.0.0.2:47891 {')
   })
 })

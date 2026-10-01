@@ -2,8 +2,10 @@ import { spawn } from 'node:child_process'
 import { closeSync, mkdirSync, openSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { json } from '@sveltejs/kit'
-import { ensureRoute } from '$lib/caddyDev'
+import { ensureRoute, SlugTakenError } from '$lib/caddyDev'
 import { DEV_FOLDER, resolveLocal } from '$lib/config'
+import { slugHolder } from '$lib/hostnames/claims'
+import type { HostnameState } from '$lib/hostnames/types'
 import {
   allocatePort,
   devFlags,
@@ -12,6 +14,7 @@ import {
   stopProjectListeners,
 } from '$lib/ports'
 import { currentSlug, scan, setPort, updateCachedPort } from '$lib/scanner'
+import { bridgeProject } from '$lib/services'
 import type { RequestHandler } from './$types'
 
 /** How long POST waits for the dev server to bind before answering with the allocated port, unless the body's `wait` says longer. */
@@ -57,6 +60,21 @@ function isAlive(pid: number): boolean {
   }
 }
 
+/**
+ * Point the project's hostname at `port`, and give a loopback-only server the NAS-only bridge
+ * (otherwise the hostname 502s). Only the URLs of a route the NAS confirmed are returned.
+ */
+async function routeTo(
+  route: { slug: string; path: string; devPublic?: boolean },
+  bound: { port: number; lanReachable: boolean } | null,
+  port: number,
+): Promise<Pick<HostnameState, 'local' | 'remote'> | null> {
+  const state = await ensureRoute({ ...route, port })
+  if (!state.nasSynced) return null
+  if (bound) await bridgeProject(port)
+  return { local: state.local, remote: state.remote }
+}
+
 /** Record the port the dev server really took, in `.atlas` and in the cache the next run reads. */
 async function persistPort(path: string, port: number): Promise<void> {
   await setPort(path, port)
@@ -80,6 +98,11 @@ export const POST: RequestHandler = async ({ request }) => {
   const atlas = await scan(DEV_FOLDER) // cached, stale-while-revalidate — no new fs walk
   const project = atlas.projects.find((p) => p.path === path)
   const slug = project ? await currentSlug(project) : basename(path)
+  // Refused before anything spawns: the server would run, but under someone else's hostname.
+  const holder = project ? await slugHolder(slug, path) : null
+  if (holder) {
+    return json({ error: new SlugTakenError(slug, holder).message, holder }, { status: 409 })
+  }
   const port = project?.port ?? (await allocatePort(atlas))
   if (!project?.port) {
     await setPort(path, port)
@@ -162,21 +185,15 @@ export const POST: RequestHandler = async ({ request }) => {
   const finalPort = bound?.port ?? port
   if (bound && bound.port !== port) await persistPort(path, bound.port)
 
-  const hostnames = project
-    ? await ensureRoute({ slug, path, port: finalPort, devPublic: project.devPublic })
-    : null
+  const route = { slug, path, devPublic: project?.devPublic }
+  const hostnames = project ? await routeTo(route, bound ?? null, finalPort) : null
 
   if (bound === undefined && project) {
     discovery
       .then(async (late) => {
-        if (!late || late.port === finalPort) return
-        await persistPort(path, late.port)
-        await ensureRoute({
-          slug,
-          path,
-          port: late.port,
-          devPublic: project.devPublic,
-        })
+        if (!late) return
+        if (late.port !== finalPort) await persistPort(path, late.port)
+        await routeTo(route, late, late.port)
       })
       .catch((err) => console.warn(`run: late port reroute failed for ${path} — ${err}`))
   }
@@ -204,5 +221,6 @@ export const DELETE: RequestHandler = async ({ request }) => {
   const atlas = await scan(DEV_FOLDER)
   const port = atlas.projects.find((p) => p.path === path)?.port
   const stopped = port ? await stopProjectListeners(path, port) : []
+  if (port) await bridgeProject(port) // closes a loopback bridge left with nothing behind it
   return json({ stopped: stopped.length > 0 })
 }
