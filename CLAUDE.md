@@ -248,15 +248,18 @@ Vite 8, Vitest, Justfile). Three deviations are intentional and should not be "f
    false positives here, each with an *unsafe autofix that deletes working code*. `svelte-check`
    covers these correctly. Do not remove this override.
 2. **`biome.json` disables `noExcessiveCognitiveComplexity` and a few mechanical rules for
-   pre-existing modules** (`scanner.ts`, `claude-tree.ts`, `umami.ts`, `domains.ts`, the API routes,
-   and `src/routes/claude-tree/**`). Satisfying them means refactoring the scanner, which is out of
+   pre-existing modules** (`scanner.ts`, `claude-tree.ts` and the `claude-tree-entities.ts`,
+   `claude-tree-parse.ts` and `claude-tree-walk.ts` modules its code moved into verbatim,
+   `templates.ts`, `umami.ts`, `domains.ts`, `ports.ts`, the API routes, and
+   `src/routes/claude-tree/**`). Satisfying them means refactoring that logic, which is out of
    scope for UI work. New code is held to the full ruleset.
-3. **`.quality.json` globs cover only the code the UI overhaul owns** (`src/lib/components/**`,
-   `src/lib/browser/**`, `src/routes/+*.svelte`). The template's `src/**` would error immediately on
-   `scanner.ts` (818 lines), `claude-tree.ts` (621) and `claude-tree/+page.svelte` (1,551), and
-   `src/lib` holds 17 files against a 6-file cap. `loc-check`/`dir-check` have no exclude mechanism,
-   only globs.
+3. **`.quality.json` gives the two size gates separate glob lists.** `loc.globs` covers every
+   `src/**/*.svelte` and every `src/lib/**/*.ts`, tests included (warn 300, error 400).
+   `loc.exempt` lists files the recipe skips and prints as `exempt debt` instead of failing on:
+   only `src/lib/scanner.ts` (1,456 lines). `dir.globs` (6-file cap) still covers only
+   `src/lib/components/**`, `src/lib/browser/**` and `src/routes/+*.svelte`; `src/lib` itself
+   holds over 50 modules.
 
-**Follow-up to widen the gate:** split `scanner.ts` and `claude-tree.ts`, decompose
-`src/routes/claude-tree/+page.svelte`, then broaden the `.quality.json` globs and drop the matching
-Biome overrides.
+**Follow-up to close the gate:** split `scanner.ts` and drop it from `loc.exempt`. In the same
+change, import `estimateTokens` from `./claude-tree-parse` and delete the re-export in
+`claude-tree.ts` that exists only for `scanner.ts`.
