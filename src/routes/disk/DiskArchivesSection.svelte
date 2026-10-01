@@ -129,7 +129,7 @@ function act(verb: string, ids: string[]) {
   open={confirmDelete}
   title="Delete {chosen.length} archive version(s)?"
   message={lastOnes
-    ? `This cannot be undone, and ${lastOnes} of these ${lastOnes === 1 ? 'is' : 'are'} the ONLY version of its project.`
+    ? `This cannot be undone, and ${lastOnes} of these ${lastOnes === 1 ? 'is the ONLY version of its project' : 'are the ONLY version of their project'}.`
     : 'This cannot be undone.'}
   items={chosen.map((v) => `${v.id} · ${human(v.bytes)}${onlyVersion(v) ? ' — the only version' : ''}`)}
   confirmLabel="Delete"

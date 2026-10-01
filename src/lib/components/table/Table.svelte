@@ -213,7 +213,9 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
     text-align: right;
   }
 
+  /* The floor keeps a wrapping column from collapsing to one letter per line on a phone. */
   td.wrap {
+    min-width: 12rem;
     white-space: normal;
     overflow-wrap: anywhere;
   }
