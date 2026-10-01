@@ -110,7 +110,7 @@ async function search(q: string) {
 			{#each hits as h (h.path)}
 				<div class="findfile">
 					<span class="findfile-label">{labels.get(h.path) ?? h.path}</span>
-					<span class="findfile-path">{h.path}</span>
+					<span class="findfile-path"><bdi>{h.path}</bdi></span>
 				</div>
 				{#each h.matches as m (m.line + ':' + m.col)}
 					{@const [before, match, after] = splitSnippet(m.text, m.col, queryLen)}
@@ -232,7 +232,7 @@ async function search(q: string) {
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		direction: rtl; /* keep the filename end visible when truncated */
+		direction: rtl; /* keep the filename end visible when truncated; <bdi> keeps the path LTR */
 		text-align: left;
 	}
 	.findhit {
