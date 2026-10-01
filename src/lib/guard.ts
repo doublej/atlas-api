@@ -54,11 +54,9 @@ function refuseDirect(headers: Headers): string | null {
   return refuseForeign(headers, `http://${host}`)
 }
 
-/** Through the NAS: a LAN hostname, and for a write that hostname's own `Origin`. */
-function refuseProxied(headers: Headers, write: boolean): string | null {
-  const forwarded = headers.get('x-forwarded-host') ?? '(none)'
+/** Through the NAS (`forwarded` is a known hostname): for a write that hostname's own `Origin`. */
+function refuseProxied(headers: Headers, forwarded: string, write: boolean): string | null {
   if (forwarded === REMOTE_HOST) return write ? 'read-only off-LAN' : 'not available off-LAN'
-  if (!LAN_HOSTS.includes(forwarded)) return `unknown forwarded host ${forwarded}`
   const origin = headers.get('origin')
   if (write && origin !== `https://${forwarded}`)
     return `write via ${forwarded} needs Origin https://${forwarded}, got ${origin ?? 'none'}`
@@ -77,6 +75,12 @@ export function refusal(
   query: URLSearchParams,
 ): string | null {
   const write = method !== 'GET' && method !== 'HEAD'
+  const proxied = headers.has('x-forwarded-for')
+  const forwarded = headers.get('x-forwarded-host') ?? '(none)'
+  // Whatever routes another hostname here (a project entry on port 47891) is not the console, so
+  // it gets nothing — not even the open reads.
+  if (proxied && forwarded !== REMOTE_HOST && !LAN_HOSTS.includes(forwarded))
+    return `unknown forwarded host ${forwarded}`
   if (!write && !isLocalOnly(route, query)) return null
-  return headers.has('x-forwarded-for') ? refuseProxied(headers, write) : refuseDirect(headers)
+  return proxied ? refuseProxied(headers, forwarded, write) : refuseDirect(headers)
 }

@@ -155,6 +155,13 @@ const refused: [...Case, reason: RegExp][] = [
     /unknown forwarded host web\.atlas\.local/,
   ],
   [
+    "a project's dev hostname reads a journal",
+    'GET',
+    '/api/agent-log',
+    via('atlas-api.atlas.remote.jurrejan.com'),
+    /unknown forwarded host atlas-api\.atlas\.remote/,
+  ],
+  [
     'forwarded without a host',
     'POST',
     '/api/refresh',
