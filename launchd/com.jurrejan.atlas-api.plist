@@ -7,11 +7,13 @@
     <!-- Serves the adapter-node build, never `vite dev`. A dev server needs ~20s to
          bind and ~50s to compile its first response; every health check read that as
          "dead" and SIGKILLed it mid-boot, which trashed vite's dep cache and made the
-         next boot slower still. The build boots in ~0.3s. Rebuild with `bun run daemon:reload`. -->
+         next boot slower still. The build boots in ~0.3s. Rebuild with `bun run daemon:reload`.
+         start.sh reads CADDY_DEV_AUTH_HASH from onenv, then execs `bun build/index.js`.
+         A change to this file needs bootout + bootstrap; kickstart keeps the loaded copy. -->
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/jurrejan/.bun/bin/bun</string>
-        <string>build/index.js</string>
+        <string>/bin/sh</string>
+        <string>launchd/start.sh</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/Users/jurrejan/dev/multi-stack/project-atlas/atlas-api</string>

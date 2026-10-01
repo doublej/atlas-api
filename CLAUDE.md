@@ -221,7 +221,9 @@ Plists live in their owning repo under a `launchd/` directory and are symlinked 
 
 #### The daemon serves the build, not `vite dev`
 
-The plist runs `bun build/index.js` (adapter-node). This is load-bearing, not a preference:
+The plist runs `launchd/start.sh`, which reads `CADDY_DEV_AUTH_HASH` (the `atlas.remote`
+password hash) from onenv `caddy-dev` and execs `bun build/index.js` (adapter-node). The hash
+never goes in the plist: this repo is public. This is load-bearing, not a preference:
 `vite dev` took ~20s to bind the port and ~50s to compile its first response, because the
 first request pulls the whole SSR graph (CodeMirror, xyflow, dagre, the agent SDKs) through
 on-demand transform. Every health check timed out against that and restarted the daemon
