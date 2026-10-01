@@ -8,8 +8,9 @@ import { currentSlug, scan, setPort, updateCachedPort } from '$lib/scanner'
 import { bridgeProject } from '$lib/services'
 import type { RequestHandler } from './$types'
 
-export const GET: RequestHandler = async () => {
-  return json(await listHostnames())
+/** Only what the NAS serves; `?all=1` adds failed and release-pending rows (with `state`). */
+export const GET: RequestHandler = async ({ url }) => {
+  return json(await listHostnames({ all: url.searchParams.get('all') === '1' }))
 }
 
 export const POST: RequestHandler = async ({ request }) => {

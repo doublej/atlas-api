@@ -8,6 +8,7 @@ import {
   hasAuthHash,
   hostnamesFor,
   normalizePath,
+  type Registry,
   readRegistry,
   rowHolder,
   slugsAt,
@@ -185,6 +186,10 @@ async function repath(slug: string, path: string): Promise<void> {
   await writeRegistry(registry)
 }
 
+/** `slug`'s row when it is the live route of the project at `path` (no release pending). */
+const liveRowAt = (rows: Registry, slug: string, path: string): HostnameEntry | undefined =>
+  rows[slug]?.path === path && !rows[slug].release ? rows[slug] : undefined
+
 /**
  * Carries the project at `path` from hostname `from` to `to`: the new route first, and the old
  * one goes only once the new one landed. `from === to` is a folder move that keeps its slug.
@@ -196,11 +201,15 @@ export function moveRoute(
   change: { port?: number; devPublic?: boolean } = {},
 ): Promise<HostnameState> {
   return withRegistryLock(async () => {
-    const old = (await readRegistry())[from]
+    const rows = await readRegistry()
+    const old = rows[from]
     if (!old) throw new Error(`no route "${from}" to move`)
     if (from === to) await repath(from, path)
-    const port = change.port ?? old.port
-    const devPublic = change.devPublic ?? old.devPublic
+    // A live row the project already has under `to` (a run after a hand-edited slug) is where its
+    // server is: the stale `from` row's port would re-point that hostname at nothing.
+    const base = liveRowAt(rows, to, path) ?? old
+    const port = change.port ?? base.port
+    const devPublic = change.devPublic ?? base.devPublic
     const state = await ensureUnlocked({ slug: to, path, port, devPublic })
     return from === to || !state.nasSynced ? state : dropOld(from, state)
   })
@@ -244,18 +253,23 @@ export async function hostnameState(slug: string): Promise<HostnameState> {
   return stateOf(slug, (await readRegistry())[slug])
 }
 
-export async function listHostnames(): Promise<HostnameRow[]> {
+/**
+ * The hostnames the NAS serves — what a link may point at. `all` adds the rows whose push failed
+ * and the releases that never reached the NAS, for the views that offer a retry.
+ */
+export async function listHostnames({ all = false } = {}): Promise<HostnameRow[]> {
   const registry = await readRegistry()
-  return Object.entries(registry).map(([slug, entry]) => ({
+  const rows = Object.entries(registry).map(([slug, entry]) => ({
     ...stateOf(slug, entry),
     path: entry.path,
     service: entry.service,
   }))
+  return all ? rows : rows.filter((r) => r.nasSynced)
 }
 
 /** Project rows keyed by path, for the "/" page's chips. */
 export async function hostnamesByPath(): Promise<Record<string, HostnameChipData>> {
-  const rows = await listHostnames()
+  const rows = await listHostnames({ all: true })
   return Object.fromEntries(
     rows
       .filter((r) => r.path)

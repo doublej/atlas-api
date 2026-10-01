@@ -65,7 +65,7 @@ $effect(() => {
   hostname = null
   Promise.all([
     http.get<{ meta?: Meta }>(`/api/atlas?path=${encodeURIComponent(target.path)}`),
-    http.get<HostnameRow[]>('/api/hostnames'),
+    http.get<HostnameRow[]>('/api/hostnames?all=1'),
   ])
     .then(([atlas, rows]) => {
       meta = atlas.meta ?? {}

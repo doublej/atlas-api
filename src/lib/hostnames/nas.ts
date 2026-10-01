@@ -123,8 +123,8 @@ async function runChange(what: string, script: string): Promise<NasResult> {
   return { ok, error: text.split('\n').at(-1)?.slice(0, 240) || 'ssh nas failed' }
 }
 
-const validateAndReload = `${NAS_DOCKER} exec caddy-porkbun caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-${NAS_DOCKER} exec caddy-porkbun caddy reload --config /etc/caddy/Caddyfile --address localhost:2019`
+const validate = `${NAS_DOCKER} exec caddy-porkbun caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`
+const reload = `${NAS_DOCKER} exec caddy-porkbun caddy reload --config /etc/caddy/Caddyfile --address localhost:2019`
 
 /** A slug is pasted into a remote shell line: one that is no DNS label never gets that far. */
 function assertSlug(slug: string): void {
@@ -132,16 +132,28 @@ function assertSlug(slug: string): void {
   if (problem) throw new Error(`NAS change refused for ${JSON.stringify(slug)}: ${problem}`)
 }
 
-/** Writes `<slug>-atlas.caddy` into the NAS's `etc/sites/` (auto-imported), then validates + reloads. */
+/**
+ * Writes `<slug>-atlas.caddy` into the NAS's `etc/sites/` (auto-imported), then validates + reloads.
+ * A block `caddy validate` rejects is rolled back to the previous file (kept in `etc/`, outside
+ * the import), or removed: left in `sites/` it fails every later push and a Caddy restart.
+ */
 export function pushToNas(slug: string, content: string): Promise<NasResult> {
   assertSlug(slug)
   return runChange(
     `NAS push for ${slug}`,
     `set -eu
-cat > '${NAS_SITES_DIR}/${slug}-atlas.caddy' <<'ATLAS_CADDY_EOF'
+f='${NAS_SITES_DIR}/${slug}-atlas.caddy'
+b='${NAS_ETC}/${slug}-atlas.caddy.prev'
+if [ -f "$f" ]; then cp "$f" "$b"; else rm -f "$b"; fi
+cat > "$f" <<'ATLAS_CADDY_EOF'
 ${content}
 ATLAS_CADDY_EOF
-${validateAndReload}
+if ! ${validate}; then
+  if [ -f "$b" ]; then mv "$b" "$f"; else rm -f "$f"; fi
+  exit 1
+fi
+rm -f "$b"
+${reload}
 `,
   )
 }
@@ -152,7 +164,8 @@ export function removeFromNas(slug: string): Promise<NasResult> {
     `NAS remove for ${slug}`,
     `set -eu
 rm -f '${NAS_SITES_DIR}/${slug}-atlas.caddy'
-${validateAndReload}
+${validate}
+${reload}
 `,
   )
 }

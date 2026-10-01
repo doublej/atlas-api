@@ -53,12 +53,15 @@ export async function normalizePath(path: string): Promise<string> {
   return real.startsWith(`${DEV_FOLDER}/`) ? real : path
 }
 
-/** The file as written, paths untouched — the doctor's view of stale ones. */
+/**
+ * The file as written, paths untouched — the doctor's view of stale ones. Null-prototype, so a
+ * slug lookup never lands on an `Object.prototype` member (`constructor` is a valid DNS label).
+ */
 export async function readRawRegistry(): Promise<Registry> {
   try {
-    return JSON.parse(await readFile(REGISTRY_FILE, 'utf-8'))
+    return Object.assign(Object.create(null), JSON.parse(await readFile(REGISTRY_FILE, 'utf-8')))
   } catch {
-    return {}
+    return Object.create(null)
   }
 }
 
