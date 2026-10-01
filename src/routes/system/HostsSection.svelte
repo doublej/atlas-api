@@ -1,8 +1,11 @@
 <script lang="ts">
+import Notice from '$lib/components/feedback/Notice.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import Modal from '$lib/components/ui/Modal.svelte'
+import { errorMessage } from '$lib/format'
+import { http } from '$lib/http'
 import type { HostState } from '$lib/scanner'
 import type { HostDef } from '$shared/hosts'
 
@@ -36,8 +39,6 @@ let saving = $state(false)
 let saveError = $state('')
 let restartRequired = $state(false)
 
-const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
-
 const stateFor = (id: string): HostState | undefined => liveStates.find((s) => s.id === id)
 
 function age(iso: string | undefined): string {
@@ -53,14 +54,12 @@ async function rescan(id: string) {
   rescanning = id
   rescanError = { ...rescanError, [id]: '' }
   try {
-    const res = await fetch(`/api/refresh?host=${encodeURIComponent(id)}&force=true`, {
-      method: 'POST',
-    })
-    const body = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`)
+    const body = await http.post<{ hosts?: HostState[] }>(
+      `/api/refresh?host=${encodeURIComponent(id)}&force=true`,
+    )
     if (Array.isArray(body.hosts)) rescanned = body.hosts
   } catch (e) {
-    rescanError = { ...rescanError, [id]: message(e) }
+    rescanError = { ...rescanError, [id]: errorMessage(e) }
   } finally {
     rescanning = null
   }
@@ -101,18 +100,12 @@ async function saveRegistry() {
   saving = true
   saveError = ''
   try {
-    const res = await fetch('/api/hosts', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ hosts: forms.map(fromForm) }),
-    })
-    const body = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`)
-    saved = body.hosts
+    saved = (await http.put<{ hosts: HostDef[] }>('/api/hosts', { hosts: forms.map(fromForm) }))
+      .hosts
     restartRequired = true
     editing = false
   } catch (e) {
-    saveError = message(e)
+    saveError = errorMessage(e)
   } finally {
     saving = false
   }
@@ -127,11 +120,13 @@ async function saveRegistry() {
   </header>
 
   {#if restartRequired}
-    <p class="banner warn t-small">
-      <strong>Restart required.</strong> `shared/hosts.json` is on disk, but the running daemon still
-      holds the copy it started with. Run <code class="mono">bun run daemon:reload</code> before the
-      new registry takes effect.
-    </p>
+    <div class="restart">
+      <Notice tone="warn">
+        <strong>Restart required.</strong> `shared/hosts.json` is on disk, but the running daemon
+        still holds the copy it started with. Run <code class="mono">bun run daemon:reload</code>
+        before the new registry takes effect.
+      </Notice>
+    </div>
   {/if}
 
   <div class="grid">
@@ -239,12 +234,8 @@ async function saveRegistry() {
     min-width: 200px;
   }
 
-  .banner {
-    padding: var(--space-3);
+  .restart {
     margin-bottom: var(--space-4);
-    border-radius: var(--radius-sm);
-    background: var(--color-warn-soft);
-    color: var(--color-warn);
   }
 
   .grid {

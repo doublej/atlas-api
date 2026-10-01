@@ -4,6 +4,7 @@ import { type AgentEngine, getAction } from '$lib/claude-tree-actions'
 import { runAction } from '$lib/claude-tree-agent'
 import type { EntityKind } from '$lib/claude-tree-entities'
 import { DEV_FOLDER } from '$lib/config'
+import { errorMessage } from '$lib/format'
 import type { RequestHandler } from './$types'
 
 // Same catalog boundary as the tree endpoint: the path being acted on must
@@ -42,6 +43,6 @@ export const POST: RequestHandler = async ({ request }) => {
     })
     return json(result)
   } catch (e) {
-    return json({ error: (e as Error).message }, { status: 502 })
+    return json({ error: errorMessage(e) }, { status: 502 })
   }
 }

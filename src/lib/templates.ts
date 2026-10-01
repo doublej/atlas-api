@@ -1,5 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { dirname, join, relative, sep } from 'node:path'
+import { errorMessage } from './format'
 
 export interface VariableReference {
   file: string
@@ -162,7 +163,7 @@ async function parseTemplate(
         path: ccPath,
         family,
         name,
-        message: err instanceof Error ? err.message : String(err),
+        message: errorMessage(err),
       },
     }
   }

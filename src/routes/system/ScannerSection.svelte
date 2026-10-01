@@ -3,6 +3,8 @@ import { untrack } from 'svelte'
 import type { AtlasConfig } from '$lib/atlasFile'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
+import { errorMessage } from '$lib/format'
+import { http } from '$lib/http'
 
 let { config }: { config: AtlasConfig } = $props()
 
@@ -21,8 +23,6 @@ let saveError = $state('')
 let rescanning = $state(false)
 let rescanError = $state('')
 
-const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
-
 async function save() {
   const bad = depthRows.find((r) => r.k.trim() && !Number.isInteger(Number(r.v)))
   if (bad) {
@@ -33,25 +33,17 @@ async function save() {
   saved = false
   saveError = ''
   try {
-    const res = await fetch('/api/config', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        maxDepth: Number(maxDepth),
-        depth: Object.fromEntries(
-          depthRows.filter((r) => r.k.trim()).map((r) => [r.k.trim(), Number(r.v)]),
-        ),
-        force: Object.fromEntries(
-          forceRows.filter((r) => r.k.trim()).map((r) => [r.k.trim(), r.v]),
-        ),
-        ignore: ignoreRows.map((r) => r.pattern.trim()).filter(Boolean),
-      }),
+    await http.put('/api/config', {
+      maxDepth: Number(maxDepth),
+      depth: Object.fromEntries(
+        depthRows.filter((r) => r.k.trim()).map((r) => [r.k.trim(), Number(r.v)]),
+      ),
+      force: Object.fromEntries(forceRows.filter((r) => r.k.trim()).map((r) => [r.k.trim(), r.v])),
+      ignore: ignoreRows.map((r) => r.pattern.trim()).filter(Boolean),
     })
-    const body = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`)
     saved = true
   } catch (e) {
-    saveError = message(e)
+    saveError = errorMessage(e)
   } finally {
     saving = false
   }
@@ -61,11 +53,10 @@ async function rescan() {
   rescanning = true
   rescanError = ''
   try {
-    const res = await fetch('/api/refresh?force=true', { method: 'POST' })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    await http.post('/api/refresh?force=true')
     saved = false
   } catch (e) {
-    rescanError = message(e)
+    rescanError = errorMessage(e)
   } finally {
     rescanning = false
   }

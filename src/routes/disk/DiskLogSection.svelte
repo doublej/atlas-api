@@ -1,13 +1,16 @@
 <script lang="ts">
+import PageState from '$lib/components/feedback/PageState.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { Operation, Pending } from '$lib/disk-types'
-import { human, job, readDisk, runJob, tildify } from './disk-client.svelte'
+import { errorMessage, tildify } from '$lib/format'
+import { human, job, readDisk, runJob } from './disk-client.svelte'
 
 let { pending }: { pending: Pending[] } = $props()
 
 let ops = $state<Operation[]>([])
 let error = $state('')
+let loaded = $state(false)
 let note = $state('')
 let skipPath = $state('')
 let skipReason = $state('')
@@ -24,8 +27,9 @@ $effect(() => {
     .then((r) => {
       ops = (r.data as Operation[]) ?? []
       error = ''
+      loaded = true
     })
-    .catch((e: Error) => (error = e.message))
+    .catch((e) => (error = errorMessage(e)))
 })
 
 const result = (o: Operation) =>
@@ -64,30 +68,33 @@ const result = (o: Operation) =>
     <input class="grow" placeholder="why" bind:value={skipReason} />
     <Button disabled={!skipPath.startsWith('/') || !skipReason.trim()} onclick={() => (runJob('log', ['skip', skipPath.trim(), '--reason', skipReason.trim()]), (skipPath = ''), (skipReason = ''))}>Record skip</Button>
   </div>
-  {#if error}<p class="t-small err">{error}</p>{/if}
-
-  {#each runs as [run, list] (run)}
-    <Card flush>
-      <div class="run t-caption muted mono">{run} · {list[0].start.actor} · {list.length} operation(s)</div>
-      <div class="scroll">
-        <table>
-          <tbody>
-            {#each list as o (o.start.id)}
-              <tr class="t-small">
-                <td class="num muted">{o.start.at.slice(11, 19)}</td>
-                <td class="mono">{o.start.op}</td>
-                <td class="mono wrap">{tildify(o.start.item)}{o.start.target ? ` → ${tildify(o.start.target)}` : ''}</td>
-                <td class="num right">{o.start.bytes ? human(o.start.bytes) : ''}</td>
-                <td class="wrap result" class:err={!o.end || o.end.outcome === 'failed'}>{result(o)}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    </Card>
-  {:else}
-    <p class="t-small muted">The operation log is empty.</p>
-  {/each}
+  <PageState
+    loading={!loaded && !error}
+    {error}
+    empty={!runs.length}
+    emptyText="The operation log is empty."
+  >
+    {#each runs as [run, list] (run)}
+      <Card flush>
+        <div class="run t-caption muted mono">{run} · {list[0].start.actor} · {list.length} operation(s)</div>
+        <div class="scroll">
+          <table>
+            <tbody>
+              {#each list as o (o.start.id)}
+                <tr class="t-small">
+                  <td class="num muted">{o.start.at.slice(11, 19)}</td>
+                  <td class="mono">{o.start.op}</td>
+                  <td class="mono wrap">{tildify(o.start.item)}{o.start.target ? ` → ${tildify(o.start.target)}` : ''}</td>
+                  <td class="num right">{o.start.bytes ? human(o.start.bytes) : ''}</td>
+                  <td class="wrap result" class:err={!o.end || o.end.outcome === 'failed'}>{result(o)}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    {/each}
+  </PageState>
 </section>
 
 <style>

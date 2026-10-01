@@ -2,7 +2,9 @@
 import * as api from '$lib/browser/api'
 import Icon from '$lib/components/icons/Icon.svelte'
 import Button from '$lib/components/ui/Button.svelte'
+import { errorMessage } from '$lib/format'
 import type { Project } from '$lib/scanner'
+import { toast } from '$lib/toast.svelte'
 
 interface Props {
   project: Project
@@ -26,7 +28,12 @@ function startEdit(): void {
 }
 
 async function save(): Promise<void> {
-  await api.saveDescription(project.path, draft)
+  try {
+    await api.saveDescription(project.path, draft)
+  } catch (e) {
+    toast(errorMessage(e), 'error') // the editor stays open with the draft
+    return
+  }
   project.description = draft
   description = draft
   editing = false
@@ -36,7 +43,7 @@ async function toggleReadme(): Promise<void> {
   readmeOpen = !readmeOpen
   if (!readmeOpen || readmeText !== null) return
   readmeLoading = true
-  readmeText = await api.fetchReadme(project.path)
+  readmeText = await api.fetchReadme(project.path).catch(() => null) // reads as "could not be read"
   readmeLoading = false
 }
 </script>

@@ -1,10 +1,14 @@
 <script lang="ts">
 import { onMount } from 'svelte'
+import ConfirmDialog from '$lib/components/feedback/ConfirmDialog.svelte'
 import SortHeader from '$lib/components/table/SortHeader.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
+import { errorMessage, tildify } from '$lib/format'
+import { http } from '$lib/http'
 import type { Listener, ListenerGroup } from '$lib/listeners'
+import { Selection } from '$lib/selection.svelte'
 import { TableSort } from '$lib/table-sort.svelte'
 
 const POLL_MS = 15_000
@@ -20,9 +24,7 @@ let updatedAt = $state('')
 let error = $state('')
 let loading = $state(false)
 let query = $state('')
-let selected = $state(new Set<number>())
-/** Last plainly clicked row — the anchor of a shift-click range. */
-let anchor = $state<number | null>(null)
+const sel = new Selection<number>()
 
 const q = $derived(query.trim().toLowerCase())
 const visible = $derived(
@@ -51,82 +53,60 @@ const sections = $derived(
 )
 /** Visible pids in render order, for shift-range and select-all. */
 const ordered = $derived(sections.flatMap((s) => s.rows.map((r) => r.pid)))
-const allSelected = $derived(ordered.length > 0 && ordered.every((pid) => selected.has(pid)))
-
-const tildify = (path: string | undefined) => path?.replace(/^\/Users\/[^/]+\//, '~/') ?? ''
+const allSelected = $derived(ordered.length > 0 && ordered.every((pid) => sel.has(pid)))
 
 async function load(fresh = false) {
   loading = true
   try {
-    const res = await fetch(`/api/ports/listeners${fresh ? '?fresh=1' : ''}`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const body = (await res.json()) as { listeners: Listener[]; updatedAt: string }
+    const body = await http.get<{ listeners: Listener[]; updatedAt: string }>(
+      `/api/ports/listeners${fresh ? '?fresh=1' : ''}`,
+    )
     listeners = body.listeners
     updatedAt = new Date(body.updatedAt).toLocaleTimeString()
-    const alive = new Set(listeners.map((l) => l.pid))
-    selected = new Set([...selected].filter((pid) => alive.has(pid)))
+    sel.prune(listeners.map((l) => l.pid))
     error = ''
   } catch (e) {
-    error = e instanceof Error ? e.message : String(e)
+    error = errorMessage(e)
   } finally {
     loading = false
   }
 }
 
-async function kill(pids: number[], scope = '') {
-  const n = pids.length
-  if (!n || !confirm(`Kill ${n} process${n === 1 ? '' : 'es'}${scope ? ` in ${scope}` : ''}?`))
-    return
-  await fetch('/api/ports/kill', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ pids }),
-  })
-  selected = new Set([...selected].filter((pid) => !pids.includes(pid)))
+/** The kill waiting for a yes in the confirm dialog. */
+let killing = $state<{ pids: number[]; scope: string } | null>(null)
+const killTitle = $derived.by(() => {
+  const n = killing?.pids.length ?? 0
+  return `Kill ${n} process${n === 1 ? '' : 'es'}${killing?.scope ? ` in ${killing.scope}` : ''}?`
+})
+const killItems = $derived(
+  listeners
+    .filter((l) => killing?.pids.includes(l.pid))
+    .map((l) => `${l.name} · :${l.port} · pid ${l.pid}`),
+)
+
+function kill(pids: number[], scope = '') {
+  if (pids.length) killing = { pids, scope }
+}
+
+async function confirmKill() {
+  const pids = killing?.pids ?? []
+  await http.post('/api/ports/kill', { pids })
+  sel.set(pids, false)
   await load(true)
 }
 
-function toggle(pid: number, on: boolean) {
-  const next = new Set(selected)
-  if (on) next.add(pid)
-  else next.delete(pid)
-  selected = next
-  anchor = pid
-}
-
-function setMany(pids: number[], on: boolean) {
-  const next = new Set(selected)
-  for (const pid of pids) on ? next.add(pid) : next.delete(pid)
-  selected = next
-}
-
-function selectRange(from: number, to: number) {
-  const [a, b] = [ordered.indexOf(from), ordered.indexOf(to)].sort((x, y) => x - y)
-  if (a !== -1) setMany(ordered.slice(a, b + 1), true)
-}
-
-/** Plain click selects one row, shift extends from the anchor, cmd/ctrl toggles. */
 function clickRow(pid: number, e: MouseEvent) {
   if ((e.target as HTMLElement).closest('input, a, button')) return
-  if (e.shiftKey && anchor !== null) {
-    selectRange(anchor, pid)
-  } else if (e.metaKey || e.ctrlKey) {
-    toggle(pid, !selected.has(pid))
-  } else {
-    const sole = selected.size === 1 && selected.has(pid)
-    selected = sole ? new Set() : new Set([pid])
-    anchor = pid
-  }
+  sel.click(pid, e, ordered)
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.target instanceof Element && e.target.closest('input, textarea, select')) return
+  if (e.target instanceof Element && e.target.closest('input, textarea, select, dialog')) return
   if (e.key === 'Escape') {
-    selected = new Set()
-    anchor = null
+    sel.clear()
   } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
     e.preventDefault()
-    selected = new Set(ordered)
+    sel.set(ordered, true)
   }
 }
 
@@ -156,14 +136,14 @@ onMount(() => {
       <input
         type="checkbox"
         checked={allSelected}
-        indeterminate={!allSelected && ordered.some((pid) => selected.has(pid))}
-        onchange={(e) => setMany(ordered, e.currentTarget.checked)}
+        indeterminate={!allSelected && ordered.some((pid) => sel.has(pid))}
+        onchange={(e) => sel.set(ordered, e.currentTarget.checked)}
       />
       select all
     </label>
     <Button onclick={() => load(true)} disabled={loading}>Refresh</Button>
-    <Button variant="danger" disabled={!selected.size} onclick={() => kill([...selected])}>
-      Kill selected ({selected.size})
+    <Button variant="danger" disabled={!sel.size} onclick={() => kill(sel.list)}>
+      Kill selected ({sel.size})
     </Button>
   </header>
 
@@ -176,9 +156,9 @@ onMount(() => {
         <input
           type="checkbox"
           aria-label="Select all in {section.label}"
-          checked={section.rows.every((r) => selected.has(r.pid))}
+          checked={section.rows.every((r) => sel.has(r.pid))}
           onchange={(e) =>
-            setMany(
+            sel.set(
               section.rows.map((r) => r.pid),
               e.currentTarget.checked,
             )}
@@ -215,15 +195,15 @@ onMount(() => {
             {#each section.rows as l (l.port)}
               <tr
                 class="t-small"
-                class:selected={selected.has(l.pid)}
+                class:selected={sel.has(l.pid)}
                 onclick={(e) => clickRow(l.pid, e)}
               >
                 <td>
                   <input
                     type="checkbox"
                     aria-label="Select {l.name}"
-                    checked={selected.has(l.pid)}
-                    onchange={(e) => toggle(l.pid, e.currentTarget.checked)}
+                    checked={sel.has(l.pid)}
+                    onchange={() => sel.toggle(l.pid)}
                   />
                 </td>
                 <td class="name" title={l.command}>
@@ -238,7 +218,7 @@ onMount(() => {
                   >
                 </td>
                 <td class="mono num muted">{l.pid}</td>
-                <td class="mono muted path" title={l.cwd}>{tildify(l.project?.path ?? l.cwd)}</td>
+                <td class="mono muted path" title={l.cwd}>{tildify(l.project?.path ?? l.cwd ?? '')}</td>
                 <td class="host">
                   {#if l.hostname}
                     <a class="mono" href={l.hostname} target="_blank" rel="noreferrer"
@@ -256,6 +236,16 @@ onMount(() => {
     {#if !loading && !error}<p class="t-small muted">No listeners match.</p>{/if}
   {/each}
 </main>
+
+<ConfirmDialog
+  open={killing !== null}
+  title={killTitle}
+  items={killItems}
+  confirmLabel="Kill"
+  danger
+  onconfirm={confirmKill}
+  onclose={() => (killing = null)}
+/>
 
 <style>
   main {

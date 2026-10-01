@@ -1,13 +1,16 @@
 <script lang="ts">
-import SortHeader from '$lib/components/table/SortHeader.svelte'
+import PageState from '$lib/components/feedback/PageState.svelte'
+import Table from '$lib/components/table/Table.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import Chip from '$lib/components/ui/Chip.svelte'
 import type { Analysis, DiskSettings, ProjectRow } from '$lib/disk-types'
+import { Selection } from '$lib/selection.svelte'
+import type { Column } from '$lib/table'
 import { TableSort } from '$lib/table-sort.svelte'
 import DiskArchiveModal from './DiskArchiveModal.svelte'
-import { ago, human, runJob, Selection } from './disk-client.svelte'
+import { ago, human, runJob } from './disk-client.svelte'
 
 let { analysis, settings }: { analysis: Analysis | null; settings: DiskSettings | null } = $props()
 
@@ -17,32 +20,43 @@ const TONE = { eligible: 'accent', inactive: 'neutral', active: 'pos' } as const
 let filter = $state<ProjectRow['state'] | 'all'>('eligible')
 let planning = $state(false)
 const sel = new Selection()
-const sort = new TableSort<'id' | 'size' | 'state' | 'age' | 'ageFile' | 'commit' | 'flags'>(null, [
-  'size',
-  'age',
-  'commit',
-  'flags',
-])
+/** Sizes, ages, dates and flags open high-to-low. */
+const sort = new TableSort<string>(null, ['size', 'age', 'commit', 'flags'])
+const columns: Column<ProjectRow>[] = [
+  { key: 'id', label: 'Project', sort: (p) => p.id, cell: idCell },
+  { key: 'size', label: 'Size', sort: (p) => p.bytes, align: 'right', cell: sizeCell },
+  { key: 'state', label: 'State', sort: (p) => STATES.indexOf(p.state), cell: stateCell },
+  { key: 'age', label: 'Age', sort: (p) => p.ageDays, align: 'right', cell: ageCell },
+  { key: 'ageFile', label: 'Age set by', sort: (p) => p.ageFile, cell: ageFileCell },
+  { key: 'commit', label: 'Last commit', sort: (p) => p.lastCommit, cell: commitCell },
+  {
+    key: 'flags',
+    label: 'Flags',
+    sort: (p) => Number(p.dirty) + Number(p.push === 'unpushed'),
+    cell: flagsCell,
+  },
+]
 
 const rows = $derived(
-  sort.apply(
-    (analysis?.projects ?? []).filter((p) => filter === 'all' || p.state === filter),
-    {
-      id: (p) => p.id,
-      size: (p) => p.bytes,
-      state: (p) => STATES.indexOf(p.state),
-      age: (p) => p.ageDays,
-      ageFile: (p) => p.ageFile,
-      commit: (p) => p.lastCommit,
-      flags: (p) => Number(p.dirty) + Number(p.push === 'unpushed'),
-    },
-  ),
+  (analysis?.projects ?? []).filter((p) => filter === 'all' || p.state === filter),
 )
-const ordered = $derived(rows.map((r) => r.id))
 const chosen = $derived((analysis?.projects ?? []).filter((p) => sel.has(p.id)))
 
-$effect(() => sel.keep((analysis?.projects ?? []).map((p) => p.id)))
+$effect(() => sel.prune((analysis?.projects ?? []).map((p) => p.id)))
 </script>
+
+{#snippet idCell(p: ProjectRow)}<span class="mono">{p.id}</span>{/snippet}
+{#snippet sizeCell(p: ProjectRow)}<span class="num">{human(p.bytes)}</span>{/snippet}
+{#snippet stateCell(p: ProjectRow)}<Badge tone={TONE[p.state]}>{p.state}</Badge>{/snippet}
+{#snippet ageCell(p: ProjectRow)}<span class="num">{p.ageDays === null ? '–' : `${p.ageDays}d`}</span>{/snippet}
+{#snippet ageFileCell(p: ProjectRow)}<span class="mono muted">{p.ageFile ?? 'no edit files'}</span>{/snippet}
+{#snippet commitCell(p: ProjectRow)}<span class="num muted">{p.lastCommit?.slice(0, 10) ?? '–'}</span>{/snippet}
+{#snippet flagsCell(p: ProjectRow)}
+  {#if p.dirty}<Badge tone="warn">uncommitted</Badge>{/if}
+  {#if p.push === 'unpushed'}<Badge tone="warn">unpushed</Badge>{/if}
+  {#if p.push === 'unknown'}<Badge title="no remote, or it couldn't be compared">push?</Badge>{/if}
+{/snippet}
+{#snippet noRows()}No projects {filter === 'all' ? '' : `in state ${filter}`} — Rescan to analyse.{/snippet}
 
 <section>
   <div class="bar">
@@ -56,61 +70,29 @@ $effect(() => sel.keep((analysis?.projects ?? []).map((p) => p.id)))
       Archive selected ({sel.size})
     </Button>
   </div>
-  <div class="bar">
-    <Chip pressed={filter === 'all'} onclick={() => (filter = 'all')}>all</Chip>
-    {#each STATES as s (s)}
-      <Chip pressed={filter === s} onclick={() => (filter = s)}>{s}</Chip>
-    {/each}
-    <label class="t-caption muted">
-      <input
-        type="checkbox"
-        checked={ordered.length > 0 && ordered.every((k) => sel.has(k))}
-        onchange={(e) => sel.setMany(ordered, e.currentTarget.checked)}
-      />
-      select all shown
-    </label>
-  </div>
-
-  <Card flush>
-    <div class="scroll">
-      <table>
-        <thead>
-          <tr class="t-caption">
-            <th></th>
-            <SortHeader {sort} key="id" label="Project" />
-            <SortHeader {sort} key="size" label="Size" class="right" />
-            <SortHeader {sort} key="state" label="State" />
-            <SortHeader {sort} key="age" label="Age" class="right" />
-            <SortHeader {sort} key="ageFile" label="Age set by" />
-            <SortHeader {sort} key="commit" label="Last commit" />
-            <SortHeader {sort} key="flags" label="Flags" />
-          </tr>
-        </thead>
-        <tbody>
-          {#each rows as p (p.id)}
-            <tr class="t-small" class:selected={sel.has(p.id)} onclick={(e) => sel.click(p.id, e, ordered)}>
-              <td><input type="checkbox" aria-label="Select {p.id}" checked={sel.has(p.id)} onclick={(e) => e.stopPropagation()} onchange={(e) => sel.setMany([p.id], e.currentTarget.checked)} /></td>
-              <td class="mono">{p.id}</td>
-              <td class="num right">{human(p.bytes)}</td>
-              <td><Badge tone={TONE[p.state]}>{p.state}</Badge></td>
-              <td class="num right">{p.ageDays === null ? '–' : `${p.ageDays}d`}</td>
-              <td class="mono muted">{p.ageFile ?? 'no edit files'}</td>
-              <td class="num muted">{p.lastCommit?.slice(0, 10) ?? '–'}</td>
-              <td>
-                {#if p.dirty}<Badge tone="warn">uncommitted</Badge>{/if}
-                {#if p.push === 'unpushed'}<Badge tone="warn">unpushed</Badge>{/if}
-                {#if p.push === 'unknown'}<Badge title="no remote, or it couldn't be compared">push?</Badge>{/if}
-              </td>
-            </tr>
-          {:else}
-            <tr><td colspan="8" class="t-small muted">No projects {filter === 'all' ? '' : `in state ${filter}`} — Rescan to analyse.</td></tr>
-          {/each}
-        </tbody>
-      </table>
+  <PageState empty={!analysis} emptyText="No analysis yet — Rescan measures every project.">
+    <div class="bar">
+      <Chip pressed={filter === 'all'} onclick={() => (filter = 'all')}>all</Chip>
+      {#each STATES as s (s)}
+        <Chip pressed={filter === s} onclick={() => (filter = s)}>{s}</Chip>
+      {/each}
     </div>
-  </Card>
+
+    <Card flush>
+      <Table
+        label="Projects"
+        {rows}
+        key={(p) => p.id}
+        {columns}
+        {sort}
+        selection={sel}
+        empty={noRows}
+        maxHeight="70vh"
+      />
+    </Card>
+  </PageState>
 </section>
 
 {#if planning && settings}
-  <DiskArchiveModal rows={chosen} {settings} onclose={() => (planning = false)} ondone={() => sel.setMany(sel.list, false)} />
+  <DiskArchiveModal rows={chosen} {settings} onclose={() => (planning = false)} ondone={() => sel.clear()} />
 {/if}

@@ -14,7 +14,11 @@ import '@xyflow/svelte/dist/style.css'
 import type { Reference, SearchHit, SearchMatch, TreeNode } from '$lib/claude-tree'
 import { type AgentEngine, getAction } from '$lib/claude-tree-actions'
 import { type Entity, replaceLines } from '$lib/claude-tree-entities'
+import ConfirmDialog from '$lib/components/feedback/ConfirmDialog.svelte'
+import { errorMessage } from '$lib/format'
+import { http } from '$lib/http'
 import { theme } from '$lib/theme.svelte'
+import { toast } from '$lib/toast.svelte'
 import { CARD_W, cardHeight, layoutTree } from '$lib/tree-layout'
 import AgentResultPanel from './AgentResultPanel.svelte'
 import CmEditor from './CmEditor.svelte'
@@ -74,10 +78,15 @@ const editingLabel = $derived(
   current ? (activeName ? `${activeName} · ${current.label}` : current.label) : '',
 )
 
-// Right-click context menu + copy feedback
+// Right-click context menu
 let menu = $state<{ x: number; y: number; node: TreeNode } | null>(null)
-let toast = $state('')
-let toastTimer: ReturnType<typeof setTimeout>
+// A yes/no the page is waiting on (discard, overwrite, revert); one ConfirmDialog renders it.
+let asking = $state<{
+  title: string
+  message: string
+  confirmLabel: string
+  run: () => unknown
+} | null>(null)
 
 // Find: a scope toggle (Tree = server-side over every file, File = client-side
 // over the live editor content) feeding a snippet list that jumps to the line.
@@ -152,6 +161,7 @@ onMount(() => {
   void loadTree()
 
   const onKey = (e: KeyboardEvent) => {
+    if (asking) return // the confirm dialog owns the keyboard while it is open
     if (e.key === 'Escape') {
       menu = null
       findOpen = false
@@ -214,21 +224,14 @@ $effect(() => {
 async function runTreeSearch(q: string) {
   const url = `/api/claude-tree?search=${encodeURIComponent(q)}${root ? `&root=${encodeURIComponent(root)}` : ''}`
   try {
-    treeHits = await api<SearchHit[]>(url)
+    treeHits = await http.get<SearchHit[]>(url)
     findError = null
   } catch (e) {
     treeHits = []
-    findError = (e as Error).message
+    findError = errorMessage(e)
   } finally {
     findBusy = false
   }
-}
-
-async function api<T>(url: string, opts?: RequestInit): Promise<T> {
-  const r = await fetch(url, opts)
-  const data = await r.json().catch(() => ({}))
-  if (!r.ok) throw new Error((data as { error?: string }).error ?? r.statusText)
-  return data as T
 }
 
 async function loadTree() {
@@ -236,13 +239,13 @@ async function loadTree() {
   error = null
   try {
     const q = root ? `?root=${encodeURIComponent(root)}` : ''
-    tree = await api<TreeNode[]>(`/api/claude-tree${q}`)
+    tree = await http.get<TreeNode[]>(`/api/claude-tree${q}`)
     byId = new Map(tree.map((t) => [t.id, t]))
     collapsed.clear() // a fresh tree reuses node ids — drop stale collapse state
     rebuild()
     // Editor starts closed — it opens only when a node is clicked.
   } catch (e) {
-    error = (e as Error).message
+    error = errorMessage(e)
   } finally {
     loading = false
   }
@@ -407,13 +410,25 @@ function markSelected(id: string) {
   nodes = nodes.map((n) => ({ ...n, selected: n.id === id }))
 }
 
+/** Runs `then` now, or after a yes in the discard dialog while the editor holds unsaved edits. */
+function unlessDirty(then: () => unknown) {
+  if (!dirty || !current) return void then()
+  asking = {
+    title: 'Discard unsaved changes?',
+    message: `Your edits to ${editingLabel} are not saved.`,
+    confirmLabel: 'Discard',
+    run: then,
+  }
+}
+
 function closeEditor() {
-  if (dirty && current && !confirm(`Discard unsaved changes to ${editingLabel}?`)) return
-  current = null
-  activePath = ''
-  dirty = false
-  if (refsMode === 'selected') rebuild()
-  else nodes = nodes.map((n) => ({ ...n, selected: false }))
+  unlessDirty(() => {
+    current = null
+    activePath = ''
+    dirty = false
+    if (refsMode === 'selected') rebuild()
+    else nodes = nodes.map((n) => ({ ...n, selected: false }))
+  })
 }
 
 function openMenu(event: MouseEvent, nodeId: string) {
@@ -423,14 +438,8 @@ function openMenu(event: MouseEvent, nodeId: string) {
   menu = { x: Math.min(event.clientX, window.innerWidth - 220), y: event.clientY, node }
 }
 
-function showToast(msg: string) {
-  toast = msg
-  clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (toast = ''), 1800)
-}
-
 async function fetchContent(node: TreeNode): Promise<string> {
-  const r = await api<{ content: string; sha: string }>(
+  const r = await http.get<{ content: string; sha: string }>(
     `/api/claude-tree?path=${encodeURIComponent(node.path)}`,
   )
   return r.content
@@ -451,9 +460,9 @@ async function copyText(text: string, label: string) {
   menu = null
   try {
     await navigator.clipboard.writeText(text)
-    showToast(label)
+    toast(label)
   } catch (e) {
-    showToast(`copy failed: ${(e as Error).message}`)
+    toast(`copy failed: ${errorMessage(e)}`, 'error')
   }
 }
 
@@ -477,23 +486,25 @@ function folderOf(path: string): string {
 }
 
 /** Re-root the tree at this node's folder — ancestors above, descendants below, refetched. */
-async function navigateTo(node: TreeNode) {
+function navigateTo(node: TreeNode) {
   menu = null
-  if (dirty && current && !confirm(`Discard unsaved changes to ${editingLabel}?`)) return
-  root = folderOf(node.path)
-  const url = new URL(location.href)
-  url.searchParams.set('root', root)
-  window.history.replaceState(null, '', url)
-  current = null
-  activePath = ''
-  dirty = false
-  await loadTree()
+  unlessDirty(async () => {
+    root = folderOf(node.path)
+    const url = new URL(location.href)
+    url.searchParams.set('root', root)
+    window.history.replaceState(null, '', url)
+    current = null
+    activePath = ''
+    dirty = false
+    await loadTree()
+  })
 }
 
 /** Open a specific file (a node's primary, or one of its CLAUDE.md/AGENTS.md tabs) in the editor. */
 async function openFile(node: TreeNode, path: string, skipGuard = false) {
   const switching = node.id !== current?.id || path !== activePath
-  if (!skipGuard && dirty && switching && !confirm(`Discard unsaved changes to ${editingLabel}?`)) {
+  if (!skipGuard && dirty && switching) {
+    unlessDirty(() => openFile(node, path, true))
     return
   }
   current = node
@@ -505,7 +516,7 @@ async function openFile(node: TreeNode, path: string, skipGuard = false) {
   status = 'loading…'
   snapshot = ''
   try {
-    const r = await api<{ content: string; sha: string }>(
+    const r = await http.get<{ content: string; sha: string }>(
       `/api/claude-tree?path=${encodeURIComponent(path)}`,
     )
     content = r.content
@@ -514,7 +525,7 @@ async function openFile(node: TreeNode, path: string, skipGuard = false) {
     status = `sha ${r.sha}`
     await loadHistory()
   } catch (e) {
-    status = `error: ${(e as Error).message}`
+    status = `error: ${errorMessage(e)}`
   }
 }
 
@@ -526,15 +537,11 @@ async function selectNode(id: string, skipGuard = false) {
 
 async function loadHistory() {
   if (!current) return
-  history = await api(`/api/claude-tree?history=${encodeURIComponent(activePath)}`)
+  history = await http.get(`/api/claude-tree?history=${encodeURIComponent(activePath)}`)
 }
 
 async function postOp<T = { ok: boolean; sha: string }>(body: Record<string, unknown>): Promise<T> {
-  return api<T>('/api/claude-tree', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  return http.post<T>('/api/claude-tree', body)
 }
 
 async function save() {
@@ -546,27 +553,39 @@ async function save() {
     status = `saved · sha ${r.sha}`
     await loadHistory()
   } catch (e) {
-    const msg = (e as Error).message
-    if (msg === 'disk changed' && confirm('File changed on disk. Overwrite anyway?')) {
-      const r = await postOp({ op: 'save', path: activePath, content, force: true })
-      diskSha = r.sha
-      dirty = false
-      status = `saved · sha ${r.sha}`
-      await loadHistory()
-    } else {
-      status = `save failed: ${msg}`
+    const msg = errorMessage(e)
+    status = `save failed: ${msg}`
+    if (msg !== 'disk changed') return
+    asking = {
+      title: 'File changed on disk',
+      message: `${editingLabel} changed on disk after you opened it. Overwrite it with your version?`,
+      confirmLabel: 'Overwrite',
+      run: async () => {
+        const r = await postOp({ op: 'save', path: activePath, content, force: true })
+        diskSha = r.sha
+        dirty = false
+        status = `saved · sha ${r.sha}`
+        await loadHistory()
+      },
     }
   }
 }
 
-async function revert() {
-  if (!current) return
-  if (!confirm(`Revert ${editingLabel} to last snapshot?`)) return
-  try {
-    await postOp({ op: 'revert', path: activePath })
-    await openFile(current, activePath, true)
-  } catch (e) {
-    status = `revert failed: ${(e as Error).message}`
+function revert() {
+  const node = current
+  if (!node) return
+  asking = {
+    title: 'Revert to the last snapshot?',
+    message: `${editingLabel} goes back to its last snapshot on disk.`,
+    confirmLabel: 'Revert',
+    run: async () => {
+      try {
+        await postOp({ op: 'revert', path: activePath })
+        await openFile(node, activePath, true)
+      } catch (e) {
+        status = `revert failed: ${errorMessage(e)}`
+      }
+    },
   }
 }
 
@@ -574,7 +593,12 @@ async function revert() {
 async function syncToAgents() {
   const claudePath = current?.files?.claude
   if (!current || !claudePath) return
-  if (dirty && activePath === claudePath) await save()
+  if (dirty && activePath === claudePath) {
+    await save()
+    // Still dirty: the save failed or waits on the overwrite dialog, and the sync would copy
+    // the disk version. The user syncs again once it is saved.
+    if (dirty) return
+  }
   try {
     const r = await postOp<{ ok: boolean; sha: string; path: string }>({
       op: 'sync',
@@ -582,9 +606,9 @@ async function syncToAgents() {
     })
     patchAgents(r.path)
     if (current && activePath === r.path) await openFile(current, r.path, true)
-    showToast('Synced CLAUDE.md → AGENTS.md')
+    toast('Synced CLAUDE.md → AGENTS.md')
   } catch (e) {
-    status = `sync failed: ${(e as Error).message}`
+    status = `sync failed: ${errorMessage(e)}`
   }
 }
 
@@ -604,7 +628,7 @@ async function previewSnapshot() {
     await openFile(current, activePath, true)
     return
   }
-  const r = await api<{ content: string }>(
+  const r = await http.get<{ content: string }>(
     `/api/claude-tree?snapshot=${encodeURIComponent(activePath)}&n=${snapshot}`,
   )
   content = r.content
@@ -620,12 +644,16 @@ async function openFind() {
 }
 
 /** Open the hit's file in the editor (honoring the dirty guard) and jump to the line. */
-async function openHit(path: string, line: number) {
+function openHit(path: string, line: number) {
   const ref = pathToFile.get(path)
   if (!ref) return
-  if (current?.id !== ref.node.id || activePath !== ref.path) await openFile(ref.node, ref.path)
-  await tick()
-  jumpToLine(line)
+  if (current?.id === ref.node.id && activePath === ref.path) return jumpToLine(line)
+  // The jump belongs to the new file, so it waits for the discard dialog with the open.
+  unlessDirty(async () => {
+    await openFile(ref.node, ref.path, true)
+    await tick()
+    jumpToLine(line)
+  })
 }
 
 function jumpToLine(line: number) {
@@ -722,31 +750,27 @@ async function runEntityAction(p: { actionId: string; locked: boolean; question?
     entityMenu = null
   }
   try {
-    const res = await api<AgentResult>('/api/claude-tree/agent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        path: activePath,
-        content,
-        engine: agentEngine,
-        actionId: p.actionId,
-        locked: p.locked,
-        question: p.question,
-        entity: {
-          text: entity.text,
-          startLine: entity.startLine,
-          endLine: entity.endLine,
-          kind: entity.kind,
-        },
-      }),
+    const res = await http.post<AgentResult>('/api/claude-tree/agent', {
+      path: activePath,
+      content,
+      engine: agentEngine,
+      actionId: p.actionId,
+      locked: p.locked,
+      question: p.question,
+      entity: {
+        text: entity.text,
+        startLine: entity.startLine,
+        endLine: entity.endLine,
+        kind: entity.kind,
+      },
     })
     if (res.kind === 'answer')
       agentPanel = { title: label, busy: false, text: res.text, error: null }
     else applyAgentEdit(entity, res, p.locked, action.label)
   } catch (e) {
-    const msg = (e as Error).message
+    const msg = errorMessage(e)
     if (action.mode === 'answer') agentPanel = { title: label, busy: false, text: '', error: msg }
-    else showToast(`Agent failed: ${msg}`)
+    else toast(`Agent failed: ${msg}`, 'error')
     status = `agent failed: ${msg}`
   } finally {
     agentBusy = false
@@ -759,7 +783,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
   dirty = true
   status = `${label} via ${res.engine} · unsaved`
   entityMenu = null
-  showToast(`${label} applied — review & Save`)
+  toast(`${label} applied — review & Save`)
 }
 </script>
 
@@ -1016,9 +1040,16 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 	/>
 {/if}
 
-{#if toast}
-	<div class="toast">{toast}</div>
-{/if}
+<ConfirmDialog
+	open={asking !== null}
+	title={asking?.title ?? ''}
+	message={asking?.message}
+	confirmLabel={asking?.confirmLabel}
+	danger
+	onconfirm={() => asking?.run()}
+	onclose={() => (asking = null)}
+/>
+
 
 <style>
 	/* Local names mapped onto the global design tokens — the theme flips via
@@ -1317,7 +1348,7 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 	}
 
 	/* right-click context menu */
-	/* ctxmenu + toast render outside .page, so they read the GLOBAL design tokens
+	/* ctxmenu renders outside .page, so it reads the GLOBAL design tokens
 	   directly (the page-local --aliases don't cascade out here). */
 	.ctxmenu {
 		position: fixed;
@@ -1356,19 +1387,6 @@ function applyAgentEdit(entity: Entity, res: AgentResult, locked: boolean, label
 		height: 1px;
 		margin: 4px 2px;
 		background: var(--color-border-soft);
-	}
-	.toast {
-		position: fixed;
-		bottom: 1.1rem;
-		right: 1.1rem;
-		z-index: 1001;
-		background: var(--color-bg-elev);
-		border: var(--hairline) solid var(--color-border);
-		color: var(--color-fg);
-		padding: 0.55rem 0.85rem;
-		border-radius: var(--radius-md);
-		font: 500 0.78rem var(--font-sans);
-		box-shadow: var(--shadow-lg);
 	}
 
 	/* find panel — overlays the top-left of the graph pane */

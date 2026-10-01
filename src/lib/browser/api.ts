@@ -1,17 +1,10 @@
 // Typed wrappers over the endpoints the project browser calls. One place that
 // knows the request shapes, so components stay markup.
 
+import { errorMessage } from '$lib/format'
+import { http } from '$lib/http'
 import type { Framework, GitStatus, Project } from '$lib/scanner'
 import type { ActionDef } from '$shared/actions'
-
-async function postJson<T>(endpoint: string, body: unknown, method = 'POST'): Promise<T> {
-  const res = await fetch(endpoint, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  return (await res.json()) as T
-}
 
 export interface ScanPayload {
   projects: Project[]
@@ -27,13 +20,10 @@ export interface GitResult {
 
 const GIT_BATCH_SIZE = 20
 
-export async function refreshProjects(): Promise<ScanPayload> {
-  const res = await fetch('/api/refresh', { method: 'POST' })
-  return (await res.json()) as ScanPayload
-}
+export const refreshProjects = (): Promise<ScanPayload> => http.post<ScanPayload>('/api/refresh')
 
 export async function fetchReadme(path: string): Promise<string | null> {
-  const { readme } = await postJson<{ readme?: string }>('/api/readme', { path })
+  const { readme } = await http.post<{ readme?: string }>('/api/readme', { path })
   return readme ?? null
 }
 
@@ -49,7 +39,7 @@ export function loadGitStatuses(
   for (let i = 0; i < paths.length; i += GIT_BATCH_SIZE) {
     const slice = paths.slice(i, i + GIT_BATCH_SIZE)
     batches.push(
-      postJson<GitResult[]>('/api/git', { paths: slice }).then((results) => onBatch(results)),
+      http.post<GitResult[]>('/api/git', { paths: slice }).then((results) => onBatch(results)),
     )
   }
   return Promise.all(batches)
@@ -57,7 +47,7 @@ export function loadGitStatuses(
 
 export async function runDevServer(project: Project): Promise<string | null> {
   if (!project.devCommand) return null
-  const result = await postJson<{ url?: string; local?: string }>('/api/run', {
+  const result = await http.post<{ url?: string; local?: string }>('/api/run', {
     path: project.path,
     command: project.devCommand,
     runner: project.runner || 'npm',
@@ -66,7 +56,7 @@ export async function runDevServer(project: Project): Promise<string | null> {
 }
 
 export async function runScript(project: Project, script: string): Promise<string | null> {
-  const result = await postJson<{ url?: string; local?: string }>('/api/run', {
+  const result = await http.post<{ url?: string; local?: string }>('/api/run', {
     path: project.path,
     command: script,
     runner: project.runner || 'npm',
@@ -75,7 +65,7 @@ export async function runScript(project: Project, script: string): Promise<strin
 }
 
 export async function runJustRecipe(project: Project, recipe: string): Promise<string | null> {
-  const result = await postJson<{ url?: string; local?: string }>('/api/run', {
+  const result = await http.post<{ url?: string; local?: string }>('/api/run', {
     path: project.path,
     command: recipe,
     type: 'just',
@@ -90,29 +80,26 @@ export interface Hostname {
   remote: string
 }
 
-export async function fetchHostnames(): Promise<Hostname[]> {
-  const res = await fetch('/api/hostnames')
-  return (await res.json()) as Hostname[]
-}
+export const fetchHostnames = (): Promise<Hostname[]> => http.get<Hostname[]>('/api/hostnames')
 
 export async function openInITerm(path: string): Promise<void> {
-  await postJson('/api/iterm', { path })
+  await http.post('/api/iterm', { path })
 }
 
 export async function openInFinder(path: string): Promise<void> {
-  await postJson('/api/finder', { path })
+  await http.post('/api/finder', { path })
 }
 
 export async function saveDescription(path: string, description: string): Promise<void> {
-  await postJson('/api/description', { path, description }, 'PUT')
+  await http.put('/api/description', { path, description })
 }
 
 export async function renameProject(path: string, newName: string): Promise<void> {
-  await postJson('/api/rename', { path, newName })
+  await http.post('/api/rename', { path, newName })
 }
 
 export async function moveProject(sourcePath: string, targetDir: string): Promise<void> {
-  await postJson('/api/move', { sourcePath, targetDir })
+  await http.post('/api/move', { sourcePath, targetDir })
 }
 
 // --- Registry actions --------------------------------------------------------
@@ -142,16 +129,12 @@ const fill = (value: string, project: Project): string =>
     .replaceAll('{{project.path}}', project.path)
     .replaceAll('{{devCommand}}', project.devCommand ?? '')
 
-async function getJson<T>(url: string): Promise<T> {
-  return (await fetch(url).then((r) => r.json())) as T
-}
-
 /** The text a copy action puts on the clipboard — templated, or fetched when it is a file. */
 async function copyText(action: ActionDef, project: Project): Promise<string> {
   if (action.value) return fill(action.value, project)
 
   if (action.id === 'copy-claude-rules') {
-    const { content } = await getJson<{ content: string | null }>(
+    const { content } = await http.get<{ content: string | null }>(
       `/api/agent-files?path=${encodeURIComponent(project.path)}&file=claude`,
     )
     if (!content) throw new Error('no CLAUDE.md in this project')
@@ -159,7 +142,7 @@ async function copyText(action: ActionDef, project: Project): Promise<string> {
   }
 
   if (action.id === 'copy-env') {
-    const { files } = await getJson<{ files: { name: string; content: string | null }[] }>(
+    const { files } = await http.get<{ files: { name: string; content: string | null }[] }>(
       `/api/env-files?path=${encodeURIComponent(project.path)}`,
     )
     const text = files
@@ -189,7 +172,7 @@ export async function runAction(action: ActionDef, project: Project): Promise<Ac
   try {
     return await runner(action, project)
   } catch (err) {
-    return { ok: false, note: err instanceof Error ? err.message : String(err) }
+    return { ok: false, note: errorMessage(err) }
   }
 }
 
@@ -200,11 +183,8 @@ async function runClipboard(action: ActionDef, project: Project): Promise<Action
 }
 
 async function runIterm(action: ActionDef, project: Project): Promise<ActionResult> {
-  const { error } = await postJson<{ error?: string }>('/api/iterm', {
-    path: project.path,
-    command: action.command,
-  })
-  return error ? { ok: false, note: error } : { ok: true, note: `iTerm — ${action.command}` }
+  await http.post('/api/iterm', { path: project.path, command: action.command })
+  return { ok: true, note: `iTerm — ${action.command}` }
 }
 
 async function runOpenUrl(action: ActionDef, project: Project): Promise<ActionResult> {
@@ -226,10 +206,7 @@ async function runApiAction(action: ActionDef, project: Project): Promise<Action
   if (action.id === 'agent-copy-agents-to-claude')
     Object.assign(body, { from: 'agents', to: 'claude' })
 
-  const { error } = await postJson<{ error?: string }>(
-    action.api?.endpoint ?? '',
-    body,
-    action.api?.method ?? 'POST',
-  )
-  return error ? { ok: false, note: error } : { ok: true, note: `${action.label} — done` }
+  const method = (action.api?.method ?? 'POST').toLowerCase() as 'post' | 'put' | 'patch' | 'delete'
+  await http[method](action.api?.endpoint ?? '', body)
+  return { ok: true, note: `${action.label} — done` }
 }

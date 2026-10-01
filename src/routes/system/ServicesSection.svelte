@@ -1,4 +1,5 @@
 <script lang="ts">
+import PageState from '$lib/components/feedback/PageState.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { PageData } from './$types'
@@ -17,10 +18,11 @@ const tone = { direct: 'pos', bridge: 'info', down: 'neg' } as const
     </span>
   </header>
 
-  <Card>
-    {#if services.length === 0}
-      <p class="t-small muted">Not synced yet — the first sync runs when the daemon starts.</p>
-    {:else}
+  <PageState
+    empty={services.length === 0}
+    emptyText="Not synced yet — the first sync runs when the daemon starts."
+  >
+    <Card>
       <ul>
         {#each services as s (s.slug)}
           <li class="t-small">
@@ -35,8 +37,8 @@ const tone = { direct: 'pos', bridge: 'info', down: 'neg' } as const
           </li>
         {/each}
       </ul>
-    {/if}
-  </Card>
+    </Card>
+  </PageState>
 </section>
 
 <style>

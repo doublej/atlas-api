@@ -14,7 +14,6 @@ import BrowserHeader from '$lib/components/browser/BrowserHeader.svelte'
 import FilterPanel from '$lib/components/browser/FilterPanel.svelte'
 import FolderTree from '$lib/components/browser/FolderTree.svelte'
 import HostBanner from '$lib/components/browser/HostBanner.svelte'
-import Notice from '$lib/components/browser/Notice.svelte'
 import Toolbar from '$lib/components/browser/Toolbar.svelte'
 import BeadsDialog from '$lib/components/dialogs/BeadsDialog.svelte'
 import MoveDialog from '$lib/components/dialogs/MoveDialog.svelte'
@@ -24,7 +23,9 @@ import ProjectRow from '$lib/components/project/ProjectRow.svelte'
 import ProjectTable from '$lib/components/table/ProjectTable.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
+import { errorMessage } from '$lib/format'
 import type { Framework, GitStatus, Project } from '$lib/scanner'
+import { toast } from '$lib/toast.svelte'
 import type { ActionDef } from '$shared/actions'
 
 type ViewMode = 'table' | 'flat' | 'nested'
@@ -52,7 +53,6 @@ let renaming = $state<Project | null>(null)
 let moving = $state<Project | null>(null)
 let settingsFor = $state<Project | null>(null)
 let beadsFor = $state<Project | null>(null)
-let notice = $state<{ ok: boolean; note: string } | null>(null)
 let viewMode = $state<ViewMode>('table')
 let expandedFolders = $state<Set<string>>(new Set())
 let gitStatus = $state<Record<string, { status: GitStatus; branch?: string }>>({})
@@ -84,10 +84,12 @@ const degraded = $derived((data.hosts ?? []).filter((h) => h.status !== 'ok'))
 async function refreshInBackground(): Promise<void> {
   if (isRefreshing) return
   isRefreshing = true
-  const result = await api.refreshProjects()
-  projects = result.projects
-  frameworks = result.frameworks
-  folders = result.folders
+  const result = await api.refreshProjects().catch(fail)
+  if (result) {
+    projects = result.projects
+    frameworks = result.frameworks
+    folders = result.folders
+  }
   isRefreshing = false
 }
 
@@ -97,12 +99,14 @@ onMount(() => {
   // only a project it has none for yet is probed — probing all ~500 on each load spawned
   // ~500 git processes and held every browser connection for ~40s.
   for (const p of projects) if (p.git) gitStatus[p.path] = { status: p.git, branch: p.gitBranch }
-  api.loadGitStatuses(
-    projects.filter((p) => p.isLocal && !p.git).map((p) => p.path),
-    (results) => {
-      for (const r of results) gitStatus[r.path] = { status: r.status, branch: r.branch }
-    },
-  )
+  api
+    .loadGitStatuses(
+      projects.filter((p) => p.isLocal && !p.git).map((p) => p.path),
+      (results) => {
+        for (const r of results) gitStatus[r.path] = { status: r.status, branch: r.branch }
+      },
+    )
+    .catch(fail)
   // Best-effort — an unprovisioned Caddy setup just means no project shows a hostname.
   api
     .fetchHostnames()
@@ -136,28 +140,26 @@ function clearFilters(): void {
 }
 
 async function runDev(project: Project): Promise<void> {
-  const url = await api.runDevServer(project)
+  const url = await api.runDevServer(project).catch(fail)
   if (!url) return
   runningPorts[project.path] = url
   setTimeout(() => window.open(url, '_blank'), 2000)
 }
 
 async function runScript(project: Project, script: string): Promise<void> {
-  const url = await api.runScript(project, script)
+  const url = await api.runScript(project, script).catch(fail)
   if (url) runningPorts[project.path] = url
 }
 
 async function runJust(project: Project, recipe: string): Promise<void> {
-  const url = await api.runJustRecipe(project, recipe)
+  const url = await api.runJustRecipe(project, recipe).catch(fail)
   if (url) runningPorts[project.path] = url
 }
 
-let noticeTimer: ReturnType<typeof setTimeout> | undefined
-
-function report(result: { ok: boolean; note: string }): void {
-  notice = result
-  clearTimeout(noticeTimer)
-  noticeTimer = setTimeout(() => (notice = null), 6000)
+/** A failed API call ends here, as an error toast carrying the server's own text. */
+function fail(e: unknown): null {
+  toast(errorMessage(e), 'error')
+  return null
 }
 
 async function onAction(action: ActionDef, project: Project): Promise<void> {
@@ -166,20 +168,29 @@ async function onAction(action: ActionDef, project: Project): Promise<void> {
   } else if (action.id === 'beads-create') {
     beadsFor = project
   } else {
-    report(await api.runAction(action, project))
+    const { ok, note } = await api.runAction(action, project)
+    toast(note, ok ? 'info' : 'error')
   }
 }
 
 async function doRename(newName: string): Promise<void> {
   if (!renaming) return
-  await api.renameProject(renaming.path, newName)
-  location.reload()
+  try {
+    await api.renameProject(renaming.path, newName)
+    location.reload()
+  } catch (e) {
+    fail(e)
+  }
 }
 
 async function doMove(targetFolder: string): Promise<void> {
   if (!moving) return
-  await api.moveProject(moving.path, `${data.baseDir}/${targetFolder}`)
-  location.reload()
+  try {
+    await api.moveProject(moving.path, `${data.baseDir}/${targetFolder}`)
+    location.reload()
+  } catch (e) {
+    fail(e)
+  }
 }
 </script>
 
@@ -196,8 +207,8 @@ async function doMove(targetFolder: string): Promise<void> {
 		onRunDev={runDev}
 		onRunScript={runScript}
 		onRunJust={runJust}
-		onIterm={api.openInITerm}
-		onFinder={api.openInFinder}
+		onIterm={(path) => api.openInITerm(path).catch(fail)}
+		onFinder={(path) => api.openInFinder(path).catch(fail)}
 		onRename={(project) => (renaming = project)}
 		onMove={(project) => (moving = project)}
 		{onAction}
@@ -294,8 +305,6 @@ async function doMove(targetFolder: string): Promise<void> {
 		</Card>
 	{/if}
 </main>
-
-<Notice {notice} />
 
 <ProjectSettings
 	project={settingsFor}

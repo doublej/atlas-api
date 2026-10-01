@@ -10,6 +10,7 @@ import type {
   Scan,
   ScheduleStatus,
 } from '$lib/disk-types'
+import { errorMessage } from '$lib/format'
 import type { PageServerLoad } from './$types'
 
 /**
@@ -24,8 +25,8 @@ export const load: PageServerLoad = async () => {
         if (r.exit === 'error') throw new Error(r.error ?? r.message ?? 'error')
         return (r.data ?? null) as T | null
       })
-      .catch((e: Error) => {
-        errors.push(`${args.join(' ')}: ${e.message}`)
+      .catch((e) => {
+        errors.push(`${args.join(' ')}: ${errorMessage(e)}`)
         return null
       })
   const [analysis, scan, archives, settings, schedules, doctor, pending] = await Promise.all([
