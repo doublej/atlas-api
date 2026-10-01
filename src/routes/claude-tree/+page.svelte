@@ -84,6 +84,9 @@ function unlessDirty(then: () => unknown) {
 /** Open a specific file (a node's primary, or one of its CLAUDE.md/AGENTS.md tabs). */
 async function openFile(node: TreeNode, path: string, skipGuard = false): Promise<void> {
   const switching = node.id !== doc.node?.id || path !== doc.path
+  // Re-clicking the open file (its card, its active tab) must not reload over unsaved edits;
+  // a clean buffer still re-reads, which is how a failed load is retried.
+  if (!switching && doc.dirty) return
   if (!skipGuard && doc.dirty && switching) return unlessDirty(() => openFile(node, path, true))
   view.select(node.id)
   await doc.open(node, path)
@@ -128,9 +131,10 @@ async function openFind() {
 
 /** Open the hit's file in the editor (honoring the dirty guard) and jump to the line. */
 function openHit(path: string, line: number) {
+  // The open file first: a referenced file outside the tree is in no `view.files`.
+  if (path === doc.path) return editor?.jumpToLine(line)
   const ref = view.files.get(path)
   if (!ref) return
-  if (doc.node?.id === ref.node.id && doc.path === ref.path) return editor?.jumpToLine(line)
   // The jump belongs to the new file, so it waits for the discard dialog with the open.
   unlessDirty(async () => {
     await openFile(ref.node, ref.path, true)

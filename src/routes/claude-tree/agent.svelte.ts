@@ -66,6 +66,8 @@ export class AgentActions {
     const action = getAction(p.actionId)
     if (!doc.node || !this.menu || !action) return
     const entity = this.menu.entity
+    // The reply is computed from this buffer; it may only land on that same buffer.
+    const { path, content, name } = doc
     const title = `${action.label} · ${entity.title}`
     this.busy = true
     if (action.mode === 'answer') {
@@ -74,8 +76,8 @@ export class AgentActions {
     }
     try {
       const res = await http.post<AgentResult>('/api/claude-tree/agent', {
-        path: doc.path,
-        content: doc.content,
+        path,
+        content,
         engine: this.engine,
         ...p,
         entity: {
@@ -86,7 +88,13 @@ export class AgentActions {
         },
       })
       if (res.kind === 'answer') this.panel = { title, busy: false, text: res.text, error: null }
-      else this.#apply(entity, res, p.locked, action.label)
+      else if (doc.path === path && doc.content === content)
+        this.#apply(entity, res, p.locked, action.label)
+      else {
+        // Another file was opened, or this one edited, while the agent ran.
+        this.menu = null
+        toast(`${action.label} not applied: ${name} changed`, 'error')
+      }
     } catch (e) {
       const msg = errorMessage(e)
       if (action.mode === 'answer') this.panel = { title, busy: false, text: '', error: msg }

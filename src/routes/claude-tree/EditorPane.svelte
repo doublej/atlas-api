@@ -36,16 +36,20 @@ export function jumpToLine(line: number) {
 
 <main class="editorpane">
 	<EditorHead {doc} {agent} {onclose} {onopen} {onreference} />
-	<CmEditor
-		bind:this={cm}
-		value={doc.content}
-		references={doc.inlineRefs}
-		{dark}
-		activeRange={agent.range}
-		onChange={(v) => doc.edit(v)}
-		onRefClick={onreference}
-		onEntityAction={(entity, pos) => agent.open(entity, pos)}
-	/>
+	<!-- A fresh editor per file, so undo can't carry the previous file's text into this one.
+	     doc.open switches path and content together, so it mounts with the new file's text. -->
+	{#key doc.path}
+		<CmEditor
+			bind:this={cm}
+			value={doc.content}
+			references={doc.inlineRefs}
+			{dark}
+			activeRange={agent.range}
+			onChange={(v) => doc.edit(v)}
+			onRefClick={onreference}
+			onEntityAction={(entity, pos) => agent.open(entity, pos)}
+		/>
+	{/key}
 	<footer class="ed-foot">
 		<!-- primary only while there is something to save: a disabled primary still reads as live -->
 		<Button variant={doc.dirty ? 'primary' : 'ghost'} onclick={() => doc.save()} disabled={!doc.dirty}

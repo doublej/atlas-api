@@ -82,6 +82,43 @@ describe('Doc', () => {
     expect(doc.status).toBe('save failed: nope')
   })
 
+  it('never leaves the previous file under a path whose read failed', async () => {
+    const { doc } = opened()
+    await doc.open(node, node.path)
+    doc.edit('mine')
+    http.get.mockRejectedValueOnce(new HttpError(403, 'path is outside the project catalog'))
+    await doc.open(node, '/r/web/AGENTS.md')
+    expect(doc).toMatchObject({ path: '/r/web/AGENTS.md', content: '', sha: '', dirty: false })
+    expect(doc.status).toBe('error: path is outside the project catalog')
+  })
+
+  it('keeps the open file until the next read lands, and drops an overtaken read', async () => {
+    const { doc } = opened()
+    await doc.open(node, node.path)
+    let land: (r: { content: string; sha: string }) => void = () => {}
+    http.get.mockReturnValueOnce(new Promise((resolve) => (land = resolve)))
+    const slow = doc.open(node, '/r/web/B.md')
+    expect(doc).toMatchObject({ path: node.path, content: 'disk', dirty: false })
+    await doc.open(node, '/r/web/C.md')
+    land({ content: 'B text', sha: 'bbb' })
+    await slow
+    expect(doc).toMatchObject({ path: '/r/web/C.md', content: 'disk', sha: 'aaa' })
+  })
+
+  it('reverts against the sha it read', async () => {
+    const { doc, asks } = opened()
+    await doc.open(node, node.path)
+    doc.revert()
+    http.post.mockRejectedValueOnce(new HttpError(409, 'disk changed'))
+    await asks[0].run()
+    expect(http.post).toHaveBeenCalledWith('/api/claude-tree', {
+      op: 'revert',
+      path: node.path,
+      expectedSha: 'aaa',
+    })
+    expect(doc.status).toBe('revert failed: disk changed')
+  })
+
   it('dedupes reference chips by target', () => {
     const r = { kind: 'link' as const, label: 'x', line: 1, targetId: null }
     const refs = [

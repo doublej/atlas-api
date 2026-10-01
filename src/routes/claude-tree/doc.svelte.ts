@@ -58,6 +58,8 @@ export class Doc {
   /** Selected history index, '' = latest on disk. */
   snapshot = $state('')
   #ask: (q: Ask) => void
+  /** Bumped per open: only the newest open may commit its read. */
+  #seq = 0
 
   constructor(ask: (q: Ask) => void) {
     this.#ask = ask
@@ -83,18 +85,32 @@ export class Doc {
   /** The same, deduped for the chip strip. */
   refs = $derived(uniqueRefs(this.inlineRefs))
 
-  /** Read `path` (the node's primary, or one of its tabs) into the editor. */
+  /**
+   * Read `path` (the node's primary, or one of its tabs) into the editor. Node, path and text
+   * switch together once the read lands — never the previous file's text under this path, which
+   * a save would post here (and the editor starts a fresh undo history per path).
+   */
   async open(node: TreeNode, path: string): Promise<void> {
+    const seq = ++this.#seq
+    this.dirty = false // a confirmed discard ends the old edits now, not when the read lands
+    this.status = 'loading…'
+    const r = await http
+      .get<{ content: string; sha: string }>(url('path', path))
+      .catch((e) => ({ content: '', sha: '', error: errorMessage(e) }))
+    if (seq !== this.#seq) return // a newer open owns the editor
     this.node = node
     this.path = path
-    this.status = 'loading…'
     this.snapshot = ''
+    this.content = r.content
+    this.sha = r.sha
+    this.dirty = false
+    this.history = []
+    if ('error' in r) {
+      this.status = `error: ${r.error}`
+      return
+    }
+    this.status = `sha ${r.sha}`
     try {
-      const r = await http.get<{ content: string; sha: string }>(url('path', path))
-      this.content = r.content
-      this.sha = r.sha
-      this.dirty = false
-      this.status = `sha ${r.sha}`
       await this.loadHistory()
     } catch (e) {
       this.status = `error: ${errorMessage(e)}`
@@ -116,7 +132,9 @@ export class Doc {
 
   async loadHistory(): Promise<void> {
     if (!this.node) return
-    this.history = await http.get<Snapshot[]>(url('history', this.path))
+    const path = this.path
+    const h = await http.get<Snapshot[]>(url('history', path))
+    if (this.path === path) this.history = h // a late answer for a file no longer open
   }
 
   async #saved(r: Saved): Promise<void> {
@@ -157,7 +175,13 @@ export class Doc {
       confirmLabel: 'Revert',
       run: async () => {
         try {
-          await http.post('/api/claude-tree', { op: 'revert', path: this.path })
+          // Against the sha it was read at: a 409 'disk changed' instead of overwriting a newer
+          // version that no snapshot holds.
+          await http.post('/api/claude-tree', {
+            op: 'revert',
+            path: this.path,
+            expectedSha: this.sha,
+          })
           await this.open(node, this.path)
         } catch (e) {
           this.status = `revert failed: ${errorMessage(e)}`

@@ -71,7 +71,7 @@ export const GET: RequestHandler = async ({ url }) => {
 }
 
 type SaveBody = { op: 'save'; path: string; content: string; expectedSha?: string; force?: boolean }
-type RevertBody = { op: 'revert'; path: string }
+type RevertBody = { op: 'revert'; path: string; expectedSha?: string }
 // `path` is the source CLAUDE.md; its sibling AGENTS.md is the (created-if-missing) target.
 type SyncBody = { op: 'sync'; path: string }
 
@@ -118,6 +118,14 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   if (body.op === 'revert') {
+    // Revert does not snapshot what it overwrites (that would turn the LIFO undo into a
+    // toggle), so it may only overwrite the version the editor read — as save checks.
+    if (body.expectedSha) {
+      const diskSha = sha(await readSafely(safe).catch(() => ''))
+      if (diskSha !== body.expectedSha) {
+        return json({ error: 'disk changed', disk_sha: diskSha }, { status: 409 })
+      }
+    }
     const entry = await popHistory(safe)
     if (!entry) return json({ error: 'no history' }, { status: 404 })
     await writeFile(safe, entry.content, 'utf-8')
