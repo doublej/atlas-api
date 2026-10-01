@@ -1,4 +1,5 @@
 <script lang="ts">
+import ConfirmDialog from '$lib/components/feedback/ConfirmDialog.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import Table from '$lib/components/table/Table.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
@@ -23,6 +24,11 @@ let report = $state<Report | null>(null)
 let error = $state<string | null>(null)
 /** The id being fixed, or `*` for "fix all" — one at a time, each one reloads Caddy. */
 let fixing = $state<string | null>(null)
+/** Fixes waiting for a yes: "fix all", or one that stops serving a hostname. */
+let confirming = $state<DriftItem[] | null>(null)
+
+/** These fixes take a hostname off the NAS. */
+const DESTRUCTIVE = new Set(['orphan-row', 'orphan-site-file'])
 
 /** The slug, else what the id names (a NAS file, `admin-ranges`, …). */
 const subject = (i: DriftItem): string => i.slug ?? i.id.slice(i.kind.length + 1)
@@ -44,10 +50,11 @@ async function load(): Promise<void> {
   }
 }
 
-async function fix(ids?: string[]): Promise<void> {
-  fixing = ids?.[0] ?? '*'
+/** Fixes exactly `ids` — never what a newer diagnosis added after the confirm. */
+async function fix(ids: string[]): Promise<void> {
+  fixing = ids.length === 1 ? ids[0] : '*'
   try {
-    const out = await http.post<FixReport>('/api/hostnames/doctor', ids ? { ids } : {})
+    const out = await http.post<FixReport>('/api/hostnames/doctor', { ids })
     report = { checkedAt: new Date().toISOString(), items: out.items }
     const failed = out.results.filter((r) => !r.ok)
     if (failed.length) toast(`Fix failed: ${failed.map((r) => r.error).join('; ')}`, 'error')
@@ -78,7 +85,10 @@ $effect(() => {
 
 {#snippet fixCell(i: DriftItem)}
   {#if i.fix}
-    <Button disabled={fixing !== null} onclick={() => fix([i.id])}>
+    <Button
+      disabled={fixing !== null}
+      onclick={() => (DESTRUCTIVE.has(i.kind) ? (confirming = [i]) : fix([i.id]))}
+    >
       {fixing === i.id ? 'Fixing…' : i.fix.label}
     </Button>
   {:else}
@@ -101,7 +111,7 @@ $effect(() => {
     <span class="tools">
       <Button disabled={fixing !== null} onclick={load}>Check again</Button>
       {#if fixable.length > 1}
-        <Button variant="primary" disabled={fixing !== null} onclick={() => fix()}>
+        <Button variant="primary" disabled={fixing !== null} onclick={() => (confirming = fixable)}>
           {fixing === '*' ? 'Fixing…' : `Fix all ${fixable.length}`}
         </Button>
       {/if}
@@ -116,6 +126,19 @@ $effect(() => {
     {/if}
   </PageState>
 </section>
+
+<ConfirmDialog
+  open={confirming !== null}
+  title={confirming?.length === 1
+    ? `${confirming[0].fix?.label} ${subject(confirming[0])}?`
+    : `Fix ${confirming?.length} hostname items?`}
+  message="Each fix reloads the NAS Caddy. Release and Remove file stop serving that hostname."
+  items={confirming?.map((i) => `${i.fix?.label} · ${subject(i)} — ${i.detail}`)}
+  confirmLabel={confirming?.length === 1 ? confirming[0].fix?.label : `Fix ${confirming?.length}`}
+  danger={confirming?.some((i) => DESTRUCTIVE.has(i.kind))}
+  onconfirm={() => fix(confirming?.map((i) => i.id) ?? [])}
+  onclose={() => (confirming = null)}
+/>
 
 <style>
   header {
