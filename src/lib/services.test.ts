@@ -58,6 +58,14 @@ describe('renderSiteBlock', () => {
     expect(out).not.toContain('atlas.remote')
   })
 
+  it('serves a devPublic remote half without the password (4.3)', () => {
+    process.env.CADDY_DEV_AUTH_HASH = 'hash'
+    expect(renderSiteBlock(block)).toContain('basic_auth')
+    const out = renderSiteBlock({ ...block, devPublic: true })
+    expect(out).toContain('x.atlas.remote.')
+    expect(out).not.toContain('basic_auth')
+  })
+
   it('compresses both halves of a service block, never a project block (2.6)', () => {
     process.env.CADDY_DEV_AUTH_HASH = 'hash'
     const service = renderSiteBlock({ ...block, compress: true })
