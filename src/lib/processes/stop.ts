@@ -112,13 +112,24 @@ function signal(pid: number, sig: NodeJS.Signals): void {
   }
 }
 
+/**
+ * One identity poll. A ps that times out on a loaded Mac (load 200 starves the daemon past its 5s
+ * timeout) proves nothing either way, so it reads as null: nobody counts as gone, and nobody is
+ * SIGKILLed on an unverified identity.
+ */
+const poll = async (procs: EndingProcess[]) =>
+  readPs(procs.map((p) => p.pid))
+    .then((rows) => new Map(rows.map((r) => [r.pid, r])))
+    .catch(() => null)
+
 /** Polls until every process has exited (a zombie counts as exited) or `ms` passed. */
 async function survivors(procs: EndingProcess[], ms: number): Promise<EndingProcess[]> {
   const deadline = Date.now() + ms
   let alive = procs
   while (alive.length && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, POLL_MS))
-    const rows = new Map((await readPs(alive.map((p) => p.pid))).map((r) => [r.pid, r]))
+    const rows = await poll(alive)
+    if (!rows) continue
     alive = alive.filter((p) => {
       const r = rows.get(p.pid)
       return r && r.startedAt === p.startedAt && !r.zombie
@@ -131,7 +142,8 @@ async function survivors(procs: EndingProcess[], ms: number): Promise<EndingProc
 async function forceKill(
   alive: EndingProcess[],
 ): Promise<{ killed: Set<number>; left: EndingProcess[] }> {
-  const rows = new Map((await readPs(alive.map((p) => p.pid))).map((r) => [r.pid, r]))
+  const rows = await poll(alive)
+  if (!rows) return { killed: new Set(), left: alive }
   const same = alive.filter((p) => rows.get(p.pid)?.startedAt === p.startedAt)
   for (const p of same) signal(p.pid, 'SIGKILL')
   return { killed: new Set(same.map((p) => p.pid)), left: await survivors(same, KILL_WAIT_MS) }
