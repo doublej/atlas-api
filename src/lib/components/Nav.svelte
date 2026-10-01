@@ -7,6 +7,7 @@ import { theme, toggleTheme } from '$lib/theme.svelte'
 const links: { href: string; label: string; icon: IconName }[] = [
   { href: '/', label: 'Projects', icon: 'folder' },
   { href: '/ports', label: 'Ports', icon: 'globe' },
+  { href: '/processes', label: 'Processes', icon: 'chart' },
   { href: '/system', label: 'System', icon: 'terminal' },
   { href: '/disk', label: 'Disk', icon: 'hardDrive' },
   { href: '/templates', label: 'Templates', icon: 'rows' },
@@ -66,13 +67,18 @@ function isActive(href: string): boolean {
     text-decoration: none;
   }
 
+  /* On a phone the links scroll sideways instead of widening the whole page. */
   .links {
     display: flex;
     gap: var(--space-1);
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 
   .link {
     display: inline-flex;
+    flex: none;
     align-items: center;
     gap: var(--space-1);
     height: 30px;
