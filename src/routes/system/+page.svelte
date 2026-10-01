@@ -4,6 +4,7 @@ import Notice from '$lib/components/feedback/Notice.svelte'
 import SideNav, { type SideTab } from '$lib/components/SideNav.svelte'
 import type { PageData } from './$types'
 import DaemonsSection from './DaemonsSection.svelte'
+import HostnameDoctorSection from './HostnameDoctorSection.svelte'
 import HostsSection from './HostsSection.svelte'
 import PortsSection from './PortsSection.svelte'
 import ScannerSection from './ScannerSection.svelte'
@@ -11,7 +12,7 @@ import ServicesSection from './ServicesSection.svelte'
 
 let { data }: { data: PageData } = $props()
 
-type Tab = 'hosts' | 'scanner' | 'daemons' | 'services' | 'ports'
+type Tab = 'hosts' | 'scanner' | 'daemons' | 'services' | 'hostnames' | 'ports'
 
 const unreachable = $derived(data.hostStates.filter((h) => h.status !== 'ok').length)
 const failing = $derived(
@@ -37,6 +38,7 @@ const tabs = $derived<(SideTab & { id: Tab })[]>([
     hint: `${data.services.length} hostnames`,
     alert: down,
   },
+  { id: 'hostnames', label: 'Hostnames', hint: 'doctor: registry vs NAS', alert: 0 },
   {
     id: 'ports',
     label: 'Ports',
@@ -73,6 +75,8 @@ const active = $derived<Tab>(
     <DaemonsSection daemons={data.daemons} />
   {:else if active === 'services'}
     <ServicesSection services={data.services} />
+  {:else if active === 'hostnames'}
+    <HostnameDoctorSection />
   {:else}
     <PortsSection audit={data.audit} />
   {/if}

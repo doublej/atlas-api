@@ -3,7 +3,7 @@ import { lookup } from 'node:dns/promises'
 import { connect, createServer, type Server } from 'node:net'
 import { promisify } from 'node:util'
 import { getServices, type ServiceDef } from '$shared/services'
-import { ensureRoute, lanIp } from './caddyDev'
+import { ensureRoute, lanIp, SlugTakenError } from './caddyDev'
 import { createMutex } from './mutex'
 import { type BoundPort, isLoopback, listSockets, type Socket } from './ports'
 
@@ -91,34 +91,54 @@ function closeBridge(slug: string): Promise<void> {
   return new Promise((resolve) => (bridge ? bridge.server.close(() => resolve()) : resolve()))
 }
 
-/** Opens, keeps or closes the service's bridge to match `mode`. Returns an error line on failure. */
-async function reconcileBridge(svc: ServiceDef, ip: string, mode: RouteMode) {
-  const bridge = bridges.get(svc.slug)
-  if (bridge && (mode !== 'bridge' || bridge.ip !== ip)) await closeBridge(svc.slug)
-  if (mode !== 'bridge' || bridges.has(svc.slug)) return undefined
+/**
+ * Opens, keeps or closes the bridge under `key` to match `mode`. Returns an error line on failure.
+ * A service's key is its slug; a project dev server's is `:<port>`.
+ */
+async function reconcileBridge(key: string, port: number, ip: string, mode: RouteMode) {
+  const bridge = bridges.get(key)
+  if (bridge && (mode !== 'bridge' || bridge.ip !== ip)) await closeBridge(key)
+  if (mode !== 'bridge' || bridges.has(key)) return undefined
   try {
-    bridges.set(svc.slug, { ip, server: await openBridge(ip, svc.port) })
+    bridges.set(key, { ip, server: await openBridge(ip, port) })
   } catch (e) {
-    return `bridge on ${ip}:${svc.port} failed — ${(e as Error).message}`
+    return `bridge on ${ip}:${port} failed — ${(e as Error).message}`
   }
+}
+
+/**
+ * A project dev server that binds loopback only would 502 behind its hostname: give it the same
+ * NAS-only bridge a service gets. Closes the bridge once the server binds the LAN or stops.
+ * Called after `/api/run` routes a server, after a hostname-only assign, and on every sync.
+ */
+export async function bridgeProject(port: number, sockets?: Socket[]): Promise<string | undefined> {
+  const key = `:${port}`
+  const found = routeMode(listenersOn(sockets ?? (await listSockets()), port, bridges.get(key)?.ip))
+  nasAddress ??= await resolveNas()
+  return reconcileBridge(key, port, lanIp(), found)
 }
 
 async function route(svc: ServiceDef): Promise<Pick<ServiceState, 'local' | 'remote' | 'error'>> {
   const remote = svc.remote ?? false
-  const names = await ensureRoute({
-    slug: svc.slug,
-    service: true,
-    port: svc.port,
-    remote,
-    host: svc.host,
-  })
-  if (!names) return { local: null, error: 'NAS push failed or slug taken — see daemon log' }
-  return { local: names.local, ...(remote ? { remote: names.remote } : {}) }
+  try {
+    const names = await ensureRoute({
+      slug: svc.slug,
+      service: true,
+      port: svc.port,
+      remote,
+      host: svc.host,
+    })
+    if (!names.nasSynced) return { local: null, error: names.error ?? 'NAS push failed' }
+    return { local: names.local, ...(remote ? { remote: names.remote } : {}) }
+  } catch (e) {
+    if (e instanceof SlugTakenError) return { local: null, error: e.message }
+    throw e
+  }
 }
 
 async function syncOne(svc: ServiceDef, ip: string, sockets: Socket[]): Promise<ServiceState> {
   const mode = routeMode(listenersOn(sockets, svc.port, bridges.get(svc.slug)?.ip))
-  const error = await reconcileBridge(svc, ip, mode)
+  const error = await reconcileBridge(svc.slug, svc.port, ip, mode)
   const base = {
     slug: svc.slug,
     name: svc.name,
@@ -144,6 +164,9 @@ export function syncServices(): Promise<ServiceState[]> {
     const sockets = await listSockets()
     const next: ServiceState[] = []
     for (const svc of getServices()) next.push(await syncOne(svc, ip, sockets))
+    for (const key of [...bridges.keys()]) {
+      if (key.startsWith(':')) await bridgeProject(Number(key.slice(1)), sockets)
+    }
     states = next
     return states
   })

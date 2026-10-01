@@ -1,3 +1,4 @@
+import { hostnamesByPath } from '$lib/caddyDev'
 import { ATLAS_TEMPLATES_DIR, DEV_FOLDER } from '$lib/config'
 import { errorMessage } from '$lib/format'
 import { summarizeProject } from '$lib/project-summary'
@@ -10,11 +11,13 @@ export type { Project } from '$lib/scanner'
 /**
  * The cached catalog, slimmed to what the list renders. A stale cache is served as is: `scan()`
  * revalidates it in the background (one scan at a time) and the page reloads once that lands.
+ * `hostnames` maps a project path to its dev hostname, for the row chips.
  */
 export const load: PageServerLoad = async () => {
-  const [result, templateVersions] = await Promise.all([
+  const [result, templateVersions, hostnames] = await Promise.all([
     scan(DEV_FOLDER, { skipGit: true }).catch((e) => new Error(errorMessage(e))),
     readTemplateVersions(ATLAS_TEMPLATES_DIR),
+    hostnamesByPath(),
   ])
   if (result instanceof Error) {
     return {
@@ -25,6 +28,7 @@ export const load: PageServerLoad = async () => {
       baseDir: DEV_FOLDER,
       stale: false,
       templateVersions,
+      hostnames,
       error: `The catalog could not be read: ${result.message}`,
     }
   }
@@ -37,6 +41,7 @@ export const load: PageServerLoad = async () => {
     baseDir,
     stale,
     templateVersions,
+    hostnames,
     error: null,
   }
 }
