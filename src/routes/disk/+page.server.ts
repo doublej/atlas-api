@@ -13,13 +13,9 @@ import type {
 import { errorMessage } from '$lib/format'
 import type { PageServerLoad } from './$types'
 
-/**
- * One `atlas disk … --json` per source, in parallel, each allowed to fail on its own (the
- * `/system` pattern). A job's end reloads all of it with `invalidateAll()`.
- */
-export const load: PageServerLoad = async () => {
-  const errors: string[] = []
-  const read = <T>(args: string[]) =>
+/** One `atlas disk … --json` read; a failure becomes a line in `errors` instead of a throw. */
+function reader(errors: string[]) {
+  return <T>(args: string[]) =>
     diskJson(args)
       .then((r: DiskResult) => {
         if (r.exit === 'error') throw new Error(r.error ?? r.message ?? 'error')
@@ -29,10 +25,24 @@ export const load: PageServerLoad = async () => {
         errors.push(`${args.join(' ')}: ${errorMessage(e)}`)
         return null
       })
-  const [analysis, scan, archives, settings, schedules, doctor, pending] = await Promise.all([
+}
+
+/**
+ * One `atlas disk … --json` per source, in parallel, each allowed to fail on its own (the
+ * `/system` pattern). A job's end reloads all of it with `invalidateAll()`.
+ */
+export const load: PageServerLoad = async () => {
+  const errors: string[] = []
+  const read = reader(errors)
+  // `archives list` reads iCloud Drive: 0.4s warm, ~20s cold. Not awaited, so SvelteKit streams
+  // it in after the page instead of holding the page back for it.
+  const archiveErrors: string[] = []
+  const archives = reader(archiveErrors)<ArchiveVersion[]>(['archives', 'list']).then(
+    (versions) => ({ versions: versions ?? [], error: archiveErrors[0] ?? null }),
+  )
+  const [analysis, scan, settings, schedules, doctor, pending] = await Promise.all([
     read<Analysis>(['analyze', '--cached']),
     read<Scan>(['scan', '--cached']),
-    read<ArchiveVersion[]>(['archives', 'list']),
     read<DiskSettings>(['config', 'get']),
     read<ScheduleStatus[]>(['schedule', 'status']),
     read<{ problems: Problem[] }>(['doctor']),
@@ -43,7 +53,7 @@ export const load: PageServerLoad = async () => {
     freeBytes: fs.bavail * fs.bsize,
     analysis,
     scan,
-    archives: archives ?? [],
+    archives,
     settings,
     schedules: schedules ?? [],
     problems: doctor?.problems ?? [],

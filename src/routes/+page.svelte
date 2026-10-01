@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onMount } from 'svelte'
+import { invalidateAll } from '$app/navigation'
 import { page } from '$app/state'
 import * as api from '$lib/browser/api'
 import {
@@ -12,18 +13,17 @@ import {
 import { buildFolderTree, collectFolderPaths } from '$lib/browser/tree'
 import BrowserHeader from '$lib/components/browser/BrowserHeader.svelte'
 import FilterPanel from '$lib/components/browser/FilterPanel.svelte'
-import FolderTree from '$lib/components/browser/FolderTree.svelte'
 import HostBanner from '$lib/components/browser/HostBanner.svelte'
+import ProjectViews from '$lib/components/browser/ProjectViews.svelte'
 import Toolbar from '$lib/components/browser/Toolbar.svelte'
 import BeadsDialog from '$lib/components/dialogs/BeadsDialog.svelte'
 import MoveDialog from '$lib/components/dialogs/MoveDialog.svelte'
 import ProjectSettings from '$lib/components/dialogs/ProjectSettings.svelte'
 import RenameDialog from '$lib/components/dialogs/RenameDialog.svelte'
 import ProjectRow from '$lib/components/project/ProjectRow.svelte'
-import ProjectTable from '$lib/components/table/ProjectTable.svelte'
-import Button from '$lib/components/ui/Button.svelte'
-import Card from '$lib/components/ui/Card.svelte'
 import { errorMessage } from '$lib/format'
+import { ProjectRecords } from '$lib/project-records.svelte'
+import type { ProjectSummary } from '$lib/project-summary'
 import type { Framework, GitStatus, Project } from '$lib/scanner'
 import { toast } from '$lib/toast.svelte'
 import type { ActionDef } from '$shared/actions'
@@ -33,7 +33,7 @@ type ViewMode = 'table' | 'flat' | 'nested'
 let { data } = $props()
 // Writable deriveds, not $state + $effect: the rows render during SSR and hydration instead
 // of an empty page re-rendered after mount, and ~560 records skip the deep proxy.
-let projects = $derived<Project[]>(data.projects)
+let projects = $derived<ProjectSummary[]>(data.projects)
 let frameworks = $derived<Framework[]>(data.frameworks)
 let folders = $derived<string[]>(data.folders)
 let isRefreshing = $state(false)
@@ -55,7 +55,16 @@ let settingsFor = $state<Project | null>(null)
 let beadsFor = $state<Project | null>(null)
 let viewMode = $state<ViewMode>('table')
 let expandedFolders = $state<Set<string>>(new Set())
-let gitStatus = $state<Record<string, { status: GitStatus; branch?: string }>>({})
+type GitState = { status: GitStatus; branch?: string }
+let probedGit = $state<Record<string, GitState>>({})
+// The page data's git state (the cache's) makes the server-rendered dots real; a probe fills in
+// the rest. Not `projects`: a settings save swaps in a rescan made without git, which blanked them.
+const gitStatus = $derived<Record<string, GitState>>({
+  ...probedGit,
+  ...Object.fromEntries(
+    data.projects.flatMap((p) => (p.git ? [[p.path, { status: p.git, branch: p.gitBranch }]] : [])),
+  ),
+})
 let hostnames = $state<Record<string, { local: string; remote: string }>>({})
 
 const criteria = $derived<FilterCriteria>({
@@ -81,11 +90,15 @@ const hasPromotion = $derived(projects.some((p) => p.promotion))
 const showHost = $derived(hosts.length > 1)
 const degraded = $derived((data.hosts ?? []).filter((h) => h.status !== 'ok'))
 
-async function refreshInBackground(): Promise<void> {
+const records = new ProjectRecords()
+
+/** After a settings save: rescan now (a cached read would miss the change) and keep its records. */
+async function refreshNow(): Promise<void> {
   if (isRefreshing) return
   isRefreshing = true
   const result = await api.refreshProjects().catch(fail)
   if (result) {
+    records.keep(result.projects)
     projects = result.projects
     frameworks = result.frameworks
     folders = result.folders
@@ -93,17 +106,24 @@ async function refreshInBackground(): Promise<void> {
   isRefreshing = false
 }
 
+// A stale cache is already being rescanned on the server (one scan at a time); reload once it
+// should have landed. Forcing a second scan from here is what made every stale view take 1-30s.
+$effect(() => {
+  if (!data.stale) return
+  const timer = setTimeout(() => invalidateAll(), 15_000)
+  return () => clearTimeout(timer)
+})
+
 onMount(() => {
-  if (data.stale) refreshInBackground()
   // The cache already carries git state for every local project (refreshed every 60s), so
   // only a project it has none for yet is probed — probing all ~500 on each load spawned
   // ~500 git processes and held every browser connection for ~40s.
-  for (const p of projects) if (p.git) gitStatus[p.path] = { status: p.git, branch: p.gitBranch }
   api
     .loadGitStatuses(
       projects.filter((p) => p.isLocal && !p.git).map((p) => p.path),
       (results) => {
-        for (const r of results) gitStatus[r.path] = { status: r.status, branch: r.branch }
+        const probed = results.map((r) => [r.path, { status: r.status, branch: r.branch }])
+        probedGit = { ...probedGit, ...Object.fromEntries(probed) }
       },
     )
     .catch(fail)
@@ -139,7 +159,7 @@ function clearFilters(): void {
   selectedPromotion = null
 }
 
-async function runDev(project: Project): Promise<void> {
+async function runDev(project: ProjectSummary): Promise<void> {
   const url = await api.runDevServer(project).catch(fail)
   if (!url) return
   runningPorts[project.path] = url
@@ -258,58 +278,30 @@ async function doMove(targetFolder: string): Promise<void> {
 		</div>
 	{/if}
 
-	{#if filtered.length === 0}
-		<Card>
-			<div class="empty">
-				<p class="t-h3">No projects</p>
-				<p class="t-small muted">No project matches the current search and filters.</p>
-				<Button variant="primary" onclick={clearFilters}>Clear filters</Button>
-			</div>
-		</Card>
-	{:else if viewMode === 'table'}
-		<Card flush>
-			<ProjectTable
-				projects={filtered}
-				{gitStatus}
-				{hostnames}
-				{runningPorts}
-				{showHost}
-				onRunDev={runDev}
-				detail={projectItem}
-			/>
-		</Card>
-	{:else if viewMode === 'flat'}
-		<Card flush>
-			<ul class="rows">
-				{#each filtered as project (project.path)}
-					{@render projectItem(project)}
-				{/each}
-			</ul>
-		</Card>
-	{:else}
-		<Card flush>
-			{#if nestedProjects.projects.length > 0}
-				<ul class="rows">
-					{#each nestedProjects.projects as project (project.path)}
-						{@render projectItem(project)}
-					{/each}
-				</ul>
-			{/if}
-			<FolderTree
-				node={nestedProjects}
-				depth={0}
-				expanded={expandedFolders}
-				onToggle={toggleFolder}
-				row={projectItem}
-			/>
-		</Card>
-	{/if}
+	<ProjectViews
+		projects={filtered}
+		total={projects.length}
+		{viewMode}
+		{records}
+		error={data.error}
+		onretry={() => invalidateAll()}
+		onClearFilters={clearFilters}
+		tree={nestedProjects}
+		{expandedFolders}
+		onToggleFolder={toggleFolder}
+		{gitStatus}
+		{hostnames}
+		{runningPorts}
+		{showHost}
+		onRunDev={runDev}
+		item={projectItem}
+	/>
 </main>
 
 <ProjectSettings
 	project={settingsFor}
 	onclose={() => (settingsFor = null)}
-	onsaved={refreshInBackground}
+	onsaved={refreshNow}
 />
 
 <BeadsDialog project={beadsFor} onclose={() => (beadsFor = null)} />
@@ -357,29 +349,6 @@ async function doMove(targetFolder: string): Promise<void> {
 	}
 
 
-
-	.rows {
-		margin: 0;
-		padding: 0;
-		list-style: none;
-	}
-
-	.empty {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-10) var(--space-4);
-		text-align: center;
-	}
-
-	.empty p {
-		margin: 0;
-	}
-
-	.empty :global(button) {
-		margin-top: var(--space-2);
-	}
 
 	@media (max-width: 768px) {
 		main {

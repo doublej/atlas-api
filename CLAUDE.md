@@ -85,11 +85,11 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 | Directory | Holds |
 |---|---|
 | `src/lib/components/ui/` | `Button`, `Chip`, `Badge`, `Menu`, `Modal`, `Card` — the Tooling primitives |
-| `src/lib/components/browser/` | `BrowserHeader`, `Toolbar`, `FilterPanel`, `FolderTree`, `HostBanner` |
+| `src/lib/components/browser/` | `BrowserHeader`, `Toolbar`, `FilterPanel`, `FolderTree`, `HostBanner`, `ProjectViews` (the table / Cards / Nested switch and its loading, empty and error states) |
 | `src/lib/components/feedback/` | `Notice`, `PageState`, `ConfirmDialog`, `Toaster` — page state, confirms and action toasts (see `docs/ui-primitives.md`) |
 | `src/lib/components/dialogs/` | `RenameDialog`, `MoveDialog`, `ProjectSettings`, `BeadsDialog` |
 | `src/lib/components/project/` | `ProjectRow`, `ProjectBadges`, `ProjectDetails`, `ProjectActions`, `ProjectLinks`, `ClaudeSetup` |
-| `src/lib/components/table/` | `Table` (the shared data table) · `ProjectTable` (sortable, full-width, default view) + `ProjectLine` (one 30px line); opening a line renders the full `ProjectRow` below it |
+| `src/lib/components/table/` | `Table` (the shared data table) · `ProjectTable` (the default view, on `Table`); opening a row loads its full record and renders `ProjectRow` below it |
 | `src/lib/components/icons/` | `Icon.svelte` + `paths.ts` — a vendored Lucide subset (no icon dependency) |
 | `src/lib/browser/` | `filters.ts`, `tree.ts`, `api.ts`, `colors.ts` + their tests — pure logic, no runes |
 
@@ -106,7 +106,10 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 - Host badges and an `alsoOn` chip per twin whenever the catalog spans more than one machine, and
   a banner for any host whose last scan came back `unreachable`/`error`
 - Project rows render in SSR (`projects` is a writable `$derived` of `data`, never `$state` filled by an
-  `$effect`, which rendered "No projects" and then re-rendered 500+ rows on the client). The scaffold badge (`ProjectBadges.svelte`) compares `project.template.version` with the
+  `$effect`, which rendered "No projects" and then re-rendered 500+ rows on the client) — the first 80
+  only (`Table`'s `initialRows`); the rest follow after mount. The page data is a `ProjectSummary` per
+  project (`$lib/project-summary`); a row's full record loads when it opens (`GET /api/projects?path=`),
+  and Cards/Nested load all of them once (`$lib/project-records.svelte`). The scaffold badge (`ProjectBadges.svelte`) compares `project.template.version` with the
   template's current `_version` from `templateVersions` in `+page.server.ts` and turns amber when behind
 
 **System console (`src/routes/system/`)**
@@ -213,7 +216,7 @@ Rules that keep it that way:
 
 1. `+page.server.ts` calls `scan()` on server load
 2. Scanner returns cached data immediately, marks as `stale` if >60s old
-3. UI triggers background refresh if stale
+3. A stale load is revalidated on the server (one scan at a time); the page reloads 15s later and never forces `POST /api/refresh` itself
 4. Git status comes from the cache (`git`/`gitBranch`, refreshed with it); `/api/git` probes only local projects the cache has none for — probing all ~500 per load held every browser connection for ~40s
 5. README content loaded on-demand when expanded
 

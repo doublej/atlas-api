@@ -1,5 +1,5 @@
 <script lang="ts" generics="T, K extends string | number">
-import type { Snippet } from 'svelte'
+import { onMount, type Snippet } from 'svelte'
 import Icon from '$lib/components/icons/Icon.svelte'
 import type { Selection } from '$lib/selection.svelte'
 import { type Column, type RowState, rowKeyAction } from '$lib/table'
@@ -28,6 +28,8 @@ interface Props {
   empty?: Snippet
   /** Caps the height (any CSS length); the header then sticks while the rows scroll. */
   maxHeight?: string
+  /** Rows rendered on the server and at hydration; the rest are appended right after mount. */
+  initialRows?: number
 }
 
 const {
@@ -43,6 +45,7 @@ const {
   expanded,
   empty,
   maxHeight,
+  initialRows,
 }: Props = $props()
 
 const ownSort = new TableSort<string>()
@@ -50,6 +53,12 @@ const sort = $derived(sortProp ?? ownSort)
 const sorter = $derived(columns.find((c) => c.key === sort.key)?.sort)
 const sorted = $derived(sorter ? sortRows(rows, sorter, sort.descending) : rows)
 const keys = $derived(sorted.map(key))
+let mounted = $state(false)
+onMount(() => {
+  mounted = true
+})
+// A prefix of `sorted`, so `keys[i]` stays the key of `shown[i]`.
+const shown = $derived(initialRows && !mounted ? sorted.slice(0, initialRows) : sorted)
 const span = $derived(columns.length + (selection ? 1 : 0))
 const allOn = $derived(keys.length > 0 && keys.every((k) => selection?.has(k)))
 const someOn = $derived(!allOn && keys.some((k) => selection?.has(k)))
@@ -126,7 +135,7 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
       </tr>
     </thead>
     <tbody bind:this={tbody}>
-      {#each sorted as row, i (key(row))}
+      {#each shown as row, i (key(row))}
         {@const k = keys[i]}
         {@const state = rowState(k)}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex — rows are the roving-focus targets; every action also has a checkbox or button -->
@@ -151,7 +160,7 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
             </td>
           {/if}
           {#each columns as c (c.key)}
-            <td data-align={c.align} data-hide={c.hideBelow} class:wrap={c.wrap}>
+            <td data-align={c.align} data-hide={c.hideBelow} class:wrap={c.wrap} class:fill={c.fill}>
               {@render c.cell(row, state)}
             </td>
           {/each}
@@ -218,6 +227,15 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
     min-width: 12rem;
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+
+  /* Takes the width the other columns leave, up to 40%, and clips past it with an ellipsis, so a
+     long value never widens the table; `max-width: 0` lets a table cell shrink below its content. */
+  td.fill {
+    width: 40%;
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .check {
@@ -294,6 +312,12 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
   @media (max-width: 768px) {
     [data-hide='768'] {
       display: none;
+    }
+
+    /* A phone's width goes to the content, not to gutters. */
+    th,
+    td {
+      padding-inline: var(--space-2);
     }
   }
 </style>

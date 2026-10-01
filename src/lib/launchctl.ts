@@ -49,16 +49,42 @@ export async function isScheduledPlist(plistPath?: string): Promise<boolean> {
   }
 }
 
-export async function printLabel(label: string, scheduled = false): Promise<LaunchctlState> {
-  const { stdout, code } = await runLaunchctl(['print', `gui/${UID}/${label}`])
-  if (code !== 0) return { pid: null, lastExitStatus: null, status: 'stopped' }
-  const pidMatch = stdout.match(/^\s*pid\s*=\s*(\d+)/m)
-  const exitMatch = stdout.match(/^\s*last exit code\s*=\s*(-?\d+)/m)
-  const pid = pidMatch ? Number(pidMatch[1]) : null
-  const lastExitStatus = exitMatch ? Number(exitMatch[1]) : null
+/** Pure: `launchctl list` (`PID\tStatus\tLabel`) → label → [pid, last exit]. A `-` pid is "not running". */
+export function parseLaunchctlList(out: string): Map<string, [number | null, number]> {
+  const jobs = new Map<string, [number | null, number]>()
+  for (const line of out.split('\n').slice(1)) {
+    const [pid, status, label] = line.split('\t')
+    if (label) jobs.set(label, [pid === '-' ? null : Number(pid), Number(status)])
+  }
+  return jobs
+}
+
+/**
+ * Every loaded job of this user in one `launchctl list` (~10ms), instead of a `launchctl print`
+ * per label. Throws when launchctl itself fails, so a failed read never reads as "all stopped".
+ */
+export async function listJobs(): Promise<Map<string, [number | null, number]>> {
+  const { stdout, code } = await runLaunchctl(['list'])
+  if (code !== 0) throw new Error(`launchctl list exited ${code}`)
+  return parseLaunchctlList(stdout)
+}
+
+/**
+ * One job's state from `listJobs()`. A label that is not loaded is stopped. `launchctl list`
+ * prints 0 both for "exited cleanly" and "never exited", so only a failing exit is reported.
+ */
+export function jobState(
+  jobs: Map<string, [number | null, number]>,
+  label: string,
+  scheduled = false,
+): LaunchctlState {
+  const job = jobs.get(label)
+  if (!job) return { pid: null, lastExitStatus: null, status: 'stopped' }
+  const [pid, exit] = job
+  const lastExitStatus = exit === 0 ? null : exit
   let status: LaunchctlStatus
   if (pid) status = 'running'
-  else if (lastExitStatus !== null && lastExitStatus !== 0) status = 'error'
+  else if (lastExitStatus !== null) status = 'error'
   else if (scheduled) status = 'idle'
   else status = 'stopped'
   return { pid, lastExitStatus, status }

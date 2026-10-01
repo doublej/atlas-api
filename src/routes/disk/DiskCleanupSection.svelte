@@ -1,14 +1,15 @@
 <script lang="ts">
 import PageState from '$lib/components/feedback/PageState.svelte'
-import SortHeader from '$lib/components/table/SortHeader.svelte'
+import Table from '$lib/components/table/Table.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import Chip from '$lib/components/ui/Chip.svelte'
-import type { Risk, Scan } from '$lib/disk-types'
+import type { FolderRow, Risk, Scan } from '$lib/disk-types'
 import { tildify } from '$lib/format'
 import { Selection } from '$lib/selection.svelte'
-import { TableSort } from '$lib/table-sort.svelte'
+import type { Column } from '$lib/table'
+import { sortRows, TableSort } from '$lib/table-sort.svelte'
 import DiskCleanModal from './DiskCleanModal.svelte'
 import { ago, human, runJob } from './disk-client.svelte'
 
@@ -22,27 +23,41 @@ const RISKS: { id: Risk; tone: 'pos' | 'warn' | 'neg'; note: string }[] = [
 
 let shown = $state(new Set<Risk>(['rebuildable', 'reinstallable', 'review']))
 let reviewing = $state(false)
-const sel = new Selection()
-/** One sort for every risk group, so the groups stay comparable. */
-const sort = new TableSort<'size' | 'path' | 'inUse' | 'why' | 'restore'>(null, ['size'])
+const sel = new Selection<string>()
+/** One sort and one selection for every risk group, so the groups stay comparable. */
+const sort = new TableSort<string>(null, ['size'])
+const columns: Column<FolderRow>[] = [
+  { key: 'size', label: 'Size', sort: (f) => f.bytes, align: 'right', cell: sizeCell },
+  { key: 'path', label: 'Folder', sort: (f) => f.path, fill: true, cell: pathCell },
+  { key: 'inUse', label: 'In use', sort: (f) => f.inUse, cell: inUseCell },
+  {
+    key: 'why',
+    label: 'What it is',
+    sort: (f) => f.why,
+    wrap: true,
+    hideBelow: 768,
+    cell: whyCell,
+  },
+  {
+    key: 'restore',
+    label: 'How it comes back',
+    sort: (f) => f.restore,
+    wrap: true,
+    hideBelow: 1100,
+    cell: restoreCell,
+  },
+]
+const sorter = $derived(columns.find((c) => c.key === sort.key)?.sort)
 
 const groups = $derived(
   RISKS.filter((r) => shown.has(r.id))
-    .map((r) => ({
-      ...r,
-      rows: sort.apply(
-        (scan?.folders ?? []).filter((f) => f.risk === r.id),
-        {
-          size: (f) => f.bytes,
-          path: (f) => f.path,
-          inUse: (f) => f.inUse,
-          why: (f) => f.why,
-          restore: (f) => f.restore,
-        },
-      ),
-    }))
+    .map((r) => {
+      const rows = (scan?.folders ?? []).filter((f) => f.risk === r.id)
+      return { ...r, rows: sorter ? sortRows(rows, sorter, sort.descending) : rows }
+    })
     .filter((g) => g.rows.length),
 )
+/** Every visible row in render order, so a shift-click range can cross the groups. */
 const ordered = $derived(groups.flatMap((g) => g.rows.map((r) => r.path)))
 const chosen = $derived((scan?.folders ?? []).filter((f) => sel.has(f.path)))
 
@@ -54,6 +69,16 @@ function toggleRisk(r: Risk) {
   shown = next
 }
 </script>
+
+{#snippet sizeCell(f: FolderRow)}<span class="num">{human(f.bytes)}</span>{/snippet}
+{#snippet pathCell(f: FolderRow)}<span class="mono" title={f.path}>{tildify(f.path)}{f.nested ? ' (nested)' : ''}</span>{/snippet}
+<!-- Only the badge stays on one line: a long holder ("DTServiceHub (pid …) works in its project")
+     on one line squeezed the Folder column down to "~/d…". -->
+{#snippet inUseCell(f: FolderRow)}
+  {#if f.inUse}<Badge tone="warn" title="something seems to use it">in use</Badge><span class="holder t-caption muted">{f.inUse}</span>{/if}
+{/snippet}
+{#snippet whyCell(f: FolderRow)}<span class="muted">{f.why}</span>{/snippet}
+{#snippet restoreCell(f: FolderRow)}<span class="muted mono">{f.restore}</span>{/snippet}
 
 <section>
   <div class="bar">
@@ -78,41 +103,20 @@ function toggleRisk(r: Risk) {
     {#each groups as g (g.id)}
       <Card flush>
         <div class="group t-small">
-          <input
-            type="checkbox"
-            aria-label="Select all {g.id}"
-            checked={g.rows.every((r) => sel.has(r.path))}
-            onchange={(e) => sel.set(g.rows.filter((r) => !r.nested).map((r) => r.path), e.currentTarget.checked)}
-          />
           <Badge tone={g.tone}>{g.id}</Badge>
           <span class="muted">{g.note} · {g.rows.length} folders</span>
         </div>
-        <div class="scroll">
-          <table>
-            <thead>
-              <tr class="t-caption">
-                <th></th>
-                <SortHeader {sort} key="size" label="Size" class="right" />
-                <SortHeader {sort} key="path" label="Folder" />
-                <SortHeader {sort} key="inUse" label="In use" />
-                <SortHeader {sort} key="why" label="What it is" />
-                <SortHeader {sort} key="restore" label="How it comes back" />
-              </tr>
-            </thead>
-            <tbody>
-              {#each g.rows as f (f.path)}
-                <tr class="t-small" class:selected={sel.has(f.path)} class:dim={f.nested} onclick={(e) => sel.click(f.path, e, ordered)}>
-                  <td><input type="checkbox" aria-label="Select {f.path}" checked={sel.has(f.path)} onclick={(e) => e.stopPropagation()} onchange={() => sel.toggle(f.path)} /></td>
-                  <td class="num right">{human(f.bytes)}</td>
-                  <td class="mono" title={f.path}>{tildify(f.path)}{f.nested ? ' (nested)' : ''}</td>
-                  <td>{#if f.inUse}<Badge tone="warn" title="something seems to use it">in use: {f.inUse}</Badge>{/if}</td>
-                  <td class="muted">{f.why}</td>
-                  <td class="muted mono">{f.restore}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
+        <Table
+          label="{g.id} folders"
+          rows={g.rows}
+          key={(f) => f.path}
+          {columns}
+          {sort}
+          selection={sel}
+          order={ordered}
+          dim={(f) => f.nested}
+          maxHeight="60vh"
+        />
       </Card>
     {/each}
   </PageState>
@@ -131,6 +135,13 @@ function toggleRisk(r: Risk) {
 
   section .bar {
     margin-bottom: 0;
+  }
+
+  .holder {
+    display: block;
+    min-width: 5rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .group {

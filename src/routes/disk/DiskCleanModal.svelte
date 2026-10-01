@@ -1,5 +1,6 @@
 <script lang="ts">
 import { untrack } from 'svelte'
+import PageState from '$lib/components/feedback/PageState.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Modal from '$lib/components/ui/Modal.svelte'
@@ -43,11 +44,7 @@ function confirm() {
 </script>
 
 <Modal open title="Delete {plan.length} folder(s) · {human(total)}" wide {onclose}>
-  {#if loading}
-    <p class="t-small muted">Looking inside…</p>
-  {:else if error}
-    <p class="t-small err">{error}</p>
-  {:else}
+  <PageState {loading} loadingText="Looking inside…" {error} empty={!!error}>
     <div class="previews">
       {#each plan as r (r.path)}
         {@const p = previews.find((x) => x.path === r.path)}
@@ -74,7 +71,7 @@ function confirm() {
       </label>
     {/if}
     <p class="t-small">Each folder is re-checked against the scan just before it goes; a changed one is skipped.</p>
-  {/if}
+  </PageState>
   {#snippet footer()}
     <Button onclick={onclose}>Cancel</Button>
     <Button variant="danger" disabled={loading || !!error || !plan.length} onclick={confirm}>Delete {plan.length}</Button>

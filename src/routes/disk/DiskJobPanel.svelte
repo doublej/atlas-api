@@ -40,7 +40,7 @@ const exitName = (code: number | null) =>
   code === null ? 'ended without an exit record' : (EXIT_NAMES[code] ?? `exit ${code}`)
 </script>
 
-{#if job.current || job.error}
+{#if job.current}
   <section class="panel" aria-live="polite">
     <header class="t-small">
       {#if job.current}
@@ -51,12 +51,11 @@ const exitName = (code: number | null) =>
           <span class="state running">running…</span>
         {/if}
       {/if}
-      {#if job.error}<span class="err">{job.error}</span>{/if}
       <span class="spacer"></span>
       {#if job.current && !job.current.done}
         <Button variant="danger" onclick={cancelJob}>Cancel</Button>
       {:else}
-        <Button onclick={() => ((job.current = null), (job.error = ''))}>Close</Button>
+        <Button onclick={() => (job.current = null)}>Close</Button>
       {/if}
     </header>
     {#if job.current}
@@ -106,10 +105,6 @@ const exitName = (code: number | null) =>
 
   .state.running {
     color: var(--color-info);
-  }
-
-  .err {
-    color: var(--color-neg);
   }
 
   pre {

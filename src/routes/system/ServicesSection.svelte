@@ -1,4 +1,5 @@
 <script lang="ts">
+import Notice from '$lib/components/feedback/Notice.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Card from '$lib/components/ui/Card.svelte'
@@ -7,6 +8,7 @@ import type { PageData } from './$types'
 let { services }: { services: PageData['services'] } = $props()
 
 const tone = { direct: 'pos', bridge: 'info', down: 'neg' } as const
+const failing = $derived(services.filter((s) => s.error))
 </script>
 
 <section>
@@ -22,8 +24,15 @@ const tone = { direct: 'pos', bridge: 'info', down: 'neg' } as const
     empty={services.length === 0}
     emptyText="Not synced yet — the first sync runs when the daemon starts."
   >
+    {#if failing.length}
+      <Notice tone="error">
+        <ul>
+          {#each failing as s (s.slug)}<li><code class="mono">{s.slug}</code>: {s.error}</li>{/each}
+        </ul>
+      </Notice>
+    {/if}
     <Card>
-      <ul>
+      <ul class="list">
         {#each services as s (s.slug)}
           <li class="t-small">
             <code class="mono">{s.slug}</code>
@@ -33,7 +42,6 @@ const tone = { direct: 'pos', bridge: 'info', down: 'neg' } as const
             {#if s.local}
               <a class="mono" href={s.local} target="_blank" rel="noreferrer">{s.local}</a>
             {/if}
-            {#if s.error}<span class="err t-caption">{s.error}</span>{/if}
           </li>
         {/each}
       </ul>
@@ -50,7 +58,7 @@ const tone = { direct: 'pos', bridge: 'info', down: 'neg' } as const
     flex-wrap: wrap;
   }
 
-  ul {
+  .list {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
@@ -63,9 +71,5 @@ const tone = { direct: 'pos', bridge: 'info', down: 'neg' } as const
     gap: var(--space-3);
     flex-wrap: wrap;
     overflow-wrap: anywhere;
-  }
-
-  .err {
-    color: var(--color-neg);
   }
 </style>

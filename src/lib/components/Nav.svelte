@@ -23,9 +23,15 @@ function isActive(href: string): boolean {
     <a class="wordmark" href="/">atlas</a>
     <div class="links">
       {#each links as link (link.href)}
-        <a href={link.href} class="link" aria-current={isActive(link.href) ? 'page' : undefined}>
+        <a
+          href={link.href}
+          class="link"
+          aria-current={isActive(link.href) ? 'page' : undefined}
+          aria-label={link.label}
+          title={link.label}
+        >
           <Icon name={link.icon} size={14} />
-          {link.label}
+          <span class="label">{link.label}</span>
         </a>
       {/each}
     </div>
@@ -66,13 +72,21 @@ function isActive(href: string): boolean {
     text-decoration: none;
   }
 
+  /* A narrow screen scrolls the links sideways rather than pushing the page wider. The scroller
+     clips at its padding box, so the padding (offset by the margin) leaves room for the focus ring. */
   .links {
     display: flex;
     gap: var(--space-1);
+    min-width: 0;
+    margin: calc(-1 * var(--space-1));
+    padding: var(--space-1);
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 
   .link {
     display: inline-flex;
+    flex: none;
     align-items: center;
     gap: var(--space-1);
     height: 30px;
@@ -117,5 +131,26 @@ function isActive(href: string): boolean {
   .theme:hover {
     background: var(--color-hover);
     color: var(--color-fg);
+  }
+
+  .wordmark,
+  .theme {
+    flex: none;
+  }
+
+  /* A phone gets icons; the label stays the link's name (aria-label, title). */
+  @media (max-width: 768px) {
+    .inner {
+      gap: var(--space-3);
+      padding: 0 var(--space-4);
+    }
+
+    .link {
+      padding: 0 var(--space-2);
+    }
+
+    .label {
+      display: none;
+    }
   }
 </style>
