@@ -152,9 +152,10 @@ Scripts, just recipes, domains and umami links come from `getDynamicActions`.
   wildcard (`sites/atlas-wildcard.caddy`), so a new slug costs no certificate
 
 **Request guard (`src/lib/guard.ts`, `handle` in `src/hooks.server.ts`)**
-- One check for every route, no login. Every non-GET/HEAD passes only from this Mac (no
-  `x-forwarded-for`, a loopback `Host` against DNS rebinding, nothing from another origin against
-  CSRF — `Origin` must be `http://<Host>` itself, and a browser's `Sec-Fetch-Site` `same-origin`
+- One check for every route, no login. Every request, proxied or not, needs a loopback `Host`
+  against DNS rebinding — the NAS Caddy rewrites it to `localhost`, and a rebound page can forge
+  `x-forwarded-*` but not `Host`. Every non-GET/HEAD then passes only from this Mac (no
+  `x-forwarded-for`, nothing from another origin against CSRF — `Origin` must be `http://<Host>` itself, and a browser's `Sec-Fetch-Site` `same-origin`
   or `none`, so a page on another localhost port or a cross-site `<img>` is refused) or through
   the NAS Caddy on `atlas.jurrejan.com`/`atlas.atlas.local` with that hostname's own `Origin`.
   `atlas.atlas.remote` (off-LAN, password-gated) is read-only; any other forwarded host gets

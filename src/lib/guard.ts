@@ -45,16 +45,6 @@ function refuseForeign(headers: Headers, self: string): string | null {
   return null
 }
 
-/**
- * A direct request: a loopback `Host` (DNS rebinding) and nothing from another origin (CSRF) — a
- * page from any other local dev server is just as foreign as one from the internet.
- */
-function refuseDirect(headers: Headers): string | null {
-  const host = headers.get('host') ?? '(none)'
-  if (!LOOPBACK_HOST.test(host)) return `host ${host} is not this Mac`
-  return refuseForeign(headers, `http://${host}`)
-}
-
 /** Through the NAS (`forwarded` is a known hostname): for a write that hostname's own `Origin`. */
 function refuseProxied(headers: Headers, forwarded: string, write: boolean): string | null {
   if (forwarded === REMOTE_HOST) return write ? 'read-only off-LAN' : 'not available off-LAN'
@@ -75,6 +65,10 @@ export function refusal(
   headers: Headers,
   query: URLSearchParams,
 ): string | null {
+  // DNS rebinding: a rebound page names itself in `Host` and can add any other header, forwarded
+  // ones included — so `Host` comes first, proxied or not (Caddy sends `localhost` on every block).
+  const host = headers.get('host') ?? '(none)'
+  if (!LOOPBACK_HOST.test(host)) return `host ${host} is not this Mac`
   const write = method !== 'GET' && method !== 'HEAD'
   const proxied = headers.has('x-forwarded-for')
   const forwarded = headers.get('x-forwarded-host') ?? '(none)'
@@ -83,5 +77,9 @@ export function refusal(
   if (proxied && forwarded !== REMOTE_HOST && !LAN_HOSTS.includes(forwarded))
     return `unknown forwarded host ${forwarded}`
   if (!write && !isLocalOnly(route, query)) return null
-  return proxied ? refuseProxied(headers, forwarded, write) : refuseDirect(headers)
+  // Direct: nothing from another origin (CSRF) — a page from any other local dev server is just
+  // as foreign as one from the internet.
+  return proxied
+    ? refuseProxied(headers, forwarded, write)
+    : refuseForeign(headers, `http://${host}`)
 }
