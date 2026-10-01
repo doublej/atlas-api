@@ -199,6 +199,7 @@ row-click selection code.
 | `expanded?` | snippet `(row)` | full-width content under an opened row (one open at a time) |
 | `empty?` | snippet | body when `rows` is empty; default `Nothing to show.` |
 | `maxHeight?` | CSS length | caps the height; the header sticks while the body scrolls. Without it the header scrolls away with the page (the frame always scrolls sideways, so it cannot stick to the page) — pass it (`70vh`) on any list that can outgrow the screen |
+| `initialRows?` | `number` | rows rendered on the server and at hydration; the rest are appended right after mount (never a replace). For a list whose SSR HTML would be too heavy — `ProjectTable` renders 80 of 600 |
 
 `Column<T>` (`$lib/table`):
 
@@ -210,6 +211,7 @@ row-click selection code.
 | `sort?` | `(row) => string \| number \| null \| undefined` — makes the header a sort button; blanks sort last |
 | `align?` | `'right'` for numbers and sizes |
 | `wrap?` | lets the cell wrap anywhere (min 12rem) instead of one line |
+| `fill?` | the column takes the table's spare width and ellipsizes past it, so a long value never widens the table — one per table (a project's name) |
 | `hideBelow?` | `768 \| 1100` — hide the column below that viewport width |
 | `hideLabel?` | header label for screen readers only (icon columns) |
 
@@ -255,11 +257,10 @@ Known fits and gaps for the pending migrations:
 - `/ports`: rows are per port but kills are per pid, and one pid can hold several ports. Key and
   select by **port** (`key={(l) => l.port}`), and map the selected ports to unique pids when
   killing — a pid key would collide in the each-block.
-- `ProjectTable`: no selection, `expanded = detail`, the name cell's button calls
-  `state.toggleOpen()` and reads `state.open`; `path` is `hideBelow: 768`, branch/CLAUDE.md are
-  `hideBelow: 1100`; build `columns` with `$derived` to drop Host when `!showHost`; open with
-  `new TableSort('modified', ['git', 'links', 'claude', 'modified', 'run'])`. The Table has one
-  density (8px cell padding, 13px text), so its rows are taller than `ProjectLine`'s 30px.
+- `ProjectTable` (done): no selection, `expanded = detail`, the name cell's button calls
+  `state.toggleOpen()` and reads `state.open`, the name column is `fill`; build `columns` with
+  `$derived` to drop Host when `!showHost`. The Table has one density (8px cell padding, 13px
+  text), so its rows are taller than the old 30px `ProjectLine`.
 - disk cleanup: the group checkbox selects only non-nested rows, the Table header checkbox selects
   all rows; keep the page's group checkbox if that difference matters.
 - disk trim plan: make one row type for steps and refused items (`dim` for both kinds of skip).

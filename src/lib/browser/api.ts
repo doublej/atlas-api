@@ -22,6 +22,14 @@ const GIT_BATCH_SIZE = 20
 
 export const refreshProjects = (): Promise<ScanPayload> => http.post<ScanPayload>('/api/refresh')
 
+/** One full record — the page data carries only the list's fields (`ProjectSummary`). */
+export const fetchProject = (path: string): Promise<Project> =>
+  http.get<Project>(`/api/projects?path=${encodeURIComponent(path)}`)
+
+/** Every full record, archived ones included, for the views that render the full row for all. */
+export const fetchAllProjects = (): Promise<ScanPayload> =>
+  http.get<ScanPayload>('/api/projects?includeArchived=true')
+
 export async function fetchReadme(path: string): Promise<string | null> {
   const { readme } = await http.post<{ readme?: string }>('/api/readme', { path })
   return readme ?? null
