@@ -1,4 +1,5 @@
 <script lang="ts">
+import HostnameChip from '$lib/components/dialogs/hostname/HostnameChip.svelte'
 import type { GitStatus, Project } from '$lib/scanner'
 import type { ActionDef } from '$shared/actions'
 import ClaudeSetup from './ClaudeSetup.svelte'
@@ -55,6 +56,7 @@ const modified = $derived(new Date(project.modifiedAt).toLocaleDateString())
     <div class="line">
       <strong class="name">{project.name}</strong>
       <ProjectBadges {project} {git} {showHost} {templateVersions} />
+      <HostnameChip path={project.path} />
       {#if runningUrl}
         <a class="running" href={runningUrl} target="_blank" rel="noreferrer">
           <span class="pulse"></span>

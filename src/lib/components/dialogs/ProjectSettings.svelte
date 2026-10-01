@@ -1,7 +1,15 @@
 <script lang="ts">
+import Notice from '$lib/components/feedback/Notice.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Modal from '$lib/components/ui/Modal.svelte'
+import { errorMessage } from '$lib/format'
+import type { HostnameRow, HostnameState, SlugCheck } from '$lib/hostnames/types'
+import { http } from '$lib/http'
 import type { Project } from '$lib/scanner'
+import { toast } from '$lib/toast.svelte'
+import HostnameSection from './hostname/HostnameSection.svelte'
+import { hostOf, portProblem, setChip } from './hostname/hostname.svelte'
+import ScanOverrides from './ScanOverrides.svelte'
 
 interface Props {
   /** `null` closes the dialog — the same convention RenameDialog and MoveDialog use. */
@@ -14,11 +22,6 @@ interface Props {
 const { project, onclose, onsaved }: Props = $props()
 
 type Meta = Record<string, unknown>
-interface ScanConfig {
-  maxDepth: number
-  depth: Record<string, number>
-  force: Record<string, boolean>
-}
 
 /** `.atlas` keys this form owns. Anything else is shown read-only and left untouched. */
 const FIELDS = [
@@ -32,20 +35,20 @@ const FIELDS = [
 ] as const
 
 let meta = $state<Meta>({})
-let config = $state<ScanConfig | null>(null)
 let form = $state({
   description: '',
   type: '',
   framework: '',
   slug: '',
-  port: '',
+  port: null as number | null,
   archived: false,
   devPublic: false,
-  force: 'auto' as 'auto' | 'true' | 'false',
-  depth: '',
 })
+let hostname = $state<HostnameState | null>(null)
+let verdict = $state<SlugCheck | null>(null)
 let status = $state<string | null>(null)
 let saving = $state(false)
+let overrides = $state<ScanOverrides>()
 
 const rest = $derived(
   Object.entries(meta).filter(([k]) => !(FIELDS as readonly string[]).includes(k)),
@@ -59,178 +62,132 @@ $effect(() => {
   const target = project
   if (!target) return
   status = null
+  hostname = null
   Promise.all([
-    fetch(`/api/atlas?path=${encodeURIComponent(target.path)}`).then((r) => r.json()),
-    fetch('/api/config').then((r) => r.json()),
+    http.get<{ meta?: Meta }>(`/api/atlas?path=${encodeURIComponent(target.path)}`),
+    http.get<HostnameRow[]>('/api/hostnames'),
   ])
-    .then(([atlas, scan]) => {
+    .then(([atlas, rows]) => {
       meta = atlas.meta ?? {}
-      config = scan
+      hostname = rows.find((r) => r.path === target.path) ?? null
       form = {
         description: str(meta.description),
         type: str(meta.type),
         framework: str(meta.framework),
         slug: str(meta.slug),
-        port: str(meta.port),
+        port: typeof meta.port === 'number' ? meta.port : null,
         archived: meta.archived === true,
         devPublic: meta.devPublic === true,
-        force: str(scan.force?.[target.relativePath] ?? 'auto') as 'auto' | 'true' | 'false',
-        depth: str(scan.depth?.[target.relativePath]),
       }
     })
-    .catch((err) => (status = String(err)))
+    .catch((err) => (status = errorMessage(err)))
 })
 
 /** Empty clears the override — `null` is what `PATCH /api/atlas` reads as "delete this key". */
 const value = (v: string): string | null => (v.trim() === '' ? null : v.trim())
 
+/** Why the form can't be saved yet, or null. The server checks all of it again. */
+function blocker(): string | null {
+  if (verdict?.status === 'invalid') return `Slug: ${verdict.reason}`
+  if (verdict?.status === 'taken') return `Slug: ${verdict.reason}`
+  const port = portProblem(form.port)
+  return port ? `Dev port: ${port}` : null
+}
+
 async function save(): Promise<void> {
   if (!project || saving) return
+  status = blocker()
+  if (status) return
   saving = true
-  status = null
 
   const patch: Meta = {
     description: value(form.description),
     type: value(form.type),
     framework: value(form.framework),
     slug: value(form.slug),
-    port: form.port.trim() === '' ? null : Number(form.port),
+    port: form.port,
     archived: form.archived || null,
     devPublic: form.devPublic || null,
   }
 
-  const res = await fetch('/api/atlas', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: project.path, patch }),
-  })
-  const body = await res.json()
-  if (!res.ok) {
-    status = body.error ?? 'save failed'
+  try {
+    const res = await http.patch<{ atlas: Meta; hostname?: HostnameState }>('/api/atlas', {
+      path: project.path,
+      patch,
+    })
+    meta = res.atlas
+    await overrides?.save()
+    onsaved()
+    if (res.hostname) {
+      // The route moved: stay open so the pill can follow it to live.
+      hostname = res.hostname
+      setChip(project.path, res.hostname)
+      toast(`Saved — hostname is now ${hostOf(res.hostname.local)}`)
+    } else {
+      toast('Saved')
+      onclose()
+    }
+  } catch (e) {
+    status = errorMessage(e)
+  } finally {
     saving = false
-    return
   }
-
-  const scanError = await saveScanConfig()
-  saving = false
-  if (scanError) {
-    status = scanError
-    return
-  }
-  onsaved()
-  onclose()
-}
-
-/** The two knobs that live in `.atlas-config.json` rather than in the project's own `.atlas`. */
-async function saveScanConfig(): Promise<string | null> {
-  if (!project || !config) return null
-  const rel = project.relativePath
-  const next: ScanConfig = {
-    maxDepth: config.maxDepth,
-    depth: { ...config.depth },
-    force: { ...config.force },
-  }
-
-  if (form.force === 'auto') delete next.force[rel]
-  else next.force[rel] = form.force === 'true'
-
-  if (form.depth.trim() === '') delete next.depth[rel]
-  else next.depth[rel] = Number(form.depth)
-
-  const unchanged =
-    JSON.stringify(next.depth) === JSON.stringify(config.depth) &&
-    JSON.stringify(next.force) === JSON.stringify(config.force)
-  if (unchanged) return null
-
-  const res = await fetch('/api/config', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(next),
-  })
-  if (res.ok) return null
-  return (await res.json()).error ?? 'scan config save failed'
 }
 </script>
 
 <Modal open={project !== null} title="Project settings" {onclose}>
   {#if project}
-    <p class="t-caption muted path">{project.relativePath}</p>
+    <div class="settings">
+      <p class="t-caption muted path">{project.relativePath}</p>
 
-    <div class="grid">
-      <label class="field wide">
-        <span class="t-caption">Description</span>
-        <input bind:value={form.description} placeholder="from README or package.json" />
-      </label>
+      <div class="grid">
+        <label class="field wide">
+          <span class="t-caption">Description</span>
+          <input bind:value={form.description} placeholder="from README or package.json" />
+        </label>
 
-      <label class="field">
-        <span class="t-caption">Type</span>
-        <input bind:value={form.type} placeholder={project.type ?? 'detected'} />
-      </label>
+        <label class="field">
+          <span class="t-caption">Type</span>
+          <input bind:value={form.type} placeholder={project.type ?? 'detected'} />
+        </label>
 
-      <label class="field">
-        <span class="t-caption">Framework</span>
-        <input bind:value={form.framework} placeholder={project.framework ?? 'detected'} />
-      </label>
+        <label class="field">
+          <span class="t-caption">Framework</span>
+          <input bind:value={form.framework} placeholder={project.framework ?? 'detected'} />
+        </label>
 
-      <label class="field">
-        <span class="t-caption">Slug</span>
-        <input bind:value={form.slug} placeholder={project.slug} />
-      </label>
+        <label class="field toggle">
+          <input type="checkbox" bind:checked={form.archived} />
+          <span>Archived</span>
+        </label>
+      </div>
 
-      <label class="field">
-        <span class="t-caption">Dev port</span>
-        <input bind:value={form.port} inputmode="numeric" placeholder="allocated on first run" />
-      </label>
+      <hr />
 
-      <label class="field toggle">
-        <input type="checkbox" bind:checked={form.archived} />
-        <span>Archived</span>
-      </label>
+      <HostnameSection
+        {project}
+        bind:slug={form.slug}
+        bind:port={form.port}
+        bind:devPublic={form.devPublic}
+        bind:verdict
+        bind:hostname
+      />
 
-      <label class="field toggle">
-        <input type="checkbox" bind:checked={form.devPublic} />
-        <span>Dev hostname needs no password</span>
-      </label>
+      <hr />
+
+      <ScanOverrides {project} bind:this={overrides} />
+
+      {#if rest.length > 0}
+        <details>
+          <summary class="t-caption muted">Other .atlas keys ({rest.length}) — left untouched</summary>
+          <pre class="mono">{JSON.stringify(Object.fromEntries(rest), null, 2)}</pre>
+        </details>
+      {/if}
+
+      {#if status}
+        <div class="status"><Notice tone="error">{status}</Notice></div>
+      {/if}
     </div>
-
-    <hr />
-
-    <p class="t-caption muted">
-      Scanner overrides for this path. <strong>Depth</strong> is the walk limit for this subtree —
-      and the only way to catalog a project that sits inside this one.
-      <strong>Detection</strong> promotes or demotes a folder the scanner read wrong.
-    </p>
-
-    <div class="grid">
-      <label class="field">
-        <span class="t-caption">Detection</span>
-        <select bind:value={form.force}>
-          <option value="auto">Automatic</option>
-          <option value="true">Always a project</option>
-          <option value="false">Never a project</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span class="t-caption">Scan depth</span>
-        <input
-          bind:value={form.depth}
-          inputmode="numeric"
-          placeholder={config ? `inherits ${config.maxDepth}` : 'inherits'}
-        />
-      </label>
-    </div>
-
-    {#if rest.length > 0}
-      <details>
-        <summary class="t-caption muted">Other .atlas keys ({rest.length}) — left untouched</summary>
-        <pre class="mono">{JSON.stringify(Object.fromEntries(rest), null, 2)}</pre>
-      </details>
-    {/if}
-
-    {#if status}
-      <p class="t-small error">{status}</p>
-    {/if}
   {/if}
 
   {#snippet footer()}
@@ -272,8 +229,8 @@ async function saveScanConfig(): Promise<string | null> {
     color: var(--color-fg-2);
   }
 
-  input:not([type='checkbox']),
-  select {
+  .settings :global(input:not([type='checkbox'])),
+  .settings :global(select) {
     height: 30px;
     padding: 0 var(--space-2);
     font-family: inherit;
@@ -284,8 +241,8 @@ async function saveScanConfig(): Promise<string | null> {
     border-radius: var(--radius-sm);
   }
 
-  input:focus-visible,
-  select:focus-visible {
+  .settings :global(input:focus-visible),
+  .settings :global(select:focus-visible) {
     outline: 2px solid var(--color-ring);
     outline-offset: 1px;
   }
@@ -307,9 +264,12 @@ async function saveScanConfig(): Promise<string | null> {
     border-radius: var(--radius-sm);
   }
 
-  .error {
-    margin: var(--space-3) 0 0;
-    color: var(--color-neg);
+  .settings :global(input[aria-invalid='true']) {
+    border-color: var(--color-neg);
+  }
+
+  .status {
+    margin-top: var(--space-3);
   }
 
   @media (max-width: 560px) {
