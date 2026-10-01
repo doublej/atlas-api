@@ -30,11 +30,19 @@ const columns: Column<FolderRow>[] = [
   { key: 'size', label: 'Size', sort: (f) => f.bytes, align: 'right', cell: sizeCell },
   { key: 'path', label: 'Folder', sort: (f) => f.path, fill: true, cell: pathCell },
   { key: 'inUse', label: 'In use', sort: (f) => f.inUse, cell: inUseCell },
-  { key: 'why', label: 'What it is', sort: (f) => f.why, hideBelow: 768, cell: whyCell },
+  {
+    key: 'why',
+    label: 'What it is',
+    sort: (f) => f.why,
+    wrap: true,
+    hideBelow: 768,
+    cell: whyCell,
+  },
   {
     key: 'restore',
     label: 'How it comes back',
     sort: (f) => f.restore,
+    wrap: true,
     hideBelow: 1100,
     cell: restoreCell,
   },
@@ -64,8 +72,10 @@ function toggleRisk(r: Risk) {
 
 {#snippet sizeCell(f: FolderRow)}<span class="num">{human(f.bytes)}</span>{/snippet}
 {#snippet pathCell(f: FolderRow)}<span class="mono" title={f.path}>{tildify(f.path)}{f.nested ? ' (nested)' : ''}</span>{/snippet}
+<!-- Only the badge stays on one line: a long holder ("DTServiceHub (pid …) works in its project")
+     on one line squeezed the Folder column down to "~/d…". -->
 {#snippet inUseCell(f: FolderRow)}
-  {#if f.inUse}<Badge tone="warn" title="something seems to use it">in use: {f.inUse}</Badge>{/if}
+  {#if f.inUse}<Badge tone="warn" title="something seems to use it">in use</Badge><span class="holder t-caption muted">{f.inUse}</span>{/if}
 {/snippet}
 {#snippet whyCell(f: FolderRow)}<span class="muted">{f.why}</span>{/snippet}
 {#snippet restoreCell(f: FolderRow)}<span class="muted mono">{f.restore}</span>{/snippet}
@@ -125,6 +135,13 @@ function toggleRisk(r: Risk) {
 
   section .bar {
     margin-bottom: 0;
+  }
+
+  .holder {
+    display: block;
+    min-width: 5rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .group {
