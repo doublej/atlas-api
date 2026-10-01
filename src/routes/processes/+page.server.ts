@@ -20,7 +20,7 @@ export const load: PageServerLoad = async ({ url }) => {
     const runnable: Runnable = Object.fromEntries(
       snap.projects.flatMap((p) =>
         running.has(p.path) && p.devCommand
-          ? [[p.path, { command: p.devCommand, runner: p.runner }]]
+          ? [[p.path, { command: p.devCommand, runner: p.runner || 'npm' }]] // as runDevServer
           : [],
       ),
     )
