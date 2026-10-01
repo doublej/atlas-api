@@ -1,8 +1,14 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ensureRoute, moveRoute, removeRoute, retryRoute, SlugTakenError } from '../caddyDev'
-import { assertPatchFree, checkSlug, planFolderMove, rerouteProject } from './claims'
+import {
+  applyFolderMove,
+  assertPatchFree,
+  checkSlug,
+  planFolderMove,
+  rerouteProject,
+} from './claims'
 import type { Registry } from './registry'
 
 // The registry lives in memory, the NAS answers what `h.push`/`h.remove` say, and ~/dev is a
@@ -113,19 +119,41 @@ describe('assertPatchFree', () => {
 
 describe('planFolderMove', () => {
   it('has nothing to plan without a route', async () => {
-    expect(await planFolderMove(a, join(h.root, 'c'))).toBeNull()
+    expect(await planFolderMove(a, join(h.root, 'c'))).toEqual([])
   })
 
   it('keeps the hostname when the .atlas slug does, and follows the folder otherwise', async () => {
+    const c = join(h.root, 'c')
     await route('a')
-    expect(await planFolderMove(a, join(h.root, 'c'))).toEqual({ from: 'a', to: 'c' })
+    expect(await planFolderMove(a, c)).toEqual([{ path: c, from: 'a', to: 'c' }])
     await setSlug(a, 'a')
-    expect(await planFolderMove(a, join(h.root, 'c'))).toEqual({ from: 'a', to: 'a' })
+    expect(await planFolderMove(a, c)).toEqual([{ path: c, from: 'a', to: 'a' }])
   })
 
   it("refuses a move onto another project's hostname", async () => {
     await route('a')
     await expect(planFolderMove(a, join(h.root, 'zz-b'))).rejects.toBeInstanceOf(SlugTakenError)
+  })
+
+  it('does not blame the project for its own slug after a half-finished reroute', async () => {
+    await route('zz-a')
+    await setSlug(a, 'zz-a2')
+    h.remove = { ok: false, error: 'ssh down' } // the old route stays, release-pending
+    await rerouteProject(a, { slug: 'zz-a2' })
+    const c = join(h.root, 'c')
+    expect(await planFolderMove(a, c)).toEqual([{ path: c, from: 'zz-a2', to: 'zz-a2' }])
+  })
+
+  it('carries the routes of projects nested in the moved folder', async () => {
+    const w = join(h.root, 'w')
+    const v = join(h.root, 'v')
+    await mkdir(join(w, 'ui'), { recursive: true })
+    await ensureRoute({ slug: 'w-ui', path: join(w, 'ui'), port: 4103 })
+    const moves = await planFolderMove(w, v)
+    await rename(w, v)
+    expect(await applyFolderMove(moves, v)).toBeUndefined() // w itself has no route
+    expect(h.registry['v-ui']).toMatchObject({ path: join(v, 'ui'), nasSynced: true })
+    expect(h.registry['w-ui']).toBeUndefined()
   })
 })
 
@@ -136,6 +164,16 @@ describe('rerouteProject', () => {
     h.pushed = []
     expect(await rerouteProject(a, { port: 4101 })).toBeUndefined()
     expect(h.pushed).toEqual([])
+  })
+
+  it('leaves a released route released', async () => {
+    await route('a')
+    h.remove = { ok: false, error: 'ssh down' }
+    await removeRoute('a')
+    h.pushed = []
+    expect(await rerouteProject(a, { port: 4300 })).toBeUndefined()
+    expect(h.pushed).toEqual([])
+    expect(h.registry.a).toMatchObject({ port: 4101, release: true })
   })
 
   it('moves the route to the new slug and drops the old one', async () => {

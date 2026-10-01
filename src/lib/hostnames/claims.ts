@@ -1,15 +1,28 @@
+import { existsSync } from 'node:fs'
 import { relative } from 'node:path'
 import { type AtlasMeta, readAtlas } from '../atlasFile'
 import { moveRoute, SlugTakenError } from '../caddyDev'
 import { DEV_FOLDER } from '../config'
 import { currentSlug, type Project, slugify } from '../scanner'
-import { describeHolder, hostnamesFor, readRegistry, rowHolder, slugsAt } from './registry'
+import {
+  describeHolder,
+  type HostnameEntry,
+  hostnamesFor,
+  type Registry,
+  readRegistry,
+  rowHolder,
+  slugsAt,
+} from './registry'
 import { slugProblem } from './slug'
 import type { Holder, HostnameState, SlugCheck } from './types'
 
 // Who may have which slug: every slug write (assign, run, a `.atlas` edit, a folder move) asks here.
 
 type Claimant = Pick<Project, 'path' | 'slug' | 'name' | 'isLocal'>
+
+/** The project's live route: a release-pending row is on its way out, not the project's route. */
+const routeAt = (registry: Registry, path: string): string | undefined =>
+  slugsAt(registry, path).find((s) => !registry[s].release)
 
 /**
  * Who holds `slug` against the project at `path`: a registry row, a service, or another local
@@ -53,7 +66,7 @@ export async function assertPatchFree(
     typeof merged.slug === 'string' && merged.slug
       ? slugify(merged.slug)
       : slugify(relative(DEV_FOLDER, path)) // as currentSlug reads it
-  const route = slugsAt(await readRegistry(), path)[0]
+  const route = routeAt(await readRegistry(), path)
   if (next !== (route ?? (await slugAt(path)))) await assertSlugFree(next, path, projects)
 }
 
@@ -80,22 +93,53 @@ export function slugAt(path: string, folder = path): Promise<string> {
   return currentSlug({ path, relativePath: relative(DEV_FOLDER, folder) })
 }
 
+export interface FolderMove {
+  /** Where the routed project's folder ends up. */
+  path: string
+  from: string
+  to: string
+}
+
+/** The folder of a live row at or under `from`, which moves with it; undefined for any other row. */
+function movingFolder(row: HostnameEntry, from: string): string | undefined {
+  const path = row.path
+  if (row.release || !path || (path !== from && !path.startsWith(`${from}/`))) return undefined
+  return existsSync(path) ? path : undefined // an orphan row: its folder isn't the one moving
+}
+
 /**
- * What a folder rename/move does to the project's route, decided before the folder moves (the
- * `.atlas` is still at `from`). Null without a route; throws {@link SlugTakenError} when the
- * new folder's slug belongs to someone else.
+ * What a folder rename/move does to the routes of the projects at or under `from`, decided
+ * before the folder moves (each `.atlas` is still at its old path). Throws
+ * {@link SlugTakenError} when a new folder's slug belongs to someone else.
  */
-export async function planFolderMove(
-  from: string,
-  to: string,
-): Promise<{ from: string; to: string } | null> {
+export async function planFolderMove(from: string, to: string): Promise<FolderMove[]> {
   const registry = await readRegistry()
-  const slug = slugsAt(registry, from)[0]
-  if (!slug) return null
-  const next = await slugAt(from, to)
-  const holder = next === slug ? null : rowHolder(next, registry[next], { path: to })
-  if (holder) throw new SlugTakenError(next, holder)
-  return { from: slug, to: next }
+  const moves: FolderMove[] = []
+  for (const [slug, row] of Object.entries(registry)) {
+    const old = movingFolder(row, from)
+    if (!old) continue
+    const path = to + old.slice(from.length)
+    const next = await slugAt(old, path)
+    // A row at the same folder is the mover's own, left behind by a half-finished move.
+    const own = next === slug || registry[next]?.path === old
+    const holder = own ? null : rowHolder(next, registry[next], { path })
+    if (holder) throw new SlugTakenError(next, holder)
+    moves.push({ path, from: slug, to: next })
+  }
+  return moves
+}
+
+/** After the folder moved: carry every planned route. The state of the route at `to`, if any. */
+export async function applyFolderMove(
+  moves: FolderMove[],
+  to: string,
+): Promise<HostnameState | undefined> {
+  let own: HostnameState | undefined
+  for (const m of moves) {
+    const state = await moveRoute(m.path, m.from, m.to)
+    if (m.path === to) own = state
+  }
+  return own
 }
 
 /**
@@ -107,7 +151,7 @@ export async function rerouteProject(
   meta: Record<string, unknown>,
 ): Promise<HostnameState | undefined> {
   const registry = await readRegistry()
-  const from = slugsAt(registry, path)[0]
+  const from = routeAt(registry, path)
   if (!from) return undefined
   const row = registry[from]
   const to = await slugAt(path)

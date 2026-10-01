@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { getPrimaryHost } from '$shared/hosts'
 import { resolveInCatalog } from './claude-tree'
 
@@ -25,4 +25,13 @@ export const ATLAS_TEMPLATES_DIR =
  */
 export function resolveLocal(path: unknown): string | null {
   return typeof path === 'string' && path ? resolveInCatalog(path, DEV_FOLDER) : null
+}
+
+/**
+ * Stricter than {@link resolveLocal}, for the routes that move a folder itself (rename, move):
+ * a path strictly inside the catalog — never the root, never `~/.claude/CLAUDE.md`.
+ */
+export function resolveInsideCatalog(path: unknown): string | null {
+  const real = resolveLocal(path)
+  return real?.startsWith(resolve(DEV_FOLDER) + sep) ? real : null
 }
