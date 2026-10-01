@@ -78,8 +78,12 @@ const retry = () =>
   run('Retry', () => http.post<HostnameState>('/api/hostnames/retry', { slug: hostname?.slug }))
 
 async function copy(url: string): Promise<void> {
-  await navigator.clipboard.writeText(url)
-  toast(`Copied ${hostOf(url)}`)
+  try {
+    await navigator.clipboard.writeText(url)
+    toast(`Copied ${hostOf(url)}`)
+  } catch (e) {
+    toast(`Copy failed: ${errorMessage(e)}`, 'error') // a page without focus may not write
+  }
 }
 
 const status = (slug: string) =>
