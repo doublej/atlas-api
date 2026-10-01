@@ -1,5 +1,5 @@
 import { error, json } from '@sveltejs/kit'
-import { checkArgs, type DiskResult, diskJson, requireLocalRequest } from '$lib/disk'
+import { checkArgs, type DiskResult, diskJson } from '$lib/disk'
 import type { RequestHandler } from './$types'
 
 /** The CLI's `config set` syntax: lists are comma-joined, null is `null`. */
@@ -7,7 +7,6 @@ const asArg = (v: unknown) => (Array.isArray(v) ? v.join(',') : v === null ? 'nu
 
 /** `{ changes: { key: value } }` → one `atlas disk config set` per key, in order; stops at the first error. */
 export const PUT: RequestHandler = async ({ request }) => {
-  requireLocalRequest(request)
   const { changes } = await request.json()
   if (!changes || typeof changes !== 'object') error(400, 'body is { changes: { key: value } }')
   const results: DiskResult[] = []
