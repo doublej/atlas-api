@@ -44,17 +44,18 @@ loc-check:
     setopt null_glob
     eval "$(python3 -c "
     import json, shlex
-    c = json.load(open('.quality.json'))
-    print(f'WARN={c[\"loc\"][\"warn\"]}')
-    print(f'ERROR={c[\"loc\"][\"error\"]}')
-    g = c['globs']
-    print(f'GLOBS=({shlex.join(g)})')
+    c = json.load(open('.quality.json'))['loc']
+    print(f'WARN={c[\"warn\"]}')
+    print(f'ERROR={c[\"error\"]}')
+    print(f'GLOBS=({shlex.join(c[\"globs\"])})')
+    print(f'EXEMPT=({shlex.join(c.get(\"exempt\", []))})')
     ")"
     err=0
     for pattern in $GLOBS; do
         for f in ${~pattern}; do
-            lines=$(wc -l < "$f")
-            if (( lines > ERROR )); then echo "error: $f ($lines lines, max $ERROR)"; err=1
+            lines=$(( $(wc -l < "$f") ))
+            if (( ${EXEMPT[(Ie)$f]} )); then echo "exempt debt: $f ($lines lines, max $ERROR — split it, then drop it from .quality.json)"
+            elif (( lines > ERROR )); then echo "error: $f ($lines lines, max $ERROR)"; err=1
             elif (( lines > WARN )); then echo "warn: $f ($lines lines, target ≤$WARN — don't trim, split the file!)"; fi
         done
     done
@@ -68,8 +69,7 @@ dir-check:
     import json, shlex
     c = json.load(open('.quality.json'))
     print(f'MAX={c[\"dir\"][\"max_files\"]}')
-    g = c['globs']
-    print(f'GLOBS=({shlex.join(g)})')
+    print(f'GLOBS=({shlex.join(c[\"dir\"][\"globs\"])})')
     ")"
     err=0
     typeset -A counts

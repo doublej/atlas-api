@@ -1,18 +1,11 @@
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { json } from '@sveltejs/kit'
-import {
-  appendHistory,
-  buildTreeCached,
-  clearTreeCache,
-  extractPreview,
-  popHistory,
-  readHistory,
-  readSafely,
-  resolveInCatalog,
-  searchTree,
-  sha,
-} from '$lib/claude-tree'
+import { buildTreeCached, clearTreeCache, resolveInCatalog } from '$lib/claude-tree'
+import { appendHistory, popHistory, readHistory, sha } from '$lib/claude-tree-history'
+import { extractPreview } from '$lib/claude-tree-parse'
+import { searchTree } from '$lib/claude-tree-search'
+import { readSafely } from '$lib/claude-tree-walk'
 import { DEV_FOLDER } from '$lib/config'
 import type { RequestHandler } from './$types'
 

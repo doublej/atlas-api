@@ -122,8 +122,8 @@ function fmt(n: number): string {
 	.cmcard {
 		width: 240px;
 		text-align: left;
-		background: var(--card-bg);
-		border: var(--hairline) solid var(--border);
+		background: var(--color-card);
+		border: var(--hairline) solid var(--color-border);
 		border-radius: var(--radius-md);
 		overflow: hidden;
 		transition:
@@ -131,21 +131,21 @@ function fmt(n: number): string {
 			box-shadow var(--duration-fast) var(--ease-out);
 	}
 	.cmcard.sel {
-		border-color: var(--accent);
-		box-shadow: 0 0 0 1px var(--accent);
+		border-color: var(--color-accent);
+		box-shadow: 0 0 0 1px var(--color-accent);
 	}
 	/* over the recommended token budget — flag the node */
 	.cmcard[data-over='true']:not(.sel) {
-		border-color: var(--danger);
+		border-color: var(--color-neg);
 	}
 	/* rules read as attached sidecars: dashed, rule-tinted, distinct from hierarchy cards */
 	.cmcard[data-kind='rule'] {
 		border-style: dashed;
-		border-color: color-mix(in srgb, var(--kind-rule) 55%, var(--border));
-		background: color-mix(in srgb, var(--kind-rule) 5%, var(--card-bg));
+		border-color: color-mix(in srgb, var(--kind-rule) 55%, var(--color-border));
+		background: color-mix(in srgb, var(--kind-rule) 5%, var(--color-card));
 	}
 	.cmcard[data-kind='rule'] .cmhead {
-		background: color-mix(in srgb, var(--kind-rule) 12%, var(--card-head));
+		background: color-mix(in srgb, var(--kind-rule) 12%, var(--color-card-2));
 	}
 
 	/* titlebar */
@@ -154,8 +154,8 @@ function fmt(n: number): string {
 		align-items: center;
 		gap: 6px;
 		padding: 7px 10px;
-		background: var(--card-head);
-		border-bottom: var(--hairline) solid var(--border);
+		background: var(--color-card-2);
+		border-bottom: var(--hairline) solid var(--color-border);
 	}
 	/* one --kind-color per node kind drives the icon, the badge chip, and the compact bar */
 	.cmcard[data-kind='root'] {
@@ -178,13 +178,13 @@ function fmt(n: number): string {
 	}
 	.cmicon {
 		flex: none;
-		color: var(--kind-color, var(--text-dimmer));
+		color: var(--kind-color, var(--color-muted));
 	}
 	.cmname {
 		flex: 1 1 auto;
 		min-width: 0;
 		font: 500 10px/1.35 var(--font-mono);
-		color: var(--text-dim);
+		color: var(--color-fg-2);
 		white-space: nowrap;
 		overflow: hidden;
 	}
@@ -195,8 +195,8 @@ function fmt(n: number): string {
 		letter-spacing: 0.04em;
 		padding: 2px 6px;
 		border-radius: var(--radius-full);
-		color: var(--kind-color, var(--text-dimmer));
-		background: color-mix(in srgb, var(--kind-color, var(--text-faint)) 16%, transparent);
+		color: var(--kind-color, var(--color-muted));
+		background: color-mix(in srgb, var(--kind-color, var(--color-muted-2)) 16%, transparent);
 	}
 	/* zoomed-out LOD: keep the card's footprint (height set inline = layout height),
 	   drop every detail, show one large centered title. */
@@ -210,7 +210,7 @@ function fmt(n: number): string {
 		font: 600 24px/1.15 var(--font-sans);
 		text-align: center;
 		letter-spacing: -0.02em;
-		color: var(--text);
+		color: var(--color-fg);
 		word-break: break-word;
 		display: -webkit-box;
 		-webkit-line-clamp: 3;
@@ -238,27 +238,27 @@ function fmt(n: number): string {
 		background: color-mix(in srgb, var(--color-pos) 16%, transparent);
 	}
 	.cmrefs {
-		color: var(--accent);
-		background: color-mix(in srgb, var(--accent) 16%, transparent);
+		color: var(--color-accent);
+		background: color-mix(in srgb, var(--color-accent) 16%, transparent);
 	}
 
 	/* viewport — inset "screen" looking into the file */
 	.cmview {
 		margin: 10px;
 		padding: 9px 10px;
-		background: var(--card-view);
-		border: var(--hairline) solid var(--border-faint);
+		background: var(--color-bg);
+		border: var(--hairline) solid var(--color-border-soft);
 		border-radius: var(--radius-sm);
 	}
 	.cmtitle {
 		font: 600 11px/1.3 var(--font-sans);
-		color: var(--text);
+		color: var(--color-fg);
 		letter-spacing: -0.01em;
 		margin-bottom: 5px;
 	}
 	.cmblurb {
 		font: 400 9px/1.5 var(--font-sans);
-		color: var(--card-muted);
+		color: var(--color-muted);
 		display: -webkit-box;
 		-webkit-line-clamp: 6;
 		line-clamp: 6;
@@ -268,7 +268,7 @@ function fmt(n: number): string {
 	.cmsecs {
 		margin-top: 5px;
 		font: 400 8px/1.5 var(--font-mono);
-		color: var(--accent);
+		color: var(--color-accent);
 		display: -webkit-box;
 		-webkit-line-clamp: 5;
 		line-clamp: 5;
@@ -294,16 +294,16 @@ function fmt(n: number): string {
 		align-items: center;
 		gap: 6px;
 		padding: 6px 10px;
-		background: var(--card-head);
-		border-top: var(--hairline) solid var(--border);
+		background: var(--color-card-2);
+		border-top: var(--hairline) solid var(--color-border);
 		font: 400 9px/1.2 var(--font-mono);
-		color: var(--text-dimmer);
+		color: var(--color-muted);
 	}
 	.cmsep {
-		color: var(--edge);
+		color: var(--color-border-strong);
 	}
 	.cmtok.over {
-		color: var(--danger);
+		color: var(--color-neg);
 		font-weight: 600;
 	}
 	.cmacc {

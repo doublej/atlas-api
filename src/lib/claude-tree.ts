@@ -1,53 +1,31 @@
-// Pure logic for the CLAUDE.md tree viewer — filesystem walk, preview extraction,
-// parent wiring, and the .history.jsonl sidecar. Ported from the battle-tested
+// Pure logic for the CLAUDE.md tree viewer — the node types, parent
+// wiring, the tree memo and the catalog boundary. Ported from the battle-tested
 // .claude/scripts/claude_tree.py that shipped in the cookiecutter templates.
 // No framework: consumed by src/routes/api/claude-tree/+server.ts.
+// The walk, parsing, history sidecar and find live in the claude-tree-*.ts siblings.
 
-import { createHash } from 'node:crypto'
-import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { extractPreview, extractReferences } from './claude-tree-parse'
+import {
+  AGENTS,
+  findAncestors,
+  findContextFiles,
+  findRuleFiles,
+  folderAgentFiles,
+  GLOBAL_CLAUDE,
+  glossaryIn,
+  isFile,
+  isGlossary,
+  PRIMARY,
+  readSafely,
+  resolveRefPath,
+} from './claude-tree-walk'
 import { tildify } from './format'
 
-const SKIP = new Set([
-  '.git',
-  'node_modules',
-  '.venv',
-  'venv',
-  'target',
-  'dist',
-  'build',
-  '.next',
-  '.svelte-kit',
-  '.cache',
-  '__pycache__',
-  '.mypy_cache',
-  '.ruff_cache',
-  '.pytest_cache',
-  '_diagnostics',
-  '.gradle',
-  'DerivedData',
-  '.build',
-  '.swiftpm',
-  'worktrees',
-  '.worktrees',
-  '.worktree', // git worktrees are throwaway clones — not real context
-])
-const HISTORY_SUFFIX = '.history.jsonl'
-const MAX_BYTES = 1_000_000 // per CLAUDE.md, hard safety cap
-
-/** The global ancestor that applies to every project. Editable per project decision. */
-export const GLOBAL_CLAUDE = join(homedir(), '.claude', 'CLAUDE.md')
+export { estimateTokens } from './claude-tree-parse'
 
 export type NodeKind = 'root' | 'ancestor' | 'project' | 'descendant' | 'glossary' | 'rule'
 
-/** The primary context file every node represents, unless it's a recognized glossary. */
-const PRIMARY = 'CLAUDE.md'
-/** The cross-tool agent-doc sibling of a CLAUDE.md (Codex et al. read this name). */
-const AGENTS = 'AGENTS.md'
-const isGlossary = (name: string): boolean => name.toLowerCase() === 'glossary.md'
-const isContextFile = (name: string): boolean =>
-  name === PRIMARY || name === AGENTS || isGlossary(name)
 export interface Preview {
   h1: string
   blurb: string
@@ -89,22 +67,6 @@ export interface TreeNode {
   files?: AgentFiles // CLAUDE.md / AGENTS.md in this folder (absent for glossary nodes)
   references?: Reference[] // outbound references parsed from this file's body
 }
-export interface HistoryEntry {
-  ts: string
-  sha: string
-  content: string
-}
-
-export const sha = (text: string): string =>
-  createHash('sha256').update(text).digest('hex').slice(0, 12)
-
-/**
- * Rough token estimate — an indicator, not a precise count.
- * ~2.5 chars/token, calibrated against Claude Code's /context figures for
- * markdown-heavy CLAUDE.md files (paths, punctuation and tags tokenize densely;
- * the classic 4 chars/token prose rule ran ~1.6x low).
- */
-export const estimateTokens = (text: string): number => Math.round(text.length / 2.5)
 
 /**
  * Card label: the containing folder (the filename is redundant — the card's kind says which file).
@@ -121,268 +83,7 @@ function nodeLabel(root: string, path: string, kind: NodeKind): string {
   return rel
 }
 
-async function isFile(p: string): Promise<boolean> {
-  try {
-    return (await stat(p)).isFile()
-  } catch {
-    return false
-  }
-}
-
-/** Read a CLAUDE.md, capped at MAX_BYTES; throws if the file can't be read. */
-export async function readSafely(path: string): Promise<string> {
-  const buf = await readFile(path)
-  if (buf.length > MAX_BYTES) {
-    return buf.subarray(0, MAX_BYTES).toString('utf-8') + '\n\n... (truncated)'
-  }
-  return buf.toString('utf-8')
-}
-
 const segCount = (p: string): number => p.split(sep).filter(Boolean).length
-
-/** Walk up from `root` collecting every CLAUDE.md, then the global `~/.claude/CLAUDE.md`. */
-export async function findAncestors(root: string): Promise<string[]> {
-  const results: string[] = []
-  let cur = dirname(root)
-  for (;;) {
-    const candidate = join(cur, 'CLAUDE.md')
-    if (await isFile(candidate)) results.push(resolve(candidate))
-    const parent = dirname(cur)
-    if (parent === cur) break
-    cur = parent
-  }
-  const global = resolve(GLOBAL_CLAUDE)
-  if ((await isFile(global)) && !results.includes(global)) results.push(global)
-  return results
-}
-
-/** Recursively collect context files (CLAUDE.md + GLOSSARY.md) under `root`, skipping noise dirs (SKIP). */
-export async function findContextFiles(root: string): Promise<string[]> {
-  const results: string[] = []
-  async function walk(dir: string): Promise<void> {
-    let entries
-    try {
-      entries = await readdir(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
-    for (const e of entries) {
-      if (e.isDirectory()) {
-        if (!SKIP.has(e.name)) await walk(join(dir, e.name))
-      } else if (e.isFile() && isContextFile(e.name)) {
-        results.push(resolve(join(dir, e.name)))
-      }
-    }
-  }
-  await walk(root)
-  return results.sort()
-}
-
-const RULES_DIR = join('.claude', 'rules')
-
-/** Recursively collect `.claude/rules/*.md` files under `root` — the project's scoped context rules. */
-export async function findRuleFiles(root: string): Promise<string[]> {
-  const results: string[] = []
-  async function walk(dir: string): Promise<void> {
-    let entries
-    try {
-      entries = await readdir(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
-    const inRulesDir = dir.endsWith(sep + RULES_DIR) || dir.endsWith(RULES_DIR)
-    for (const e of entries) {
-      if (e.isDirectory()) {
-        if (!SKIP.has(e.name)) await walk(join(dir, e.name))
-      } else if (inRulesDir && e.isFile() && e.name.endsWith('.md')) {
-        results.push(resolve(join(dir, e.name)))
-      }
-    }
-  }
-  await walk(root)
-  return results.sort()
-}
-
-/** The glossary file sitting in `dir`, if any (the special sibling of a CLAUDE.md). */
-async function glossaryIn(dir: string): Promise<string | null> {
-  for (const name of ['GLOSSARY.md', 'glossary.md', 'Glossary.md']) {
-    const p = resolve(join(dir, name))
-    if (await isFile(p)) return p
-  }
-  return null
-}
-
-/**
- * The agent-doc files in this node's folder, keyed for the editor's tabs.
- * A CLAUDE.md node also reports a sibling AGENTS.md; an AGENTS.md-primary node
- * reports only itself; a glossary node reports nothing (it's a single doc).
- */
-async function folderAgentFiles(primary: string): Promise<AgentFiles | undefined> {
-  const base = basename(primary)
-  if (base === PRIMARY) {
-    const agents = resolve(join(dirname(primary), AGENTS))
-    return { claude: primary, ...((await isFile(agents)) ? { agents } : {}) }
-  }
-  if (base === AGENTS) return { agents: primary }
-  return undefined
-}
-
-/**
- * Pull a leading YAML frontmatter block (if any): its `paths:` globs (the rule's
- * attach targets) and the line index where the body proper begins.
- */
-function splitFrontmatter(lines: string[]): { globs: string[]; bodyStart: number } {
-  if (lines[0]?.trim() !== '---') return { globs: [], bodyStart: 0 }
-  let end = -1
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === '---') {
-      end = i
-      break
-    }
-  }
-  if (end < 0) return { globs: [], bodyStart: 0 } // unterminated — treat as body
-  const globs: string[] = []
-  let inPaths = false
-  for (let i = 1; i < end; i++) {
-    const s = lines[i].trim()
-    if (/^paths\s*:/.test(s)) {
-      const inline = s.replace(/^paths\s*:/, '').trim()
-      if (inline.startsWith('[')) {
-        for (const m of inline.matchAll(/["']([^"']+)["']/g)) globs.push(m[1])
-      } else {
-        inPaths = true
-      }
-      continue
-    }
-    if (inPaths) {
-      const m = s.match(/^-\s*["']?(.+?)["']?$/)
-      if (m) globs.push(m[1])
-      else if (s) inPaths = false // a sibling key ended the list
-    }
-  }
-  return { globs, bodyStart: end + 1 }
-}
-
-/** H1 + first prose line + level-2 section headings + line count (frontmatter-aware). */
-export function extractPreview(text: string): Preview {
-  const lines = text.split('\n')
-  const { globs, bodyStart } = splitFrontmatter(lines)
-  const body = lines.slice(bodyStart)
-  let h1 = ''
-  let h1Idx = -1
-  for (let i = 0; i < body.length; i++) {
-    const s = body[i].trim()
-    if (s.startsWith('# ') && !s.startsWith('## ')) {
-      h1 = s.slice(2).trim()
-      h1Idx = i
-      break
-    }
-  }
-  const sections = body
-    .map((l) => l.trim())
-    .filter((s) => s.startsWith('## ') && !s.startsWith('### '))
-    .map((s) => s.slice(3).trim())
-  let blurb = ''
-  for (const ln of body.slice(h1Idx + 1)) {
-    const s = ln.trim()
-    if (!s || /^[#>\-*`|<]/.test(s)) continue
-    blurb = s
-    break
-  }
-  const preview: Preview = {
-    h1,
-    blurb,
-    sections,
-    lines: lines.length,
-    tokens: estimateTokens(text),
-  }
-  if (globs.length) preview.globs = globs
-  return preview
-}
-
-const isUrl = (s: string): boolean => /^[a-z][a-z0-9+.-]*:\/\//i.test(s) || s.startsWith('mailto:')
-const looksLikePath = (s: string): boolean => s.includes('/') || /\.[A-Za-z0-9]{1,6}$/.test(s)
-
-/**
- * Parse outbound references from a file body, line by line, in four "proper"
- * syntaxes: markdown links `[t](path)`, `@path` imports, `[[wikilinks]]`, and
- * backtick-wrapped file paths. Paths stay unresolved here — buildTree resolves
- * them against the file's own directory and the node set.
- */
-export function extractReferences(text: string): Reference[] {
-  const refs: Reference[] = []
-  const lines = text.split('\n')
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const ln = i + 1
-    // markdown links / images: [label](path "title") — skip URLs and bare anchors
-    for (const m of line.matchAll(/!?\[([^\]]*)\]\(([^)\s]+)(?:\s[^)]*)?\)/g)) {
-      const rawPath = m[2].trim()
-      if (!rawPath || isUrl(rawPath) || rawPath.startsWith('#')) continue
-      const label = (m[1] || rawPath).replace(/`/g, '').trim()
-      refs.push({ kind: 'link', label, rawPath, line: ln, targetPath: null, targetId: null })
-    }
-    // @path imports (token start only → excludes emails)
-    for (const m of line.matchAll(/(?:^|\s)@([^\s)]+)/g)) {
-      const rawPath = m[1]
-      if (isUrl(rawPath) || !looksLikePath(rawPath)) continue
-      refs.push({
-        kind: 'import',
-        label: rawPath,
-        rawPath,
-        line: ln,
-        targetPath: null,
-        targetId: null,
-      })
-    }
-    // [[wikilinks]] — slug, optionally aliased
-    for (const m of line.matchAll(/\[\[([^\]]+)\]\]/g)) {
-      const inner = m[1].split('|')[0].trim()
-      if (inner)
-        refs.push({
-          kind: 'wikilink',
-          label: inner,
-          rawPath: inner,
-          line: ln,
-          targetPath: null,
-          targetId: null,
-        })
-    }
-    // `path/to/file.ext` — inline code that is unmistakably a file path
-    for (const m of line.matchAll(/`([^`]+)`/g)) {
-      const inner = m[1].trim()
-      if (inner.includes('/') && /^[\w@./~-]+\.[A-Za-z0-9]{1,6}$/.test(inner)) {
-        refs.push({
-          kind: 'code-path',
-          label: inner,
-          rawPath: inner,
-          line: ln,
-          targetPath: null,
-          targetId: null,
-        })
-      }
-    }
-  }
-  // Dedup per (path, line): a backticked path inside a markdown link matches twice —
-  // keep the richer syntax (link > import > wikilink > code-path).
-  const rank: Record<RefKind, number> = { link: 0, import: 1, wikilink: 2, 'code-path': 3 }
-  const best = new Map<string, Reference>()
-  for (const r of refs) {
-    const key = `${r.rawPath}\0${r.line}`
-    const cur = best.get(key)
-    if (!cur || rank[r.kind] < rank[cur.kind]) best.set(key, r)
-  }
-  return [...best.values()]
-}
-
-/** Resolve a written path against `baseDir` (handling `~` and anchors); abs path if the file exists, else null. */
-async function resolveRefPath(rawPath: string, baseDir: string): Promise<string | null> {
-  let p = rawPath.split('#')[0].trim()
-  if (!p) return null
-  if (p === '~' || p.startsWith('~/')) p = join(homedir(), p.slice(1))
-  const abs = isAbsolute(p) ? resolve(p) : resolve(join(baseDir, p))
-  return (await isFile(abs)) ? abs : null
-}
 
 export interface BuildOptions {
   /** Only the chain towards the root (ancestors + the project's own CLAUDE.md) — no descendant walk. */
@@ -563,58 +264,6 @@ export async function buildTreeCached(root: string, opts: BuildOptions = {}): Pr
   treeCache.set(key, { at: Date.now(), nodes })
   return nodes
 }
-
-const historyPathFor = (p: string): string => p + HISTORY_SUFFIX
-
-const isoSeconds = (): string => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
-
-const MAX_HISTORY_ENTRIES = 20
-
-/** Append the prior file content to the sidecar before an overwrite (one JSON line),
- *  keeping only the newest MAX_HISTORY_ENTRIES snapshots. */
-export async function appendHistory(file: string, priorContent: string): Promise<void> {
-  const record: HistoryEntry = { ts: isoSeconds(), sha: sha(priorContent), content: priorContent }
-  const entries = [...(await readHistory(file)), record].slice(-MAX_HISTORY_ENTRIES)
-  await writeFile(
-    historyPathFor(file),
-    entries.map((e) => JSON.stringify(e) + '\n').join(''),
-    'utf-8',
-  )
-}
-
-export async function readHistory(file: string): Promise<HistoryEntry[]> {
-  let raw: string
-  try {
-    raw = await readFile(historyPathFor(file), 'utf-8')
-  } catch {
-    return []
-  }
-  const entries: HistoryEntry[] = []
-  for (const line of raw.split('\n')) {
-    const t = line.trim()
-    if (!t) continue
-    try {
-      entries.push(JSON.parse(t) as HistoryEntry)
-    } catch {
-      // skip a corrupt line rather than fail the whole read
-    }
-  }
-  return entries
-}
-
-/** Remove and return the most recent snapshot (LIFO) — backs the revert action. */
-export async function popHistory(file: string): Promise<HistoryEntry | null> {
-  const entries = await readHistory(file)
-  const last = entries.pop()
-  if (!last) return null
-  await writeFile(
-    historyPathFor(file),
-    entries.map((e) => JSON.stringify(e) + '\n').join(''),
-    'utf-8',
-  )
-  return last
-}
-
 /**
  * Resolve `candidate` and confirm it is inside the catalog `baseDir` (the scanner's
  * scan root) or is exactly the global `~/.claude/CLAUDE.md`. Returns the resolved
@@ -630,74 +279,4 @@ export function resolveInCatalog(candidate: string, baseDir: string): string | n
   if (real === resolve(GLOBAL_CLAUDE)) return real
   if (real === base || real.startsWith(base + sep)) return real
   return null
-}
-
-export interface SearchMatch {
-  line: number // 1-based line number
-  text: string // the matching line (windowed for very long lines)
-  col: number // match offset within `text`
-}
-export interface SearchHit {
-  path: string
-  matches: SearchMatch[]
-}
-
-const MAX_MATCHES_PER_FILE = 50
-const SNIPPET_MAX = 200 // window long lines around the match
-
-/** Trim a long line to a window around `col`, returning the windowed text and adjusted offset. */
-function windowLine(line: string, col: number): { text: string; col: number } {
-  if (line.length <= SNIPPET_MAX) return { text: line, col }
-  const start = Math.max(0, col - Math.floor(SNIPPET_MAX / 2))
-  const prefix = start > 0 ? '…' : ''
-  return { text: prefix + line.slice(start, start + SNIPPET_MAX), col: col - start + prefix.length }
-}
-
-/** Case-insensitive substring matches per line (`q` already lower-cased), capped and windowed. */
-function matchLines(text: string, q: string): SearchMatch[] {
-  const matches: SearchMatch[] = []
-  const lines = text.split('\n')
-  for (let i = 0; i < lines.length && matches.length < MAX_MATCHES_PER_FILE; i++) {
-    const col = lines[i].toLowerCase().indexOf(q)
-    if (col < 0) continue
-    matches.push({ line: i + 1, ...windowLine(lines[i], col) })
-  }
-  return matches
-}
-
-/** Read a file and collect its matches; null when it can't be read or has none. */
-async function searchFile(path: string, q: string): Promise<SearchHit | null> {
-  let text: string
-  try {
-    text = await readSafely(path)
-  } catch {
-    return null
-  }
-  const matches = matchLines(text, q)
-  return matches.length ? { path, matches } : null
-}
-
-/** The tree's file set = ancestors + descendants, restricted to the read boundary. */
-async function treeFiles(root: string, baseDir: string): Promise<string[]> {
-  const r = resolve(root)
-  const all = [
-    ...new Set([
-      ...(await findAncestors(r)),
-      ...(await findContextFiles(r)),
-      ...(await findRuleFiles(r)),
-    ]),
-  ]
-  return all.filter((p) => resolveInCatalog(p, baseDir) !== null)
-}
-
-/** Search every tree file's body for `query` (case-insensitive substring), dropping empties. */
-export async function searchTree(
-  root: string,
-  query: string,
-  baseDir: string,
-): Promise<SearchHit[]> {
-  const q = query.toLowerCase()
-  const files = await treeFiles(root, baseDir)
-  const hits = await Promise.all(files.map((f) => searchFile(f, q)))
-  return hits.filter((h): h is SearchHit => h !== null)
 }
