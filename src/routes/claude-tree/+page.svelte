@@ -644,12 +644,16 @@ async function openFind() {
 }
 
 /** Open the hit's file in the editor (honoring the dirty guard) and jump to the line. */
-async function openHit(path: string, line: number) {
+function openHit(path: string, line: number) {
   const ref = pathToFile.get(path)
   if (!ref) return
-  if (current?.id !== ref.node.id || activePath !== ref.path) await openFile(ref.node, ref.path)
-  await tick()
-  jumpToLine(line)
+  if (current?.id === ref.node.id && activePath === ref.path) return jumpToLine(line)
+  // The jump belongs to the new file, so it waits for the discard dialog with the open.
+  unlessDirty(async () => {
+    await openFile(ref.node, ref.path, true)
+    await tick()
+    jumpToLine(line)
+  })
 }
 
 function jumpToLine(line: number) {
