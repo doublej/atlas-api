@@ -100,7 +100,7 @@ Contracts (keep them flat & JSON, mirror `agent-files`):
 | `GET ?root=<abs>` | — | `TreeNode[]` (id, path, label, kind, parent, preview) | the graph data |
 | `GET ?path=<abs>` | — | `{ content, sha }` | one file's body (cap at `MAX_BYTES`) |
 | `POST` `{op:'save', path, content, expectedSha?}` | — | `{ ok, sha }` or `409 {disk_sha}` | append prior to history, then write; optimistic-concurrency on `expectedSha` |
-| `POST` `{op:'revert', path}` | — | `{ ok, sha }` | pop last history entry, write it back |
+| `POST` `{op:'revert', path, expectedSha?}` | — | `{ ok, sha }`, `409 {disk_sha}` or `404` | pop last history entry, write it back; with `expectedSha` it refuses to overwrite a file that changed on disk (revert does not snapshot what it overwrites) |
 | `GET ?history=<abs>` | — | `{ts,sha,preview}[]` | snapshot list for the dropdown |
 
 **Every handler must `assertInCatalog(path)`** (resolve real path; ensure it is under

@@ -124,7 +124,15 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
   (`diskJson`), changes run as a detached `atlas disk job --log <file> -- …` in its own process
   group, which outlives a daemon restart and writes `<log>.exit`. The page polls `/api/disk/jobs/:id`
   every 500ms (`DiskJobPanel`), cancels with SIGINT to the group, and picks a running job back up
-  on reload. The CLI's lock keeps it to one job; its refusal (exit 4) shows in the panel
+  on reload. The page starts no second job while it follows one: `runJob` refuses with a toast and
+  returns false, so the Note and Skip inputs keep their text. A poll that answers 4xx (its
+  `<id>.json` is gone) marks the job ended, so the next one can start. The CLI's lock still refuses a
+  lock-taking job started from another tab or the terminal (exit 4, shown in the panel); analyze,
+  scan and a log note or skip take no lock
+- A job counts as running only while its wrapper pid exists with the start time recorded in
+  `<id>.json` (`pgid` + `startedAt`, compared through `LC_ALL=C ps -o lstart=`). A wrapper that
+  died without writing `.exit` reads as ended once its pid is reused, and Cancel never signals a
+  reused process group
 - Every argument goes through `checkArgs` (a per-command allowlist; `--unattended`/`--include-dirty`
   are not on it) and `isRead` decides read vs job. Jobs always get `--confirmed`, because the page
   showed the plan first. Who may write is the request guard's call, not the disk routes' (below)
@@ -144,12 +152,17 @@ Scripts, just recipes, domains and umami links come from `getDynamicActions`.
 
 **Dev hostnames (`src/lib/caddyDev.ts`, `src/lib/hostnames/`)**
 - Every slug write (assign, run, a `.atlas` edit, rename/move) asks `hostnames/claims.ts` first: a
-  valid slug is a DNS label `slugify` leaves as it is (`slug.ts`), and a clash with a registry row,
-  a service or a scanned project is a `SlugTakenError` → 409 before anything is written
-- `moveRoute` lands the new route before it drops the old one; the registry
+  valid slug is a DNS label `slugify` leaves as it is (`slug.ts`), and a clash with a registry row
+  or a service (for a `.atlas` edit also another scanned local project) is a `SlugTakenError` → 409
+  before anything is written
+- `moveRoute` lands the new route before it drops the old one; onto a slug the project already has
+  a live row for, it keeps that row's port. The registry
   (`~/dev/.atlas-hostnames.json`, paths normalised to the `~/dev` realpath) is only written under
   `withRegistryLock`. The NAS serves `*.atlas.local`/`*.atlas.remote.jurrejan.com` from one DNS-01
   wildcard (`sites/atlas-wildcard.caddy`), so a new slug costs no certificate
+- A push that `caddy validate` rejects is rolled back on the NAS (`pushToNas`): the previous file
+  comes back from `etc/<slug>-atlas.caddy.prev`, outside the `sites/` import, or the new one is
+  removed. Caddy reloads only after validate passes
 
 **Request guard (`src/lib/guard.ts`, `handle` in `src/hooks.server.ts`)**
 - One check for every route, no login. Every request, proxied or not, needs a loopback `Host`
@@ -162,7 +175,11 @@ Scripts, just recipes, domains and umami links come from `getDynamicActions`.
   nothing, reads included
 - Open reads (every other GET/HEAD, pages and `__data.json` included) refuse another site's
   script or `<img>` the same way (`Origin`, `Sec-Fetch-Site`), but a top-level navigation
-  (`Sec-Fetch-Mode: navigate`) passes, so a link still opens them. No route sends CORS headers
+  (`Sec-Fetch-Mode: navigate` with `Sec-Fetch-Dest: document`, or no `Sec-Fetch-Dest` at all)
+  passes, so a link still opens them; a cross-site frame load does not. No route sends CORS headers
+- `handle` sets `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY` on
+  every response it lets through: nothing may frame the console, whose same-origin writes would
+  otherwise be clickjackable
 - `LOCAL_ONLY` route ids answer only this Mac and the LAN, for *every* method: file contents (`env-files`,
   `agent-files`, `claude-tree` — its `?path=` reads any file under ~/dev — and `processes/log`),
   `ports/allocate` (reserves a port) and the screen actions `iterm`/`finder`.
@@ -181,16 +198,19 @@ Scripts, just recipes, domains and umami links come from `getDynamicActions`.
 - `POST /api/refresh` - Force rescan
 - `POST /api/iterm`, `/api/finder` - macOS integrations
 - `PUT /api/description` - Update project description in manifest
-- `POST /api/rename`, `/api/move` - File operations; a dev hostname follows the folder (only the
-  row's path when a `.atlas` slug keeps it, else `moveRoute`), and a clash is a 409 before the move
+- `POST /api/rename`, `/api/move` - File operations; every dev hostname at or under the folder
+  follows it (only the row's path when a `.atlas` slug keeps it, else `moveRoute`), and a clash is
+  a 409 before the move. The source must sit strictly inside the catalog (`resolveInsideCatalog`)
 - `GET/POST/PUT /api/agent-files` - CLAUDE.md and AGENTS.md operations
 - `GET/PATCH /api/atlas` - read/merge a project's `.atlas` (`null` in the patch clears a key). A
   slug that is no DNS label or a port outside 1024–65535 is a 400; a slug, port or devPublic change
   on a project with a route moves it (`moveRoute`) and answers `{ path, atlas, hostname? }`
-- `GET/POST/DELETE /api/hostnames` - list / assign (`{ path }` → `HostnameState`) / release a dev
-  hostname. A release the NAS didn't take keeps its row `nasSynced:false` and answers 502
-- `GET /api/hostnames/check?slug=&path=` (always 200: free · current · taken · invalid; without
-  `path` nobody claims it), `GET /status?slug=` (syncing → issuing → live | failed), `POST /retry
+- `GET/POST/DELETE /api/hostnames` - list (only rows the NAS serves, `nasSynced`; `?all=1` adds
+  failed pushes and release-pending rows with their `state`) / assign (`{ path }` →
+  `HostnameState`) / release a dev hostname. A release the NAS didn't take keeps its row
+  `nasSynced:false` and answers 502
+- `GET /api/hostnames/check?slug=&path=` (200: free · current · taken · invalid, 400 when `path` is
+  outside the catalog; without `path` nobody claims it), `GET /status?slug=` (syncing → issuing → live | failed), `POST /retry
   { slug }`, `GET /port?port=` (listening, lanReachable), `GET/POST /doctor` (drift between rows,
   projects, services and the NAS, with a fix per item — the `/system` Hostnames tab)
 - `GET/PUT /api/config` - the scanner's `.atlas-config.json` (`maxDepth`, `depth`, `force`, `ignore`)

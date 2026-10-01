@@ -6,8 +6,9 @@ import { scan, slugify } from '$lib/scanner'
 import type { RequestHandler } from './$types'
 
 /**
- * Is `slug` free for the project at `path`? Always 200 — `status` carries the verdict. An empty
- * `slug` checks the one the folder gives (what clearing the `.atlas` override would leave).
+ * Is `slug` free for the project at `path`? 200 with the verdict in `status`; 400 for a `path`
+ * outside this machine's catalog. An empty `slug` checks the one the folder gives (what clearing
+ * the `.atlas` override would leave).
  * Without `path` (a CLI outside any project) nobody claims it: free, taken or invalid.
  */
 export const GET: RequestHandler = async ({ url }) => {
