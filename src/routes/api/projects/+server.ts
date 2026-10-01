@@ -9,6 +9,14 @@ export const GET: RequestHandler = async ({ url }) => {
   const includeArchived = url.searchParams.get('includeArchived') === 'true'
   const index = await scan(baseDir)
 
+  // One full record (`?path=<abs>`): what the console loads when a row opens, instead of the list.
+  const path = url.searchParams.get('path')
+  if (path) {
+    const project = index.projects.find((p) => p.path === path)
+    if (!project) return json({ error: `no project at ${path}` }, { status: 404 })
+    return json(project, { headers: { 'Access-Control-Allow-Origin': '*' } })
+  }
+
   // Same stale-while-revalidate bargain the local cache makes, one TTL up: never awaited, so
   // a powered-off Ubuntu costs this request nothing. Its projects land in the next scan.
   if (baseDir === DEV_FOLDER) refreshHosts().catch(() => {})

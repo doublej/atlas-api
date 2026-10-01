@@ -146,14 +146,18 @@ async function scanReferences(
   return refs
 }
 
+/** A template's family (its top-level folder, else `root`) and name (its own folder). */
+function templateId(ccPath: string, root: string): { family: string; name: string } {
+  const parts = relative(root, dirname(ccPath)).split(sep)
+  return { family: parts.length > 1 ? parts[0] : 'root', name: parts[parts.length - 1] }
+}
+
 async function parseTemplate(
   ccPath: string,
   root: string,
 ): Promise<{ template: DiscoveredTemplate } | { error: TemplateError }> {
   const dir = dirname(ccPath)
-  const parts = relative(root, dir).split(sep)
-  const family = parts.length > 1 ? parts[0] : 'root'
-  const name = parts[parts.length - 1]
+  const { family, name } = templateId(ccPath, root)
   let content: Record<string, unknown>
   try {
     content = JSON.parse(await readFile(ccPath, 'utf-8')) as Record<string, unknown>
@@ -198,4 +202,24 @@ export async function discoverTemplates(
     .filter((r): r is { error: TemplateError } => 'error' in r)
     .map((r) => r.error)
   return { templates, errors }
+}
+
+/**
+ * `family/name` → `_version` per template: all the project list needs. Reads the ~20
+ * `cookiecutter.json` files only (~5ms), where `discoverTemplates` reads every template file
+ * for variable references (65-400ms). A template whose JSON does not parse is left out.
+ */
+export async function readTemplateVersions(root: string): Promise<Record<string, string>> {
+  const entries = await Promise.all(
+    (await findCookiecutters(root)).map(async (cc) => {
+      const { family, name } = templateId(cc, root)
+      try {
+        const version = JSON.parse(await readFile(cc, 'utf-8'))._version
+        return typeof version === 'string' ? [[`${family}/${name}`, version] as const] : []
+      } catch {
+        return []
+      }
+    }),
+  )
+  return Object.fromEntries(entries.flat())
 }
