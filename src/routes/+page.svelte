@@ -99,12 +99,14 @@ onMount(() => {
   // only a project it has none for yet is probed — probing all ~500 on each load spawned
   // ~500 git processes and held every browser connection for ~40s.
   for (const p of projects) if (p.git) gitStatus[p.path] = { status: p.git, branch: p.gitBranch }
-  api.loadGitStatuses(
-    projects.filter((p) => p.isLocal && !p.git).map((p) => p.path),
-    (results) => {
-      for (const r of results) gitStatus[r.path] = { status: r.status, branch: r.branch }
-    },
-  )
+  api
+    .loadGitStatuses(
+      projects.filter((p) => p.isLocal && !p.git).map((p) => p.path),
+      (results) => {
+        for (const r of results) gitStatus[r.path] = { status: r.status, branch: r.branch }
+      },
+    )
+    .catch(fail)
   // Best-effort — an unprovisioned Caddy setup just means no project shows a hostname.
   api
     .fetchHostnames()
@@ -205,8 +207,8 @@ async function doMove(targetFolder: string): Promise<void> {
 		onRunDev={runDev}
 		onRunScript={runScript}
 		onRunJust={runJust}
-		onIterm={api.openInITerm}
-		onFinder={api.openInFinder}
+		onIterm={(path) => api.openInITerm(path).catch(fail)}
+		onFinder={(path) => api.openInFinder(path).catch(fail)}
 		onRename={(project) => (renaming = project)}
 		onMove={(project) => (moving = project)}
 		{onAction}

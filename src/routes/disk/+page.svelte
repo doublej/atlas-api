@@ -5,7 +5,9 @@ import Notice from '$lib/components/feedback/Notice.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import SideNav, { type SideTab } from '$lib/components/SideNav.svelte'
 import type { JobState } from '$lib/disk'
+import { errorMessage } from '$lib/format'
 import { http } from '$lib/http'
+import { toast } from '$lib/toast.svelte'
 import type { PageData } from './$types'
 import DiskArchivesSection from './DiskArchivesSection.svelte'
 import DiskCleanupSection from './DiskCleanupSection.svelte'
@@ -64,9 +66,13 @@ const active = $derived<Tab>(
 // A reload picks a running job back up; the CLI's lock means there is at most one.
 onMount(async () => {
   if (job.current) return
-  const { jobs } = await http.get<{ jobs: JobState[] }>('/api/disk/jobs')
-  const running = jobs.find((j) => !j.done)
-  if (running) follow(running)
+  try {
+    const { jobs } = await http.get<{ jobs: JobState[] }>('/api/disk/jobs')
+    const running = jobs.find((j) => !j.done)
+    if (running) follow(running)
+  } catch (e) {
+    toast(`Could not look for a running job: ${errorMessage(e)}`, 'error')
+  }
 })
 </script>
 
