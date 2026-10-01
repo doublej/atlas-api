@@ -110,6 +110,7 @@ const onKeydown = listKeys({
   search: () => search,
   stop: (key) => stopPorts(sel.size ? sel.list : key ? [Number(key)] : []),
   clear: () => sel.clear(),
+  selectAll: () => sel.set(order, true),
   busy: () => flow.asking !== null,
 })
 

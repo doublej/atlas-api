@@ -134,6 +134,7 @@ const onKeydown = listKeys({
   search: () => search,
   stop: (key) => stop(sel.size ? sel.list : key ? [key] : []),
   clear: () => sel.clear(),
+  selectAll: () => sel.set(order, true),
   busy: () => flow.asking !== null,
 })
 
