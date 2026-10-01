@@ -5,9 +5,10 @@ import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import Chip from '$lib/components/ui/Chip.svelte'
 import type { Analysis, DiskSettings, ProjectRow } from '$lib/disk-types'
+import { Selection } from '$lib/selection.svelte'
 import { TableSort } from '$lib/table-sort.svelte'
 import DiskArchiveModal from './DiskArchiveModal.svelte'
-import { ago, human, runJob, Selection } from './disk-client.svelte'
+import { ago, human, runJob } from './disk-client.svelte'
 
 let { analysis, settings }: { analysis: Analysis | null; settings: DiskSettings | null } = $props()
 
@@ -41,7 +42,7 @@ const rows = $derived(
 const ordered = $derived(rows.map((r) => r.id))
 const chosen = $derived((analysis?.projects ?? []).filter((p) => sel.has(p.id)))
 
-$effect(() => sel.keep((analysis?.projects ?? []).map((p) => p.id)))
+$effect(() => sel.prune((analysis?.projects ?? []).map((p) => p.id)))
 </script>
 
 <section>
@@ -65,7 +66,7 @@ $effect(() => sel.keep((analysis?.projects ?? []).map((p) => p.id)))
       <input
         type="checkbox"
         checked={ordered.length > 0 && ordered.every((k) => sel.has(k))}
-        onchange={(e) => sel.setMany(ordered, e.currentTarget.checked)}
+        onchange={(e) => sel.set(ordered, e.currentTarget.checked)}
       />
       select all shown
     </label>
@@ -89,7 +90,7 @@ $effect(() => sel.keep((analysis?.projects ?? []).map((p) => p.id)))
         <tbody>
           {#each rows as p (p.id)}
             <tr class="t-small" class:selected={sel.has(p.id)} onclick={(e) => sel.click(p.id, e, ordered)}>
-              <td><input type="checkbox" aria-label="Select {p.id}" checked={sel.has(p.id)} onclick={(e) => e.stopPropagation()} onchange={(e) => sel.setMany([p.id], e.currentTarget.checked)} /></td>
+              <td><input type="checkbox" aria-label="Select {p.id}" checked={sel.has(p.id)} onclick={(e) => e.stopPropagation()} onchange={(e) => sel.set([p.id], e.currentTarget.checked)} /></td>
               <td class="mono">{p.id}</td>
               <td class="num right">{human(p.bytes)}</td>
               <td><Badge tone={TONE[p.state]}>{p.state}</Badge></td>
@@ -112,5 +113,5 @@ $effect(() => sel.keep((analysis?.projects ?? []).map((p) => p.id)))
 </section>
 
 {#if planning && settings}
-  <DiskArchiveModal rows={chosen} {settings} onclose={() => (planning = false)} ondone={() => sel.setMany(sel.list, false)} />
+  <DiskArchiveModal rows={chosen} {settings} onclose={() => (planning = false)} ondone={() => sel.clear()} />
 {/if}

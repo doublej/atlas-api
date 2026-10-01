@@ -98,39 +98,3 @@ export function ago(iso: string | null | undefined): string {
   if (mins < 48 * 60) return `${Math.round(mins / 60)}h ago`
   return `${Math.round(mins / 1440)}d ago`
 }
-
-/** The /ports selection model: click toggles, shift extends from the last click, a group sets many. */
-export class Selection {
-  keys = $state(new Set<string>())
-  #anchor: string | null = null
-
-  has = (k: string) => this.keys.has(k)
-  get size() {
-    return this.keys.size
-  }
-  get list() {
-    return [...this.keys]
-  }
-
-  setMany(ks: string[], on: boolean) {
-    const next = new Set(this.keys)
-    for (const k of ks) on ? next.add(k) : next.delete(k)
-    this.keys = next
-  }
-
-  /** `ordered` is the visible rows in render order, for a shift-range. */
-  click(k: string, e: MouseEvent, ordered: string[]) {
-    if (e.shiftKey && this.#anchor !== null) {
-      const [a, b] = [ordered.indexOf(this.#anchor), ordered.indexOf(k)].sort((x, y) => x - y)
-      if (a !== -1) this.setMany(ordered.slice(a, b + 1), true)
-    } else this.setMany([k], !this.keys.has(k))
-    this.#anchor = k
-  }
-
-  /** Drop keys that are no longer rows (after a job changed the data). */
-  keep(ks: string[]) {
-    const live = new Set(ks)
-    if ([...this.keys].some((k) => !live.has(k)))
-      this.keys = new Set([...this.keys].filter((k) => live.has(k)))
-  }
-}

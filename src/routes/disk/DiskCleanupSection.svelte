@@ -6,9 +6,10 @@ import Card from '$lib/components/ui/Card.svelte'
 import Chip from '$lib/components/ui/Chip.svelte'
 import type { Risk, Scan } from '$lib/disk-types'
 import { tildify } from '$lib/format'
+import { Selection } from '$lib/selection.svelte'
 import { TableSort } from '$lib/table-sort.svelte'
 import DiskCleanModal from './DiskCleanModal.svelte'
-import { ago, human, runJob, Selection } from './disk-client.svelte'
+import { ago, human, runJob } from './disk-client.svelte'
 
 let { scan }: { scan: Scan | null } = $props()
 
@@ -44,7 +45,7 @@ const groups = $derived(
 const ordered = $derived(groups.flatMap((g) => g.rows.map((r) => r.path)))
 const chosen = $derived((scan?.folders ?? []).filter((f) => sel.has(f.path)))
 
-$effect(() => sel.keep((scan?.folders ?? []).map((f) => f.path)))
+$effect(() => sel.prune((scan?.folders ?? []).map((f) => f.path)))
 
 function toggleRisk(r: Risk) {
   const next = new Set(shown)
@@ -76,7 +77,7 @@ function toggleRisk(r: Risk) {
           type="checkbox"
           aria-label="Select all {g.id}"
           checked={g.rows.every((r) => sel.has(r.path))}
-          onchange={(e) => sel.setMany(g.rows.filter((r) => !r.nested).map((r) => r.path), e.currentTarget.checked)}
+          onchange={(e) => sel.set(g.rows.filter((r) => !r.nested).map((r) => r.path), e.currentTarget.checked)}
         />
         <Badge tone={g.tone}>{g.id}</Badge>
         <span class="muted">{g.note} · {g.rows.length} folders</span>
@@ -96,7 +97,7 @@ function toggleRisk(r: Risk) {
           <tbody>
             {#each g.rows as f (f.path)}
               <tr class="t-small" class:selected={sel.has(f.path)} class:dim={f.nested} onclick={(e) => sel.click(f.path, e, ordered)}>
-                <td><input type="checkbox" aria-label="Select {f.path}" checked={sel.has(f.path)} onclick={(e) => e.stopPropagation()} onchange={(e) => sel.setMany([f.path], e.currentTarget.checked)} /></td>
+                <td><input type="checkbox" aria-label="Select {f.path}" checked={sel.has(f.path)} onclick={(e) => e.stopPropagation()} onchange={() => sel.toggle(f.path)} /></td>
                 <td class="num right">{human(f.bytes)}</td>
                 <td class="mono" title={f.path}>{tildify(f.path)}{f.nested ? ' (nested)' : ''}</td>
                 <td>{#if f.inUse}<Badge tone="warn" title="something seems to use it">in use: {f.inUse}</Badge>{/if}</td>
@@ -114,7 +115,7 @@ function toggleRisk(r: Risk) {
 </section>
 
 {#if reviewing}
-  <DiskCleanModal rows={chosen} onclose={() => (reviewing = false)} ondone={() => sel.setMany(sel.list, false)} />
+  <DiskCleanModal rows={chosen} onclose={() => (reviewing = false)} ondone={() => sel.clear()} />
 {/if}
 
 <style>

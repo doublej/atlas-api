@@ -5,9 +5,10 @@ import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import Modal from '$lib/components/ui/Modal.svelte'
 import type { ArchiveVersion, DiskSettings } from '$lib/disk-types'
+import { Selection } from '$lib/selection.svelte'
 import { TableSort } from '$lib/table-sort.svelte'
 import DiskRestoreModal from './DiskRestoreModal.svelte'
-import { human, readDisk, runJob, Selection } from './disk-client.svelte'
+import { human, readDisk, runJob } from './disk-client.svelte'
 
 let { archives, settings }: { archives: ArchiveVersion[]; settings: DiskSettings | null } = $props()
 
@@ -45,7 +46,7 @@ const onlyVersion = (v: ArchiveVersion) =>
   archives.filter((x) => x.project === v.project).length === 1
 const chosen = $derived(archives.filter((v) => sel.has(v.id)))
 
-$effect(() => sel.keep(ordered))
+$effect(() => sel.prune(ordered))
 
 async function showContents(id: string) {
   contents = { id, text: 'Reading…' }
@@ -71,7 +72,7 @@ async function showContents(id: string) {
 
 function act(verb: string, ids: string[]) {
   runJob('archives', [verb, ...ids])
-  sel.setMany(ids, false)
+  sel.set(ids, false)
 }
 </script>
 
@@ -107,7 +108,7 @@ function act(verb: string, ids: string[]) {
         <tbody>
           {#each rows as v (v.id)}
             <tr class="t-small" class:selected={sel.has(v.id)} onclick={(e) => sel.click(v.id, e, ordered)}>
-              <td><input type="checkbox" aria-label="Select {v.id}" checked={sel.has(v.id)} onclick={(e) => e.stopPropagation()} onchange={(e) => sel.setMany([v.id], e.currentTarget.checked)} /></td>
+              <td><input type="checkbox" aria-label="Select {v.id}" checked={sel.has(v.id)} onclick={(e) => e.stopPropagation()} onchange={(e) => sel.set([v.id], e.currentTarget.checked)} /></td>
               <td class="mono">{v.id}</td>
               <td class="num right">{human(v.bytes)}</td>
               <td class="num right muted">{human(v.localBytes)}</td>
@@ -127,7 +128,7 @@ function act(verb: string, ids: string[]) {
 </section>
 
 {#if restoring}
-  <DiskRestoreModal versions={chosen} onclose={() => (restoring = false)} ondone={() => sel.setMany(sel.list, false)} />
+  <DiskRestoreModal versions={chosen} onclose={() => (restoring = false)} ondone={() => sel.clear()} />
 {/if}
 
 <Modal open={confirmDelete} title="Delete {chosen.length} archive version(s)?" onclose={() => (confirmDelete = false)}>
