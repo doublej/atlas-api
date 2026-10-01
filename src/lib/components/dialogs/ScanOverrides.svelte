@@ -1,23 +1,19 @@
 <script lang="ts">
+import type { AtlasConfig } from '$lib/atlasFile'
 import { http } from '$lib/http'
 import type { Project } from '$lib/scanner'
+import { applyScanOverrides, type Detection } from './scan-overrides'
 
 /** The two knobs that live in `.atlas-config.json` rather than in the project's own `.atlas`. */
 const { project }: { project: Project } = $props()
 
-interface ScanConfig {
-  maxDepth: number
-  depth: Record<string, number>
-  force: Record<string, boolean>
-}
-
-let config = $state<ScanConfig | null>(null)
-let force = $state<'auto' | 'true' | 'false'>('auto')
+let config = $state<AtlasConfig | null>(null)
+let force = $state<Detection>('auto')
 let depth = $state('')
 
 $effect(() => {
   const rel = project.relativePath
-  http.get<ScanConfig>('/api/config').then((scan) => {
+  http.get<AtlasConfig>('/api/config').then((scan) => {
     config = scan
     force = String(scan.force?.[rel] ?? 'auto') as typeof force
     depth = scan.depth?.[rel] == null ? '' : String(scan.depth[rel])
@@ -27,19 +23,7 @@ $effect(() => {
 /** Writes the config when this form changed it; the dialog calls it on Save. */
 export async function save(): Promise<void> {
   if (!config) return
-  const rel = project.relativePath
-  const next: ScanConfig = {
-    maxDepth: config.maxDepth,
-    depth: { ...config.depth },
-    force: { ...config.force },
-  }
-
-  if (force === 'auto') delete next.force[rel]
-  else next.force[rel] = force === 'true'
-
-  if (depth.trim() === '') delete next.depth[rel]
-  else next.depth[rel] = Number(depth)
-
+  const next = applyScanOverrides(config, project.relativePath, force, depth)
   const unchanged =
     JSON.stringify(next.depth) === JSON.stringify(config.depth) &&
     JSON.stringify(next.force) === JSON.stringify(config.force)

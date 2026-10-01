@@ -8,7 +8,7 @@ import { http } from '$lib/http'
 import type { Project } from '$lib/scanner'
 import { toast } from '$lib/toast.svelte'
 import HostnameSection from './hostname/HostnameSection.svelte'
-import { hostOf, portProblem, setChip } from './hostname/hostname.svelte'
+import { hostOf, portProblem, setChip, slugBlocker } from './hostname/hostname.svelte'
 import ScanOverrides from './ScanOverrides.svelte'
 
 interface Props {
@@ -88,7 +88,8 @@ const value = (v: string): string | null => (v.trim() === '' ? null : v.trim())
 
 /** Why the form can't be saved yet, or null. The server checks all of it again. */
 function blocker(): string | null {
-  if (verdict?.status === 'invalid' || verdict?.status === 'taken') return verdict.reason ?? null
+  const slug = slugBlocker(verdict, value(form.slug), value(str(meta.slug)))
+  if (slug) return slug
   const port = portProblem(form.port)
   return port ? `Dev port: ${port}` : null
 }

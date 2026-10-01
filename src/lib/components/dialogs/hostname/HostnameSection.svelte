@@ -36,6 +36,8 @@ const shown = $derived(slug.trim() || verdict?.slug || '')
 
 let releasing = $state(false)
 let busy = $state(false)
+/** An action's failure, shown here: the modal this sits in covers the toasts. */
+let error = $state<string | null>(null)
 
 const POLL_MS = 1000
 
@@ -61,12 +63,14 @@ $effect(() => {
 
 async function run(what: string, call: () => Promise<HostnameState>): Promise<void> {
   busy = true
+  error = null
   if (hostname) hostname = { ...hostname, state: 'syncing', error: undefined }
   try {
     show(await call())
   } catch (e) {
-    toast(`${what} failed: ${errorMessage(e)}`, 'error')
+    // With a route the failed pill and its Notice say it; Assign has no route to fail.
     if (hostname) hostname = { ...hostname, state: 'failed', error: errorMessage(e) }
+    else error = `${what} failed: ${errorMessage(e)}`
   } finally {
     busy = false
   }
@@ -79,11 +83,12 @@ const retry = () =>
   run('Retry', () => http.post<HostnameState>('/api/hostnames/retry', { slug: hostname?.slug }))
 
 async function copy(url: string): Promise<void> {
+  error = null
   try {
     await navigator.clipboard.writeText(url)
     toast(`Copied ${hostOf(url)}`)
   } catch (e) {
-    toast(`Copy failed: ${errorMessage(e)}`, 'error') // a page without focus may not write
+    error = `Copy failed: ${errorMessage(e)}` // a page without focus may not write
   }
 }
 
@@ -122,6 +127,9 @@ async function release(): Promise<void> {
 
   {#if hostname?.state === 'failed' && hostname.error}
     <Notice tone="error">{hostname.error}</Notice>
+  {/if}
+  {#if error}
+    <Notice tone="error">{error}</Notice>
   {/if}
 
   {#if hostname}

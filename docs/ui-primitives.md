@@ -114,6 +114,9 @@ toast(`Save failed: ${errorMessage(e)}`, 'error')
 Tones: `'info'` (default) and `'error'`. `<Toaster />` is mounted once in
 `src/routes/+layout.svelte`; never mount another.
 
+Inside an open `Modal` a toast lands under its backdrop — dimmed, its Dismiss unclickable. Show a
+failure there as a `Notice` in the dialog instead (`HostnameSection`, `HostsSection`).
+
 ## Notice — `components/feedback/Notice.svelte`
 
 A state that stays on the page until it changes: a read that failed, a restart still owed, a

@@ -1,4 +1,4 @@
-import type { HostnameChipData, HostnameState } from '$lib/hostnames/types'
+import type { HostnameChipData, HostnameState, SlugCheck } from '$lib/hostnames/types'
 
 /**
  * Hostnames the settings dialog changed since the page loaded, keyed by project path (`null` =
@@ -18,4 +18,19 @@ export function portProblem(port: number | null): string | null {
   return Number.isInteger(port) && port >= 1024 && port <= 65535
     ? null
     : 'a whole number from 1024 to 65535'
+}
+
+/**
+ * Why the slug field blocks a save, or null. `invalid` always does — PATCH /api/atlas rejects
+ * one even unchanged — but `taken` only when the save moves the slug off `saved`: the server
+ * never re-checks a slug the project already has.
+ */
+export function slugBlocker(
+  verdict: SlugCheck | null,
+  slug: string | null,
+  saved: string | null,
+): string | null {
+  if (verdict?.status === 'invalid' || (verdict?.status === 'taken' && slug !== saved))
+    return verdict.reason ?? null
+  return null
 }
