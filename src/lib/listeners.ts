@@ -46,6 +46,10 @@ export function ownersByPort(sockets: Socket[], selfPid: number): RawListener[] 
   return [...byPort.values()].sort((a, b) => a.port - b.port)
 }
 
+/** A project's dev hostname routes to one port, its own: not to a second server it runs. */
+const projectHost = (snap: Snapshot, project: Snapshot['projects'][number], port: number) =>
+  port === project.port ? snap.hostnames.find((h) => h.path === project.path)?.local : undefined
+
 /** Pure: the snapshot's listeners, owner-joined: service, then project, then docker, else system. */
 export function listenersOf(snap: Snapshot, services: ServiceDef[] = getServices()): Listener[] {
   const byPort = new Map(services.map((s) => [s.port, s]))
@@ -69,8 +73,7 @@ export function listenersOf(snap: Snapshot, services: ServiceDef[] = getServices
         return [{ ...base, group: 'service' as const, name: service.name, hostname }]
       }
       if (project) {
-        // The hostname routes to one port, the project's own: not to a second server it runs.
-        const hostname = port === project.port ? hostFor((h) => h.path === project.path) : undefined
+        const hostname = projectHost(snap, project, port)
         const { name, path, framework } = project
         return [
           {
