@@ -205,7 +205,8 @@ async function build(): Promise<Snapshot> {
     listSockets(),
     readLaunchd(),
     read('/usr/sbin/sysctl', ['-n', ...SYSCTL_NAMES], true),
-    scan(DEV_FOLDER, { skipGit: true }),
+    // Paths only: a poll every few seconds must not start a full ~/dev rescan each minute.
+    scan(DEV_FOLDER, { skipGit: true, revalidate: false }),
     listHostnames(),
   ])
   const procs = classifyRows(ps, uid)

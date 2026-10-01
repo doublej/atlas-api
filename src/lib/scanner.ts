@@ -1258,9 +1258,19 @@ function revalidate(baseDir: string): void {
 
 export async function scan(
   baseDir: string,
-  options: { skipGit?: boolean; useCache?: boolean; forceRefresh?: boolean } = {},
+  options: {
+    skipGit?: boolean
+    useCache?: boolean
+    forceRefresh?: boolean
+    revalidate?: boolean
+  } = {},
 ): Promise<ScanResult> {
-  const { skipGit = false, useCache = true, forceRefresh = false } = options
+  const {
+    skipGit = false,
+    useCache = true,
+    forceRefresh = false,
+    revalidate: refresh = true,
+  } = options
   const cachePath = join(baseDir, CACHE_FILE)
 
   // Always return cache first if available (stale-while-revalidate)
@@ -1271,7 +1281,7 @@ export async function scan(
       // Always return cache - let client decide to refresh in background
       if (cached.shapeVersion === CACHE_SHAPE_VERSION) {
         const stale = age > CACHE_TTL
-        if (stale) revalidate(baseDir)
+        if (stale && refresh) revalidate(baseDir)
         return { ...cached, fromCache: true, stale }
       }
     } catch {
