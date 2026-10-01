@@ -5,6 +5,7 @@ import { slugProblem } from './slug'
 describe('slugProblem', () => {
   it.each(['a', 'web-eink', '0', 'a1-b2', 'x'.repeat(63)])('accepts %s', (slug) => {
     expect(slugProblem(slug)).toBeNull()
+    expect(slugify(slug)).toBe(slug) // the slug checked is the slug routed
   })
 
   it.each([
@@ -15,6 +16,8 @@ describe('slugProblem', () => {
     ['a.b', 'a-z'],
     ['-a', 'start or end'],
     ['a-', 'start or end'],
+    ['a--b', '--'],
+    ['xn--abc', '--'],
   ])('refuses %j (%s)', (slug, why) => {
     expect(slugProblem(slug)).toContain(why)
   })
