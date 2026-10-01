@@ -64,6 +64,8 @@
         "src/lib/scanner.ts",
         "src/lib/claude-tree.ts",
         "src/lib/claude-tree-entities.ts",
+        "src/lib/claude-tree-parse.ts",
+        "src/lib/claude-tree-walk.ts",
         "src/lib/templates.ts",
         "src/lib/umami.ts",
         "src/lib/domains.ts",

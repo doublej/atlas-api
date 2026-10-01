@@ -11,9 +11,10 @@ import {
 import { onMount, setContext, tick } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 import '@xyflow/svelte/dist/style.css'
-import type { Reference, SearchHit, SearchMatch, TreeNode } from '$lib/claude-tree'
+import type { Reference, TreeNode } from '$lib/claude-tree'
 import { type AgentEngine, getAction } from '$lib/claude-tree-actions'
 import { type Entity, replaceLines } from '$lib/claude-tree-entities'
+import { matchLines, type SearchHit } from '$lib/claude-tree-match'
 import ConfirmDialog from '$lib/components/feedback/ConfirmDialog.svelte'
 import { errorMessage } from '$lib/format'
 import { http } from '$lib/http'
@@ -123,27 +124,6 @@ const pathToFile = $derived.by(() => {
   }
   return m
 })
-
-const SNIPPET_MAX = 200 // mirror of the server window, so File scope matches Tree scope
-
-/** Client mirror of the server `matchLines` — windows long lines around the match. */
-function matchLines(text: string, q: string): SearchMatch[] {
-  const matches: SearchMatch[] = []
-  const lines = text.split('\n')
-  for (let i = 0; i < lines.length && matches.length < 50; i++) {
-    const col = lines[i].toLowerCase().indexOf(q)
-    if (col < 0) continue
-    matches.push({ line: i + 1, ...windowLine(lines[i], col) })
-  }
-  return matches
-}
-
-function windowLine(line: string, col: number): { text: string; col: number } {
-  if (line.length <= SNIPPET_MAX) return { text: line, col }
-  const start = Math.max(0, col - Math.floor(SNIPPET_MAX / 2))
-  const prefix = start > 0 ? '…' : ''
-  return { text: prefix + line.slice(start, start + SNIPPET_MAX), col: col - start + prefix.length }
-}
 
 // File scope searches the live (possibly unsaved) editor content, client-side.
 const fileHit = $derived.by<SearchHit | null>(() => {
