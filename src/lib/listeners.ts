@@ -69,7 +69,8 @@ export function listenersOf(snap: Snapshot, services: ServiceDef[] = getServices
         return [{ ...base, group: 'service' as const, name: service.name, hostname }]
       }
       if (project) {
-        const hostname = hostFor((h) => h.path === project.path)
+        // The hostname routes to one port, the project's own: not to a second server it runs.
+        const hostname = port === project.port ? hostFor((h) => h.path === project.path) : undefined
         const { name, path, framework } = project
         return [
           {

@@ -150,6 +150,30 @@ describe('nothing secret leaves the server', () => {
   })
 })
 
+describe('listenersOf', () => {
+  it("puts a project's dev hostname on the port it routes to only", () => {
+    const project = { name: 'web', path: '/w', slug: 'web' }
+    const vite = (pid: number) => ({ pid, name: 'vite', command: 'vite', pgid: pid, project })
+    const snap = {
+      self: { pid: 1, pgid: 1 },
+      sockets: [4123, 4451].map((port, i) => ({
+        port,
+        pid: 10 + i,
+        address: '*',
+        command: 'node',
+      })),
+      byPid: new Map([10, 11].map((pid) => [pid, vite(pid)])),
+      projects: [{ ...project, port: 4123 }],
+      hostnames: [{ slug: 'web', path: '/w', local: 'https://web.local' }],
+      docker: new Map(),
+    } as unknown as Snapshot
+    expect(listenersOf(snap, []).map((l) => [l.port, l.hostname])).toEqual([
+      [4123, 'https://web.local'],
+      [4451, undefined],
+    ])
+  })
+})
+
 describe('viewOf', () => {
   const snap = snapshotOf(FIXTURE)
   const view = (q: string) => {
