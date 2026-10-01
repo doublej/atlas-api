@@ -1,5 +1,6 @@
 <script lang="ts">
 import ConfirmDialog from '$lib/components/feedback/ConfirmDialog.svelte'
+import Notice from '$lib/components/feedback/Notice.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import { errorMessage } from '$lib/format'
 import type { HostnameState, SlugCheck } from '$lib/hostnames/types'
@@ -118,6 +119,10 @@ async function release(): Promise<void> {
       {/if}
     </span>
   </div>
+
+  {#if hostname?.state === 'failed' && hostname.error}
+    <Notice tone="error">{hostname.error}</Notice>
+  {/if}
 
   {#if hostname}
     <a class="current mono t-small" href={hostname.local} target="_blank" rel="noreferrer">
