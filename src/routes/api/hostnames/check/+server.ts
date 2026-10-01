@@ -13,7 +13,8 @@ import type { RequestHandler } from './$types'
 export const GET: RequestHandler = async ({ url }) => {
   const given = url.searchParams.get('path')
   const path = given ? resolveLocal(given) : undefined
-  if (path === null) return json({ error: "path is not in this machine's catalog" }, { status: 400 })
+  if (path === null)
+    return json({ error: "path is not in this machine's catalog" }, { status: 400 })
   const slug = url.searchParams.get('slug') || (path ? slugify(relative(DEV_FOLDER, path)) : '')
   const { projects } = await scan(DEV_FOLDER) // cached — the other projects' slugs
   return json(await checkSlug(slug, path, projects))
