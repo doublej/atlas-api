@@ -1220,6 +1220,22 @@ export async function finalizeAtlas(baseDir: string, atlas: ProjectAtlas): Promi
 
 let revalidating: Promise<void> | null = null
 
+let cacheMemo: { path: string; mtimeMs: number; size: number; index: CachedIndex } | null = null
+
+/**
+ * The parsed cache, re-parsed only when the file changed. Every writer replaces it whole through
+ * `writeJsonAtomic` (tmp + rename), so mtime + size is a safe key, and a dozen callers per request
+ * stop re-parsing 600KB each. Shared and read-only: clone before mutating anything in it.
+ */
+async function readCachedIndex(cachePath: string): Promise<CachedIndex> {
+  const { mtimeMs, size } = await stat(cachePath)
+  const m = cacheMemo
+  if (m && m.path === cachePath && m.mtimeMs === mtimeMs && m.size === size) return m.index
+  const index: CachedIndex = JSON.parse(await readFile(cachePath, 'utf-8'))
+  cacheMemo = { path: cachePath, mtimeMs, size, index }
+  return index
+}
+
 /**
  * Refresh a stale cache behind the answer already served.
  *
@@ -1247,7 +1263,7 @@ export async function scan(
   // Always return cache first if available (stale-while-revalidate)
   if (useCache && !forceRefresh) {
     try {
-      const cached: CachedIndex = JSON.parse(await readFile(cachePath, 'utf-8'))
+      const cached = await readCachedIndex(cachePath)
       const age = Date.now() - cached.cachedAt
       // Always return cache - let client decide to refresh in background
       if (cached.shapeVersion === CACHE_SHAPE_VERSION) {
