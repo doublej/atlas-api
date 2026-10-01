@@ -67,11 +67,14 @@ function isActive(href: string): boolean {
     text-decoration: none;
   }
 
-  /* On a phone the links scroll sideways instead of widening the whole page. */
+  /* On a phone the links scroll sideways instead of widening the whole page. The padding is room
+     for the focus ring (2px + 2px offset) the scroller would otherwise clip; the margin undoes it. */
   .links {
     display: flex;
     gap: var(--space-1);
     min-width: 0;
+    padding: var(--space-1);
+    margin: calc(-1 * var(--space-1));
     overflow-x: auto;
     scrollbar-width: none;
   }
