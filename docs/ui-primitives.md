@@ -210,8 +210,8 @@ row-click selection code.
 | `cell` | snippet `(row, state)`; `state` is `{ selected, open, toggleOpen }` |
 | `sort?` | `(row) => string \| number \| null \| undefined` — makes the header a sort button; blanks sort last |
 | `align?` | `'right'` for numbers and sizes |
-| `wrap?` | lets the cell wrap anywhere (min 12rem) instead of one line |
-| `fill?` | the column takes the width the other columns leave, up to 40%, and ellipsizes past it, so a long value never widens the table — one per table (a project's name) |
+| `wrap?` | lets the cell wrap anywhere instead of one line |
+| `width?` | the column's fixed width, any CSS length but a percentage (a `<col>` ignores one; use `vw` bounds in a `clamp()` to narrow it on a phone). Columns without one split what is left, and every cell clips at its edge. The table is `table-layout: fixed`, so tables built from the same columns share one grid |
 | `hideBelow?` | `768 \| 1100` — hide the column below that viewport width |
 | `hideLabel?` | header label for screen readers only (icon columns) |
 
@@ -251,6 +251,7 @@ $effect(() => sel.prune(archives.map((v) => v.id)))
 Grouped tables (one card per group, like `/ports` and the disk cleanup list): render one `Table`
 per group, pass the same `sort` and `selection` to each, and `order` = all groups' ids in render
 order. The group's own header (its checkbox, a "kill all") stays page markup above each Table.
+Give every short column a `width`: that is what lines the groups' columns up.
 
 Known fits and gaps for the pending migrations:
 
@@ -258,7 +259,7 @@ Known fits and gaps for the pending migrations:
   select by **port** (`key={(l) => l.port}`), and map the selected ports to unique pids when
   killing — a pid key would collide in the each-block.
 - `ProjectTable` (done): no selection, `expanded = detail`, the name cell's button calls
-  `state.toggleOpen()` and reads `state.open`, the name column is `fill`; build `columns` with
+  `state.toggleOpen()` and reads `state.open`, the name and path columns have no `width`; build `columns` with
   `$derived` to drop Host when `!showHost`. The Table has one density (8px cell padding, 13px
   text), so its rows are taller than the old 30px `ProjectLine`.
 - disk cleanup: the group checkbox selects only non-nested rows, the Table header checkbox selects
