@@ -45,6 +45,7 @@ function input(over: Partial<DriftInput> = {}): DriftInput {
     nas: { sites: [wildcard, site('web-a')], adminRanges: [] },
     ip: '10.0.0.2',
     authHash: true,
+    serviceAuthHash: true,
     wan: { inAdminRanges: true, dnsMatches: true },
     devFolder: DEV,
     ...over,
@@ -141,6 +142,17 @@ describe('findDrift', () => {
   it('expects no remote half without an auth hash', () => {
     const nas = { sites: [wildcard, site('web-a', 4101, false)], adminRanges: [] }
     expect(findDrift(input({ nas, authHash: false }))).toEqual([])
+  })
+
+  it("checks a service's remote half against the service hash, not the dev one", () => {
+    const rows = { atlas: row({ service: true, path: undefined, port: 47891 }) }
+    const nas = { sites: [wildcard, site('atlas', 47891, false)], adminRanges: [] }
+    const services = [{ slug: 'atlas', port: 47891 }]
+    const listening = new Set([47891])
+    const at = (over: Partial<DriftInput>) =>
+      kinds(input({ rows, nas, services, listening, ...over }))
+    expect(at({ authHash: true, serviceAuthHash: false })).toEqual([])
+    expect(at({ authHash: false, serviceAuthHash: true })).toEqual(['remote-missing:atlas'])
   })
 
   it('flags a NAS file pointing at an old LAN IP', () => {

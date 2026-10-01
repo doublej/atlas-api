@@ -14,8 +14,10 @@ export interface SiteBlock {
   ip: string
   /** No password on the remote half. */
   devPublic: boolean
-  /** Write the remote half at all (also needs CADDY_DEV_AUTH_HASH). */
+  /** Write the remote half at all (also needs `authHash`). */
   remote: boolean
+  /** The remote half's bcrypt password hash (`authHashFor`). None, no remote half. */
+  authHash?: string
   /** A service's own short LAN name, served next to `<slug>.atlas.local`. */
   host?: string
   /** `encode zstd gzip` — service blocks only: the console's HTML is 1.4 MB, while a dev server's
@@ -29,9 +31,10 @@ export interface SiteBlock {
  * DNS-rebinding protection), so it resolves to the NAS's public IP like `atlas.remote` and
  * relies on `admin_ip_check` (from `snippets/common.caddy`) instead: LAN CIDR *and* the
  * household's own public IP, since hairpin NAT can make a LAN-originated request look like the
- * latter to the container. `atlas.remote` is gated by the shared `CADDY_DEV_AUTH_HASH` password
- * (bcrypt, generated once via the NAS's own `caddy hash-password`) — unless `devPublic` opts the
- * project out via its `.atlas` file, for something meant to be shared with no password at all.
+ * latter to the container. `atlas.remote` is gated by a bcrypt password hash: the shared
+ * `CADDY_DEV_AUTH_HASH` for projects, `CADDY_SERVICE_AUTH_HASH` for services (both from onenv
+ * `caddy-dev`) — unless `devPublic` opts a project out via its `.atlas` file, for something meant
+ * to be shared with no password at all.
  * No `tls` line: the `*.atlas.local` / `*.atlas.remote` wildcards in `atlas-wildcard.caddy`
  * cover every slug, so a new hostname costs no certificate.
  */
@@ -60,14 +63,13 @@ export function renderSiteBlock(b: SiteBlock): string {
     `}`,
   ].join('\n')
 
-  const authHash = process.env.CADDY_DEV_AUTH_HASH
-  if (!authHash || !b.remote) return `${local}\n`
+  if (!b.authHash || !b.remote) return `${local}\n`
 
   const authUser = process.env.CADDY_DEV_AUTH_USER ?? 'dev'
   const remote = [
     `${b.slug}.atlas.remote.jurrejan.com {`,
     ...encode,
-    ...(b.devPublic ? [] : [`\tbasic_auth {`, `\t\t${authUser} ${authHash}`, `\t}`]),
+    ...(b.devPublic ? [] : [`\tbasic_auth {`, `\t\t${authUser} ${b.authHash}`, `\t}`]),
     proxy('\t'),
     `}`,
   ].join('\n')

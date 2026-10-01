@@ -32,7 +32,14 @@ describe('listenersOn', () => {
   })
 })
 
-const block = { slug: 'x', port: 1, ip: '10.0.0.2', devPublic: false, remote: true }
+const block = {
+  slug: 'x',
+  port: 1,
+  ip: '10.0.0.2',
+  devPublic: false,
+  remote: true,
+  authHash: 'hash',
+}
 
 describe('renderSiteBlock', () => {
   it('serves a service host next to its atlas.local name', () => {
@@ -42,24 +49,21 @@ describe('renderSiteBlock', () => {
   })
 
   it('has no remote half without an auth hash, even when asked', () => {
-    delete process.env.CADDY_DEV_AUTH_HASH
-    expect(renderSiteBlock(block)).not.toContain('atlas.remote')
+    expect(renderSiteBlock({ ...block, authHash: undefined })).not.toContain('atlas.remote')
   })
 
-  it('publishes atlas.remote by default', () => {
-    process.env.CADDY_DEV_AUTH_HASH = 'hash'
+  it('publishes atlas.remote by default, behind the hash it is given', () => {
     expect(renderSiteBlock(block)).toContain('x.atlas.remote.')
+    expect(renderSiteBlock(block)).toContain('\t\tdev hash\n')
   })
 
   it('drops atlas.remote when remote is off', () => {
-    process.env.CADDY_DEV_AUTH_HASH = 'hash'
     const out = renderSiteBlock({ ...block, remote: false })
     expect(out).toContain('x.atlas.local.')
     expect(out).not.toContain('atlas.remote')
   })
 
   it('serves a devPublic remote half without the password (4.3)', () => {
-    process.env.CADDY_DEV_AUTH_HASH = 'hash'
     expect(renderSiteBlock(block)).toContain('basic_auth')
     const out = renderSiteBlock({ ...block, devPublic: true })
     expect(out).toContain('x.atlas.remote.')
@@ -67,7 +71,6 @@ describe('renderSiteBlock', () => {
   })
 
   it('compresses both halves of a service block, never a project block (2.6)', () => {
-    process.env.CADDY_DEV_AUTH_HASH = 'hash'
     const service = renderSiteBlock({ ...block, compress: true })
     expect(service.match(/^\tencode zstd gzip$/gm)).toHaveLength(2)
     expect(renderSiteBlock(block)).not.toContain('encode')
@@ -82,8 +85,8 @@ describe('the atlas console block (decision 1, 2.4)', () => {
   })
 
   it('serves atlas.atlas.remote behind the password, compressed, on the short LAN name too', () => {
-    process.env.CADDY_DEV_AUTH_HASH = 'hash'
     const out = renderSiteBlock({
+      authHash: 'hash',
       slug: 'atlas',
       port: atlas?.port ?? 0,
       ip: '10.0.0.2',

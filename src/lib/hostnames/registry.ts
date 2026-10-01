@@ -84,17 +84,24 @@ export async function writeRegistry(registry: Registry): Promise<void> {
   await rename(tmp, REGISTRY_FILE)
 }
 
-export const hasAuthHash = (): boolean => Boolean(process.env.CADDY_DEV_AUTH_HASH)
+/**
+ * The bcrypt hash behind a remote half's password. A service (the console carries shell-exec
+ * routes) never shares the dev-preview password, which is handed to whoever views a preview.
+ */
+export const authHashFor = (service?: boolean): string | undefined =>
+  (service ? process.env.CADDY_SERVICE_AUTH_HASH : process.env.CADDY_DEV_AUTH_HASH) || undefined
+
+export const hasAuthHash = (service?: boolean): boolean => Boolean(authHashFor(service))
 
 /** The URLs a slug is served on. `remote` is null when no remote block is (or can be) served. */
 export function hostnamesFor(
   slug: string,
-  entry?: Pick<HostnameEntry, 'host' | 'remote'>,
+  entry?: Pick<HostnameEntry, 'host' | 'remote' | 'service'>,
 ): { local: string; remote: string | null } {
   return {
     local: `https://${entry?.host ?? `${slug}.${SUBDOMAIN_LABEL}.local.${ROOT_DOMAIN}`}`,
     remote:
-      entry?.remote === false || !hasAuthHash()
+      entry?.remote === false || !hasAuthHash(entry?.service)
         ? null
         : `https://${slug}.${SUBDOMAIN_LABEL}.remote.${ROOT_DOMAIN}`,
   }

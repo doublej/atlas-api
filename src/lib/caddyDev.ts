@@ -2,6 +2,7 @@ import { networkInterfaces } from 'node:os'
 import { getServices } from '$shared/services'
 import { type NasResult, pushToNas, removeFromNas, renderSiteBlock } from './hostnames/nas'
 import {
+  authHashFor,
   describeHolder,
   type HostnameEntry,
   hasAuthHash,
@@ -16,8 +17,9 @@ import {
 import { forget, markFailed, markSyncing, trackedState, watchLive } from './hostnames/tracker'
 import type { Holder, HostnameChipData, HostnameRow, HostnameState } from './hostnames/types'
 
-/** Bump when the service block template changes: every service file is re-pushed once. */
-const SERVICE_BLOCK_REV = 1
+/** Bump when the service block template changes: every service file is re-pushed once.
+ *  2: services' remote half moved to its own password (`CADDY_SERVICE_AUTH_HASH`). */
+const SERVICE_BLOCK_REV = 2
 
 /** A slug write that would take another project's or service's hostname. Routes answer 409. */
 export class SlugTakenError extends Error {
@@ -94,7 +96,7 @@ function wantFor(p: RouteRequest): Want {
     port: p.port,
     ip: lanIp(),
     devPublic: p.devPublic ?? false,
-    remote: (p.remote ?? true) && hasAuthHash() ? undefined : false,
+    remote: (p.remote ?? true) && hasAuthHash(p.service) ? undefined : false,
     host: p.host,
     rev: p.service ? SERVICE_BLOCK_REV : undefined,
   }
@@ -114,6 +116,7 @@ async function ensureUnlocked(p: RouteRequest): Promise<HostnameState> {
     ...block,
     slug: p.slug,
     remote: remote !== false,
+    authHash: authHashFor(p.service),
     compress: !!p.service,
   })
   const pushed = await pushToNas(p.slug, content)

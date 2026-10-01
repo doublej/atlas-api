@@ -60,6 +60,7 @@ export async function diagnose(): Promise<DriftItem[]> {
     nas,
     ip: lanIp(),
     authHash: hasAuthHash(),
+    serviceAuthHash: hasAuthHash(true),
     wan,
     devFolder: DEV_FOLDER,
   })

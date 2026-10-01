@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { basename, join, relative } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { DEV_FOLDER } from '../config'
-import { hostnamesFor, normalizePath, rowHolder } from './registry'
+import { authHashFor, hostnamesFor, normalizePath, rowHolder } from './registry'
 
 const here = process.cwd() // the worktree, somewhere under ~/dev
 const entry = (path?: string) => ({ path, port: 4100, registeredAt: '' })
@@ -48,6 +48,19 @@ describe('hostnamesFor', () => {
     process.env.CADDY_DEV_AUTH_HASH = 'hash'
     expect(hostnamesFor('x', { remote: false }).remote).toBeNull()
     expect(hostnamesFor('x').remote).toBe('https://x.atlas.remote.jurrejan.com')
+  })
+
+  it("never offers a service's remote half on the dev-preview password", () => {
+    process.env.CADDY_DEV_AUTH_HASH = 'hash'
+    delete process.env.CADDY_SERVICE_AUTH_HASH
+    expect(hostnamesFor('atlas', { service: true }).remote).toBeNull()
+    expect(authHashFor(true)).toBeUndefined()
+    process.env.CADDY_SERVICE_AUTH_HASH = 'service-hash'
+    expect(hostnamesFor('atlas', { service: true }).remote).toBe(
+      'https://atlas.atlas.remote.jurrejan.com',
+    )
+    expect(authHashFor(true)).toBe('service-hash')
+    expect(authHashFor()).toBe('hash')
   })
 })
 

@@ -23,7 +23,9 @@ export interface DriftInput {
   nas: NasView | null
   /** This Mac's LAN IP — where every NAS file should point. */
   ip: string
+  /** A bcrypt hash is set for project rows' remote halves, and for services'. */
   authHash: boolean
+  serviceAuthHash: boolean
   /** null: the public IP could not be read. Never carries the addresses themselves. */
   wan: { inAdminRanges: boolean; dnsMatches: boolean } | null
   devFolder: string
@@ -119,7 +121,8 @@ function siteDrift(
       }),
     )
   }
-  const remoteExpected = entry.remote !== false && input.authHash
+  const remoteExpected =
+    entry.remote !== false && (entry.service ? input.serviceAuthHash : input.authHash)
   if (remoteExpected && !site.hosts.some((h) => h.includes('.atlas.remote.'))) {
     out.push(
       item(
