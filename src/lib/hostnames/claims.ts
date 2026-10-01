@@ -1,7 +1,8 @@
 import { relative } from 'node:path'
+import { type AtlasMeta, readAtlas } from '../atlasFile'
 import { moveRoute, SlugTakenError } from '../caddyDev'
 import { DEV_FOLDER } from '../config'
-import { currentSlug, type Project } from '../scanner'
+import { currentSlug, type Project, slugify } from '../scanner'
 import { describeHolder, hostnamesFor, readRegistry, rowHolder, slugsAt } from './registry'
 import { slugProblem } from './slug'
 import type { Holder, HostnameState, SlugCheck } from './types'
@@ -34,6 +35,26 @@ export async function assertSlugFree(
 ): Promise<void> {
   const holder = await slugHolder(slug, path, projects)
   if (holder) throw new SlugTakenError(slug, holder)
+}
+
+/**
+ * Throws {@link SlugTakenError} before a `.atlas` write when the slug the project ends up with
+ * belongs to someone else — {@link rerouteProject} moves the route there once the file is
+ * written. Compared with the route's slug when there is one (a hand-edited `.atlas` may have
+ * drifted from it), else with the slug the project has now.
+ */
+export async function assertPatchFree(
+  path: string,
+  patch: AtlasMeta,
+  projects: Claimant[],
+): Promise<void> {
+  const merged = { ...(await readAtlas(path)), ...patch } // `null` clears, as in patchAtlas
+  const next =
+    typeof merged.slug === 'string' && merged.slug
+      ? slugify(merged.slug)
+      : slugify(relative(DEV_FOLDER, path)) // as currentSlug reads it
+  const route = slugsAt(await readRegistry(), path)[0]
+  if (next !== (route ?? (await slugAt(path)))) await assertSlugFree(next, path, projects)
 }
 
 /** The verdict on `slug` for the project at `path` (none: never `current`), with its URLs. */

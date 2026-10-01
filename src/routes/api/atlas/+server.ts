@@ -1,11 +1,10 @@
-import { relative } from 'node:path'
 import { json } from '@sveltejs/kit'
 import { type AtlasMeta, patchAtlas, readAtlas } from '$lib/atlasFile'
 import { DEV_FOLDER, resolveLocal } from '$lib/config'
-import { assertSlugFree, rerouteProject, slugAt } from '$lib/hostnames/claims'
+import { assertPatchFree, rerouteProject } from '$lib/hostnames/claims'
 import { slugProblem } from '$lib/hostnames/slug'
 import { answeringTaken } from '$lib/hostnames/taken'
-import { scan, slugify } from '$lib/scanner'
+import { scan } from '$lib/scanner'
 import type { RequestHandler } from './$types'
 
 /** Read one project's `.atlas`. Absent file answers `{}` — not an error, just no overrides. */
@@ -47,12 +46,7 @@ export const PATCH: RequestHandler = async ({ request }) => {
   if (problem) return json({ error: problem }, { status: 400 })
 
   return answeringTaken(async () => {
-    if ('slug' in patch) {
-      const next = patch.slug ?? slugify(relative(DEV_FOLDER, path))
-      if (next !== (await slugAt(path))) {
-        await assertSlugFree(next, path, (await scan(DEV_FOLDER)).projects)
-      }
-    }
+    await assertPatchFree(path, patch, (await scan(DEV_FOLDER)).projects) // before anything is written
     const atlas = await patchAtlas(path, patch as AtlasMeta)
     const hostname = await rerouteProject(path, atlas)
     return json({ path, atlas, ...(hostname ? { hostname } : {}) })
