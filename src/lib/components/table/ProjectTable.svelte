@@ -38,15 +38,17 @@ const sort = new TableSort<string>('modified', ['git', 'links', 'claude', 'modif
 const columns = $derived<Column<P>[]>([
   {
     key: 'git',
+    width: '2.25rem',
     label: 'Git status',
     hideLabel: true,
     sort: (p) => GIT_RANK[gitStatus[p.path]?.status ?? ''] ?? -1,
     cell: gitCell,
   },
-  { key: 'name', label: 'Name', sort: (p) => p.name.toLowerCase(), fill: true, cell: nameCell },
+  { key: 'name', label: 'Name', sort: (p) => p.name.toLowerCase(), cell: nameCell },
   { key: 'path', label: 'Path', sort: (p) => p.relativePath, hideBelow: 768, cell: pathCell },
   {
     key: 'stack',
+    width: '10rem',
     label: 'Stack',
     sort: stack,
     hideBelow: 768,
@@ -54,16 +56,26 @@ const columns = $derived<Column<P>[]>([
   },
   {
     key: 'branch',
+    width: '10rem',
     label: 'Branch',
     sort: (p) => gitStatus[p.path]?.branch ?? '',
     hideBelow: 1100,
     cell: branchCell,
   },
   ...(showHost
-    ? [{ key: 'host', label: 'Host', sort: (p: P) => p.host, cell: hostCell } satisfies Column<P>]
+    ? [
+        {
+          key: 'host',
+          width: '4.5rem',
+          label: 'Host',
+          sort: (p: P) => p.host,
+          cell: hostCell,
+        } satisfies Column<P>,
+      ]
     : []),
   {
     key: 'links',
+    width: '5.5rem',
     label: 'Links',
     sort: (p) =>
       Number(Boolean(runningPorts[p.path] || hostnames[p.slug])) + (p.domains?.length ?? 0),
@@ -72,15 +84,24 @@ const columns = $derived<Column<P>[]>([
   },
   {
     key: 'claude',
+    width: '6.5rem',
     label: 'CLAUDE.md',
     sort: (p) => p.agentFiles?.claude?.tokens ?? 0,
     align: 'right',
     hideBelow: 1100,
     cell: claudeCell,
   },
-  { key: 'modified', label: 'Modified', sort: (p) => p.modifiedAt, align: 'right', cell: ageCell },
+  {
+    key: 'modified',
+    width: '5.5rem',
+    label: 'Modified',
+    sort: (p) => p.modifiedAt,
+    align: 'right',
+    cell: ageCell,
+  },
   {
     key: 'run',
+    width: '3.25rem',
     label: 'Runnable',
     hideLabel: true,
     sort: (p) => Number(Boolean(p.isLocal && p.devCommand)),
@@ -210,22 +231,16 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
     color: var(--color-muted-2);
   }
 
-  /* A block, so the cell can cap it: a deep path or a long branch ellipsizes instead of
-     widening the table. */
+  /* A block, so a deep path or a long branch ellipsizes inside its column. */
   .path,
   .clip {
     display: block;
-    max-width: 220px;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .path {
     color: var(--color-muted);
-  }
-
-  .clip {
-    max-width: 140px;
   }
 
   .mono {

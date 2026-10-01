@@ -42,14 +42,51 @@ const FLAG_TITLE: Record<ProcessFlag, string> = {
 }
 const mainOf = (row: AppRow) => procs.get(row.primary)
 
+// The metric columns narrow to their number on a phone, where the sparklines are hidden; a
+// percentage would make a <col> width void, so the bounds are in vw (full width from 768px).
 const columns: Column<AppRow>[] = [
-  { key: 'kind', label: 'Kind', sort: SORTS.kind, cell: kindCell, hideBelow: 768 },
+  { key: 'kind', width: '5rem', label: 'Kind', sort: SORTS.kind, cell: kindCell, hideBelow: 768 },
   { key: 'name', label: 'Name', sort: SORTS.name, cell: nameCell },
-  { key: 'project', label: 'Project', sort: SORTS.project, cell: projectCell, hideBelow: 1100 },
-  { key: 'ports', label: 'Ports', sort: SORTS.ports, cell: portsCell },
-  { key: 'cpu', label: 'CPU', sort: SORTS.cpu, align: 'right', cell: cpuCell },
-  { key: 'rss', label: 'Memory', sort: SORTS.rss, align: 'right', cell: rssCell },
-  { key: 'uptime', label: 'Up', sort: SORTS.uptime, align: 'right', cell: upCell, hideBelow: 768 },
+  {
+    key: 'project',
+    width: '9rem',
+    label: 'Project',
+    sort: SORTS.project,
+    cell: projectCell,
+    hideBelow: 1100,
+  },
+  {
+    key: 'ports',
+    width: 'clamp(4.25rem, 15vw, 7rem)',
+    label: 'Ports',
+    sort: SORTS.ports,
+    cell: portsCell,
+  },
+  {
+    key: 'cpu',
+    width: 'clamp(3.75rem, 16vw, 7.5rem)',
+    label: 'CPU',
+    sort: SORTS.cpu,
+    align: 'right',
+    cell: cpuCell,
+  },
+  {
+    key: 'rss',
+    width: 'clamp(4.25rem, 17vw, 8rem)',
+    label: 'Memory',
+    sort: SORTS.rss,
+    align: 'right',
+    cell: rssCell,
+  },
+  {
+    key: 'uptime',
+    width: '5.5rem',
+    label: 'Up',
+    sort: SORTS.uptime,
+    align: 'right',
+    cell: upCell,
+    hideBelow: 768,
+  },
   { key: 'command', label: 'Command', cell: commandCell, hideBelow: 768 },
   { key: 'cwd', label: 'Folder', cell: cwdCell, hideBelow: 1100 },
 ]
@@ -191,7 +228,7 @@ const columns: Column<AppRow>[] = [
   }
 
   .command {
-    max-width: 360px;
+    max-width: 100%;
     overflow: hidden;
     padding: 0;
     font-size: 12px;
@@ -207,9 +244,15 @@ const columns: Column<AppRow>[] = [
     color: var(--color-fg);
   }
 
+  @media (width < 768px) {
+    .metric :global(svg) {
+      display: none;
+    }
+  }
+
   .path {
     display: inline-block;
-    max-width: 280px;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     vertical-align: bottom;

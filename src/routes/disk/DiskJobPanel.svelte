@@ -71,7 +71,6 @@ const exitName = (code: number | null) =>
     bottom: 0;
     left: 0;
     z-index: 50;
-    max-width: var(--col-max);
     margin: 0 auto;
     background: var(--color-bg-elev);
     border-top: var(--hairline) solid var(--color-border-strong);

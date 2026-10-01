@@ -25,9 +25,9 @@ let polled = $state<DaemonRow[] | null>(null)
 const source = $derived(polled ?? daemons)
 const columns: Column<DaemonRow>[] = [
   { key: 'name', label: 'Daemon', sort: (d) => d.name, wrap: true, cell: nameCell },
-  { key: 'state', label: 'State', sort: (d) => d.state.status, cell: stateCell },
-  { key: 'port', label: 'Port', sort: (d) => d.port, cell: portCell },
-  { key: 'actions', label: 'Actions', cell: actionsCell },
+  { key: 'state', width: '11rem', label: 'State', sort: (d) => d.state.status, cell: stateCell },
+  { key: 'port', width: '6rem', label: 'Port', sort: (d) => d.port, cell: portCell },
+  { key: 'actions', width: '12rem', label: 'Actions', cell: actionsCell },
 ]
 let loadError = $state('')
 /** `<label>:<action>` while a lifecycle call is in flight — one at a time, on purpose. */

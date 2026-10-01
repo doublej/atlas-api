@@ -186,7 +186,6 @@ onMount(() => {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
-    max-width: var(--col-max);
     margin: 0 auto;
     padding: var(--space-6) var(--page-pad) var(--space-16);
   }

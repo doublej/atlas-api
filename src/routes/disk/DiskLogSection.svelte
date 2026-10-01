@@ -39,10 +39,10 @@ $effect(() => {
 const failed = (o: Operation) => !o.end || o.end.outcome === 'failed'
 /** Chronological within a run, so no sort. On a phone the item cell carries the result too. */
 const columns: Column<Operation>[] = [
-  { key: 'at', label: 'Time', hideBelow: 768, cell: timeCell },
-  { key: 'op', label: 'Operation', cell: opCell },
+  { key: 'at', width: '6.5rem', label: 'Time', hideBelow: 768, cell: timeCell },
+  { key: 'op', width: '7rem', label: 'Operation', cell: opCell },
   { key: 'item', label: 'Item', wrap: true, cell: itemCell },
-  { key: 'bytes', label: 'Size', align: 'right', hideBelow: 768, cell: sizeCell },
+  { key: 'bytes', width: '5.5rem', label: 'Size', align: 'right', hideBelow: 768, cell: sizeCell },
   { key: 'result', label: 'Result', wrap: true, hideBelow: 768, cell: resultCell },
 ]
 </script>

@@ -62,7 +62,6 @@ const { title, label, tabs, active, summary, class: cls = '', children }: Props 
     display: grid;
     grid-template-columns: 200px minmax(0, 1fr);
     gap: var(--space-8);
-    max-width: var(--col-max);
     margin: 0 auto;
     padding: var(--space-6) var(--page-pad) var(--space-16);
   }

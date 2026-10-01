@@ -27,9 +27,16 @@ const sel = new Selection<string>()
 /** One sort and one selection for every risk group, so the groups stay comparable. */
 const sort = new TableSort<string>(null, ['size'])
 const columns: Column<FolderRow>[] = [
-  { key: 'size', label: 'Size', sort: (f) => f.bytes, align: 'right', cell: sizeCell },
-  { key: 'path', label: 'Folder', sort: (f) => f.path, fill: true, cell: pathCell },
-  { key: 'inUse', label: 'In use', sort: (f) => f.inUse, cell: inUseCell },
+  {
+    key: 'size',
+    width: '5.5rem',
+    label: 'Size',
+    sort: (f) => f.bytes,
+    align: 'right',
+    cell: sizeCell,
+  },
+  { key: 'path', label: 'Folder', sort: (f) => f.path, cell: pathCell },
+  { key: 'inUse', width: '7.5rem', label: 'In use', sort: (f) => f.inUse, cell: inUseCell },
   {
     key: 'why',
     label: 'What it is',

@@ -21,8 +21,12 @@ export interface Column<T> {
   align?: 'right'
   /** Lets the cell wrap (anywhere) instead of staying on one line. */
   wrap?: boolean
-  /** Takes the width the other columns leave, up to 40%, and ellipsizes past it — the one column that may shrink. */
-  fill?: boolean
+  /**
+   * The column's fixed width (any CSS length but a percentage, which voids it), so sibling
+   * tables line up and a poll never shifts them. Without one the column shares what the others
+   * leave and clips past it.
+   */
+  width?: string
   /** Hides the column below this viewport width. */
   hideBelow?: 768 | 1100
   /** Keeps the label for screen readers only — icon columns. */

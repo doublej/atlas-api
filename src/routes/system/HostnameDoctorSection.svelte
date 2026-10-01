@@ -35,10 +35,10 @@ const subject = (i: DriftItem): string => i.slug ?? i.id.slice(i.kind.length + 1
 
 const fixable = $derived(report?.items.filter((i) => i.fix) ?? [])
 const columns: Column<DriftItem>[] = [
-  { key: 'kind', label: 'Drift', sort: (i) => i.kind, cell: kindCell },
+  { key: 'kind', width: '9rem', label: 'Drift', sort: (i) => i.kind, cell: kindCell },
   { key: 'subject', label: 'What', sort: subject, cell: subjectCell },
   { key: 'detail', label: 'Detail', wrap: true, cell: detailCell },
-  { key: 'fix', label: 'Fix', hideLabel: true, cell: fixCell },
+  { key: 'fix', width: '6rem', label: 'Fix', hideLabel: true, cell: fixCell },
 ]
 
 async function load(): Promise<void> {

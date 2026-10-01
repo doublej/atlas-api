@@ -87,7 +87,7 @@ const rows = $derived<PlanRow[]>([
 const planColumns: Column<PlanRow>[] = [
   { key: 'step', label: 'Step', wrap: true, cell: stepCell },
   { key: 'command', label: 'Command', wrap: true, cell: commandCell },
-  { key: 'cache', label: 'Cache', fill: true, hideBelow: 768, cell: cacheCell },
+  { key: 'cache', label: 'Cache', hideBelow: 768, cell: cacheCell },
 ]
 
 const cache = (o: Operation, k: string) => o.end?.details?.[k] as number | undefined
@@ -104,6 +104,7 @@ const lastColumns: Column<Operation>[] = [
   },
   {
     key: 'before',
+    width: '6rem',
     label: 'Before',
     sort: (o) => cache(o, 'cacheBefore'),
     align: 'right',
@@ -112,13 +113,21 @@ const lastColumns: Column<Operation>[] = [
   },
   {
     key: 'after',
+    width: '6rem',
     label: 'After',
     sort: (o) => cache(o, 'cacheAfter'),
     align: 'right',
     hideBelow: 768,
     cell: afterCell,
   },
-  { key: 'freed', label: 'Freed', sort: (o) => o.end?.freed ?? 0, align: 'right', cell: freedCell },
+  {
+    key: 'freed',
+    width: '6rem',
+    label: 'Freed',
+    sort: (o) => o.end?.freed ?? 0,
+    align: 'right',
+    cell: freedCell,
+  },
 ]
 </script>
 

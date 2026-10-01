@@ -7,7 +7,7 @@ import type { TemplateVariable } from '$lib/templates'
 let { variables }: { variables: TemplateVariable[] } = $props()
 
 const columns: Column<TemplateVariable>[] = [
-  { key: 'name', label: 'name', sort: (v) => v.name, cell: nameCell },
+  { key: 'name', width: '14rem', label: 'name', sort: (v) => v.name, cell: nameCell },
   {
     key: 'default',
     label: 'default',

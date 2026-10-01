@@ -69,6 +69,16 @@ let focusIndex = $state(0)
 let tbody = $state<HTMLTableSectionElement>()
 
 const INTERACTIVE = 'a, button, input, select, textarea, label, summary'
+const CHECK_WIDTH = '34px'
+/** The least a column without a width gets before the table scrolls sideways instead. */
+const FLEX_MIN = '5rem'
+// Counts only the columns a phone still shows; wider screens have room for the rest.
+const minWidth = $derived(
+  `calc(${[
+    ...(selection ? [CHECK_WIDTH] : []),
+    ...columns.filter((c) => !c.hideBelow).map((c) => c.width ?? FLEX_MIN),
+  ].join(' + ')})`,
+)
 
 function toggleOpen(k: K) {
   open = open === k ? null : k
@@ -101,7 +111,11 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
 </script>
 
 <div class="frame" style:max-height={maxHeight}>
-  <table aria-label={label}>
+  <table aria-label={label} style:min-width={minWidth}>
+    <colgroup>
+      {#if selection}<col style:width={CHECK_WIDTH} />{/if}
+      {#each columns as c (c.key)}<col data-hide={c.hideBelow} style:width={c.width} />{/each}
+    </colgroup>
     <thead>
       <tr>
         {#if selection}
@@ -160,7 +174,7 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
             </td>
           {/if}
           {#each columns as c (c.key)}
-            <td data-align={c.align} data-hide={c.hideBelow} class:wrap={c.wrap} class:fill={c.fill}>
+            <td data-align={c.align} data-hide={c.hideBelow} class:wrap={c.wrap}>
               {@render c.cell(row, state)}
             </td>
           {/each}
@@ -185,10 +199,15 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
   .frame {
     overflow: auto;
     border-radius: inherit;
+    /* A tall table's scrollbar must not narrow its columns against its siblings'. */
+    scrollbar-gutter: stable;
   }
 
+  /* Fixed layout: the <colgroup> widths decide, never the content, so every table built from the
+     same columns has the same grid. */
   table {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: 13px;
   }
@@ -222,24 +241,18 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
     text-align: right;
   }
 
-  /* The floor keeps a wrapping column from collapsing to one letter per line on a phone. */
   td.wrap {
-    min-width: 12rem;
     white-space: normal;
     overflow-wrap: anywhere;
   }
 
-  /* Takes the width the other columns leave, up to 40%, and clips past it with an ellipsis, so a
-     long value never widens the table; `max-width: 0` lets a table cell shrink below its content. */
-  td.fill {
-    width: 40%;
-    max-width: 0;
+  /* A value longer than its column clips there instead of running into the next one. */
+  tr[data-row] > td {
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .check {
-    width: 1%;
     padding-right: 0;
   }
 

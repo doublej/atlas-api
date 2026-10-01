@@ -37,10 +37,10 @@ const host = (url: string) => url.replace(/^https?:\/\//, '')
 const processLink = (l: Listener) => `/processes?all=1&q=${l.pid}`
 
 const columns: Column<Listener>[] = [
-  { key: 'port', label: 'Port', sort: (l) => l.port, cell: portCell },
+  { key: 'port', width: '6rem', label: 'Port', sort: (l) => l.port, cell: portCell },
   { key: 'name', label: 'Owner', sort: (l) => l.name, cell: nameCell },
   { key: 'open', label: 'Open', cell: openCell },
-  { key: 'pid', label: 'PID', sort: (l) => l.pid, align: 'right', cell: pidCell, hideBelow: 768 },
+  { key: 'pid', width: '5.5rem', label: 'PID', sort: (l) => l.pid, align: 'right', cell: pidCell, hideBelow: 768 },
   { key: 'path', label: 'Path', sort: (l) => l.project?.path ?? l.cwd, cell: pathCell, hideBelow: 768 },
 ]
 </script>
@@ -158,7 +158,7 @@ const columns: Column<Listener>[] = [
 
   .path {
     display: inline-block;
-    max-width: 320px;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     vertical-align: bottom;

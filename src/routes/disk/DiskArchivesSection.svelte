@@ -27,17 +27,37 @@ const sel = new Selection()
 const sort = new TableSort<string>(null, ['size', 'local'])
 const columns: Column<ArchiveVersion>[] = [
   { key: 'id', label: 'Version', sort: (v) => v.id, cell: idCell },
-  { key: 'size', label: 'Size', sort: (v) => v.bytes, align: 'right', cell: sizeCell },
+  {
+    key: 'size',
+    width: '5.5rem',
+    label: 'Size',
+    sort: (v) => v.bytes,
+    align: 'right',
+    cell: sizeCell,
+  },
   {
     key: 'local',
+    width: '7rem',
     label: 'On this Mac',
     sort: (v) => v.localBytes,
     align: 'right',
     cell: localCell,
   },
-  { key: 'storage', label: 'Storage', sort: (v) => STORAGE[v.storage], cell: storageCell },
-  { key: 'verified', label: 'Verified', sort: (v) => Number(v.verified), cell: verifiedCell },
-  { key: 'contents', label: 'Contents', hideLabel: true, cell: contentsCell },
+  {
+    key: 'storage',
+    width: '7rem',
+    label: 'Storage',
+    sort: (v) => STORAGE[v.storage],
+    cell: storageCell,
+  },
+  {
+    key: 'verified',
+    width: '6.5rem',
+    label: 'Verified',
+    sort: (v) => Number(v.verified),
+    cell: verifiedCell,
+  },
+  { key: 'contents', width: '7rem', label: 'Contents', hideLabel: true, cell: contentsCell },
 ]
 let keep = $state(2)
 let restoring = $state(false)

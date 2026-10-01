@@ -74,7 +74,7 @@ const lines = $derived<Row[]>([
 ])
 const columns: Column<Row>[] = [
   { key: 'project', label: 'Project', cell: projectCell },
-  { key: 'size', label: 'Size', align: 'right', cell: sizeCell },
+  { key: 'size', width: '5.5rem', label: 'Size', align: 'right', cell: sizeCell },
   { key: 'note', label: 'Note', wrap: true, cell: noteCell },
 ]
 const skipped = (r: Row) => !r.plan || (risky(r.plan) && !dirtyOk.has(r.id))
