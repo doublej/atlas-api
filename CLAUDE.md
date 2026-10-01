@@ -139,6 +139,15 @@ Scripts, just recipes, domains and umami links come from `getDynamicActions`.
 - Project cards show: git status, scripts, just recipes, dev command
 - Actions: run dev server, open iTerm, open Finder, rename, move
 
+**Dev hostnames (`src/lib/caddyDev.ts`, `src/lib/hostnames/`)**
+- Every slug write (assign, run, a `.atlas` edit, rename/move) asks `hostnames/claims.ts` first: a
+  valid slug is a DNS label `slugify` leaves as it is (`slug.ts`), and a clash with a registry row,
+  a service or a scanned project is a `SlugTakenError` → 409 before anything is written
+- `moveRoute` lands the new route before it drops the old one; the registry
+  (`~/dev/.atlas-hostnames.json`, paths normalised to the `~/dev` realpath) is only written under
+  `withRegistryLock`. The NAS serves `*.atlas.local`/`*.atlas.remote.jurrejan.com` from one DNS-01
+  wildcard (`sites/atlas-wildcard.caddy`), so a new slug costs no certificate
+
 **Request guard (`src/lib/guard.ts`, `handle` in `src/hooks.server.ts`)**
 - One check for every route, no login. Every non-GET/HEAD passes only from this Mac (no
   `x-forwarded-for`, a loopback `Host` against DNS rebinding, nothing from another origin against
@@ -156,15 +165,25 @@ Scripts, just recipes, domains and umami links come from `getDynamicActions`.
 
 **API Endpoints (`src/routes/api/`)**
 - `GET /api/projects` - Main data endpoint with caching
-- `POST /api/run` - Spawn dev server (supports npm/bun/yarn/pnpm/uv/just)
+- `POST /api/run` - Spawn dev server (supports npm/bun/yarn/pnpm/uv/just); 409 `{ error, holder }`
+  before spawning when another project or a service holds the project's slug
 - `POST /api/git` - Batch git status check
 - `POST /api/readme` - Lazy README loading
 - `POST /api/refresh` - Force rescan
 - `POST /api/iterm`, `/api/finder` - macOS integrations
 - `PUT /api/description` - Update project description in manifest
-- `POST /api/rename`, `/api/move` - File operations
+- `POST /api/rename`, `/api/move` - File operations; a dev hostname follows the folder (only the
+  row's path when a `.atlas` slug keeps it, else `moveRoute`), and a clash is a 409 before the move
 - `GET/POST/PUT /api/agent-files` - CLAUDE.md and AGENTS.md operations
-- `GET/PATCH /api/atlas` - read/merge a project's `.atlas` (`null` in the patch clears a key)
+- `GET/PATCH /api/atlas` - read/merge a project's `.atlas` (`null` in the patch clears a key). A
+  slug that is no DNS label or a port outside 1024–65535 is a 400; a slug, port or devPublic change
+  on a project with a route moves it (`moveRoute`) and answers `{ path, atlas, hostname? }`
+- `GET/POST/DELETE /api/hostnames` - list / assign (`{ path }` → `HostnameState`) / release a dev
+  hostname. A release the NAS didn't take keeps its row `nasSynced:false` and answers 502
+- `GET /api/hostnames/check?slug=&path=` (always 200: free · current · taken · invalid; without
+  `path` nobody claims it), `GET /status?slug=` (syncing → issuing → live | failed), `POST /retry
+  { slug }`, `GET /port?port=` (listening, lanReachable), `GET/POST /doctor` (drift between rows,
+  projects, services and the NAS, with a fix per item — the `/system` Hostnames tab)
 - `GET/PUT /api/config` - the scanner's `.atlas-config.json` (`maxDepth`, `depth`, `force`, `ignore`)
 - `GET/PUT /api/hosts` - the host registry; a write lands in the file but the running daemon
   keeps its start-up copy until `bun run daemon:reload`, which the response says as `restartRequired`
