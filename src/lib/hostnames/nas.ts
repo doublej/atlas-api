@@ -55,6 +55,8 @@ export function renderSiteBlock(b: SiteBlock): string {
     ...encode,
     `\timport admin_ip_check`,
     `\thandle @admin_ips {`,
+    // Marks every page "LAN only" (snippet in `common.caddy`), since this hostname 403s off-LAN.
+    `\t\timport lan_banner`,
     proxy('\t\t'),
     `\t}`,
     `\thandle @not_admin {`,
