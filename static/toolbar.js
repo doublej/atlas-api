@@ -30,45 +30,39 @@
 
   const host = document.createElement(TAG)
   const root = host.attachShadow({ mode: 'open' })
-  // The dashed outline is a map's boundary line, the glyph a dot inside one: this page sits
-  // inside the home network. The boundary is the one loud thing; it marches while atlas works.
-  const ring =
-    '<svg class=ring width=16 height=16 viewBox="0 0 14 14" aria-hidden=true><circle cx=7 cy=7 ' +
-    'r=5.5 fill=none stroke=currentColor stroke-width=1.5 stroke-dasharray="2.2 1.8"/>' +
-    '<circle cx=7 cy=7 r=2 fill=currentColor /></svg>'
   const slug = location.hostname.split('.')[0]
   root.innerHTML = `<style>
   :host { all: initial; position: fixed; z-index: 2147483647; left: 50%; bottom: 0;
     translate: -50% 0;
     --paper: #fffdf8; --ink: #1c1917; --muted: #78716c; --line: rgba(28,25,23,.12);
-    --hover: #f5f0e6; --boundary: #b45309; --stop: #b91c1c; --focus: #5e6ad2;
+    --hover: #f5f0e6; --boundary: #b45309; --stop: #b91c1c; --up: #15803d; --focus: #5e6ad2;
     color-scheme: light dark; color: var(--ink);
     font: 13px/1.4 ui-rounded, system-ui, -apple-system, "Segoe UI", sans-serif }
   @media (prefers-color-scheme: dark) { :host { --paper: #1c1917; --ink: #fafaf9;
     --muted: #a8a29e; --line: rgba(250,250,249,.12); --hover: #292524; --boundary: #fbbf24;
-    --stop: #f87171 } }
+    --stop: #f87171; --up: #4ade80 } }
   * { box-sizing: border-box }
   button, a { all: unset; cursor: pointer }
   :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px }
-  .ring { display: block; flex: none }
-  .busy .ring { animation: march 1.2s linear infinite }
-  @keyframes march { to { rotate: 1turn } }
+  /* The dot is the dev server's state: running, busy (restart/stop under way) or stopped. */
+  .dot { --c: var(--up); flex: none; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent) }
+  :host([data-state=busy]) .dot { --c: var(--boundary); animation: pulse .7s ease-in-out infinite alternate }
+  :host([data-state=down]) .dot { --c: var(--muted) }
+  @keyframes pulse { to { opacity: .3 } }
+  .lan { flex: none; padding: 1px 5px; border-radius: 4px; color: var(--boundary);
+    background: color-mix(in srgb, var(--boundary) 15%, transparent); font-size: 10.5px;
+    font-weight: 650; letter-spacing: .03em }
 
   /* A tab sewn to the bottom edge: square where it meets the viewport, rounded where it rises.
-     At rest only the boundary mark shows; hover, focus, open or busy unrolls the name to both
-     sides, since the tab stays centred. The safe-area inset keeps it above an iPhone's bar. */
-  .pill { display: flex; align-items: center; min-height: 26px; padding: 0 9px;
+     The safe-area inset keeps it above an iPhone's home bar. */
+  .pill { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 12px;
     padding-bottom: env(safe-area-inset-bottom); border: 1px solid var(--line);
-    border-bottom: 0; border-radius: 10px 10px 0 0; background: var(--paper);
-    color: var(--boundary); font-size: 12px; box-shadow: 0 -4px 14px -8px rgba(28,25,23,.45);
-    user-select: none }
+    border-bottom: 0; border-radius: 10px 10px 0 0; background: var(--paper); font-size: 12px;
+    box-shadow: 0 -4px 14px -8px rgba(28,25,23,.45); user-select: none; white-space: nowrap }
+  .pill:hover { background: var(--hover) }
   .pill:focus-visible { outline-offset: -3px }
-  .label { display: flex; gap: 5px; max-width: 0; overflow: hidden; opacity: 0;
-    white-space: nowrap; transition: max-width .2s ease-out, opacity .15s, padding .2s ease-out }
-  .pill:hover .label, .pill:focus-visible .label, .pill[aria-expanded=true] .label,
-  .pill.busy .label { max-width: 180px; opacity: 1; padding: 0 6px }
-  .slug { font-weight: 650; color: var(--ink) }
-  .lan { font-weight: 500 }
+  .slug { font-weight: 650 }
 
   .card { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
     width: 248px; padding: 14px; border: 1px solid var(--line);
@@ -92,18 +86,17 @@
   .actions .stop:hover { color: var(--stop); border-color: currentColor; background: none }
   .actions button:disabled { opacity: .45; cursor: default }
   .legend { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 10px;
-    border-top: 1px solid var(--line); color: var(--boundary); font-size: 12px }
-  .legend i { flex: none; width: 22px; border-top: 1.5px dashed currentColor }
+    border-top: 1px solid var(--line); color: var(--muted); font-size: 12px }
   .foot { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px }
   .foot a { font-weight: 600 } .foot a:hover { text-decoration: underline }
   .foot .hide { color: var(--muted) } .foot .hide:hover { color: var(--ink) }
   [hidden] { display: none !important }
-  @media (prefers-reduced-motion: reduce) { .card, .label { transition: none } .busy .ring { animation: none } }
+  @media (prefers-reduced-motion: reduce) { .card { transition: none } .dot { animation: none !important } }
   @media print { :host { display: none } }
 </style>
 <button class="pill" aria-expanded="false" aria-haspopup="dialog"
   title="Only reachable on your home network. Click for atlas.">
-  ${ring}<span class="label"><span class="slug"></span><span class="lan">LAN</span></span>
+  <span class="dot"></span><span class="slug"></span><span class="lan">LAN</span>
 </button>
 <div class="card" role="dialog" aria-label="atlas" hidden>
   <h2 class="name"></h2>
@@ -112,7 +105,7 @@
     <button class="restart" data-action="restart" hidden>Restart</button>
     <button class="stop" data-action="stop" hidden>Stop</button>
   </div>
-  <div class="legend"><i></i>Home network only</div>
+  <div class="legend"><span class="lan">LAN</span>Home network only</div>
   <div class="foot">
     <a class="console" target="_blank" rel="noopener" hidden>Open in atlas</a>
     <button class="hide">Hide in this tab</button>
@@ -161,13 +154,17 @@
 
   const lock = (busy) => {
     for (const b of root.querySelectorAll('[data-action]')) b.disabled = busy
-    pill.classList.toggle('busy', busy)
+    if (busy) host.dataset.state = 'busy'
   }
   const done = {
     restart: () => location.reload(),
-    stop: (r) => say(r.stopped ? 'Dev server stopped' : 'No dev server was running'),
+    stop: (r) => {
+      host.dataset.state = 'down'
+      say(r.stopped ? 'Dev server stopped' : 'No dev server was running')
+    },
   }
   const fail = (e) => {
+    host.dataset.state = 'up'
     say(e.message, true)
     setTimeout(() => say(idle), 6000)
   }
