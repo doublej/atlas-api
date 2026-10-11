@@ -11,14 +11,33 @@ let config = $state<AtlasConfig | null>(null)
 let force = $state<Detection>('auto')
 let depth = $state('')
 
+const savedForce = (c: AtlasConfig): Detection =>
+  String(c.force?.[project.relativePath] ?? 'auto') as Detection
+const savedDepth = (c: AtlasConfig): string => {
+  const d = c.depth?.[project.relativePath]
+  return d == null ? '' : String(d)
+}
+
+// Rereads on a different project (the page's previous/next keys reuse this component).
 $effect(() => {
-  const rel = project.relativePath
+  if (!project.relativePath) return
   http.get<AtlasConfig>('/api/config').then((scan) => {
     config = scan
-    force = String(scan.force?.[rel] ?? 'auto') as typeof force
-    depth = scan.depth?.[rel] == null ? '' : String(scan.depth[rel])
+    reset()
   })
 })
+
+/** Back to what the config file says. */
+export function reset(): void {
+  if (!config) return
+  force = savedForce(config)
+  depth = savedDepth(config)
+}
+
+/** Whether the fields differ from the file; reactive when read inside a `$derived`. */
+export function isDirty(): boolean {
+  return config !== null && (force !== savedForce(config) || depth !== savedDepth(config))
+}
 
 /** Writes the config when this form changed it; the dialog calls it on Save. */
 export async function save(): Promise<void> {
