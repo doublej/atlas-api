@@ -203,6 +203,9 @@ row-click selection code.
 | `empty?` | snippet | body when `rows` is empty; default `Nothing to show.` |
 | `maxHeight?` | CSS length | caps the height; the header sticks while the body scrolls. Without it the header scrolls away with the page (the frame always scrolls sideways, so it cannot stick to the page) — pass it (`70vh`) on any list that can outgrow the screen |
 | `initialRows?` | `number` | rows rendered on the server and at hydration; the rest are appended right after mount (never a replace). For a list whose SSR HTML would be too heavy — `ProjectTable` renders 80 of 600 |
+| `clickOpens?` | `boolean` | a row click opens `expanded` even with a `selection`; the checkbox, `x`/Space and shift-click on a checkbox select (`ProjectTable`) |
+| `onopen?` | `(row) => void` | Enter calls it instead of opening `expanded` — go to the row's own page |
+| `canSelect?` | `(row) => boolean` | rows it refuses get no checkbox and are left out of the header checkbox and `x` (remote projects) |
 
 `Column<T>` (`$lib/table`):
 
@@ -261,8 +264,9 @@ Known fits and gaps for the pending migrations:
 - `/ports`: rows are per port but kills are per pid, and one pid can hold several ports. Key and
   select by **port** (`key={(l) => l.port}`), and map the selected ports to unique pids when
   killing — a pid key would collide in the each-block.
-- `ProjectTable` (done): no selection, `expanded = detail`, the name cell's button calls
-  `state.toggleOpen()` and reads `state.open`, the name and path columns have no `width`; build `columns` with
+- `ProjectTable` (done): selection of local rows (`canSelect`) for the bulk bar, `clickOpens` so
+  a row click still opens `expanded = detail`, Enter goes to `/p/<relativePath>` (`onopen`), the name
+  is a link there; the name and path columns have no `width`; build `columns` with
   `$derived` to drop Host when `!showHost`. The Table has one density (8px cell padding, 13px
   text), so its rows are taller than the old 30px `ProjectLine`.
 - disk cleanup: the group checkbox selects only non-nested rows, the Table header checkbox selects

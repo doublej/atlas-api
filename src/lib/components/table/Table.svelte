@@ -30,6 +30,12 @@ interface Props {
   maxHeight?: string
   /** Rows rendered on the server and at hydration; the rest are appended right after mount. */
   initialRows?: number
+  /** A row click opens `expanded` even with a `selection`; the checkbox and `x` select. */
+  clickOpens?: boolean
+  /** Enter calls this instead of opening `expanded` (navigate to the row's own page). */
+  onopen?: (row: T) => void
+  /** Rows that may not be selected get no checkbox. Default: every row. */
+  canSelect?: (row: T) => boolean
 }
 
 const {
@@ -46,6 +52,9 @@ const {
   empty,
   maxHeight,
   initialRows,
+  clickOpens = false,
+  onopen,
+  canSelect = () => true,
 }: Props = $props()
 
 const ownSort = new TableSort<string>()
@@ -60,8 +69,9 @@ onMount(() => {
 // A prefix of `sorted`, so `keys[i]` stays the key of `shown[i]`.
 const shown = $derived(initialRows && !mounted ? sorted.slice(0, initialRows) : sorted)
 const span = $derived(columns.length + (selection ? 1 : 0))
-const allOn = $derived(keys.length > 0 && keys.every((k) => selection?.has(k)))
-const someOn = $derived(!allOn && keys.some((k) => selection?.has(k)))
+const pickable = $derived(sorted.filter(canSelect).map(key))
+const allOn = $derived(pickable.length > 0 && pickable.every((k) => selection?.has(k)))
+const someOn = $derived(!allOn && pickable.some((k) => selection?.has(k)))
 
 let open = $state<K | null>(null)
 /** The one row in the tab order (roving focus). */
@@ -95,15 +105,24 @@ function focusRow(i: number) {
 
 function onRowClick(e: MouseEvent, k: K) {
   if ((e.target as Element).closest(INTERACTIVE)) return
-  if (selection) selection.click(k, e, order ?? keys)
+  if (selection && !clickOpens) selection.click(k, e, order ?? keys)
   else if (expanded) toggleOpen(k)
 }
 
-function onRowKey(e: KeyboardEvent, i: number, k: K) {
+/** A shift-click on a checkbox adds the range, like a shift-click on the row. */
+function onCheck(e: MouseEvent & { currentTarget: HTMLInputElement }, k: K) {
+  if (!selection) return
+  if (e.shiftKey) selection.click(k, e, order ?? keys)
+  else selection.toggle(k)
+  e.currentTarget.checked = selection.has(k)
+}
+
+function onRowKey(e: KeyboardEvent, i: number, row: T, k: K) {
   if (e.target !== e.currentTarget) return
   const action = rowKeyAction(e, i, sorted.length)
   if (action?.kind === 'move') focusRow(action.index)
-  else if (action?.kind === 'toggle' && selection) selection.toggle(k)
+  else if (action?.kind === 'toggle' && selection && canSelect(row)) selection.toggle(k)
+  else if (action?.kind === 'expand' && onopen) onopen(row)
   else if (action?.kind === 'expand' && expanded) toggleOpen(k)
   else return
   e.preventDefault()
@@ -125,7 +144,7 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
               aria-label="Select all rows"
               checked={allOn}
               indeterminate={someOn}
-              onchange={(e) => selection.set(keys, e.currentTarget.checked)}
+              onchange={(e) => selection.set(pickable, e.currentTarget.checked)}
             />
           </th>
         {/if}
@@ -160,17 +179,19 @@ function onRowKey(e: KeyboardEvent, i: number, k: K) {
           class:dim={dim?.(row)}
           aria-expanded={expanded ? state.open : undefined}
           onclick={(e) => onRowClick(e, k)}
-          onkeydown={(e) => onRowKey(e, i, k)}
+          onkeydown={(e) => onRowKey(e, i, row, k)}
           onfocus={() => (focusIndex = i)}
         >
           {#if selection}
             <td class="check">
-              <input
-                type="checkbox"
-                aria-label="Select {rowLabel?.(row) ?? k}"
-                checked={state.selected}
-                onchange={() => selection.toggle(k)}
-              />
+              {#if canSelect(row)}
+                <input
+                  type="checkbox"
+                  aria-label="Select {rowLabel?.(row) ?? k}"
+                  checked={state.selected}
+                  onclick={(e) => onCheck(e, k)}
+                />
+              {/if}
             </td>
           {/if}
           {#each columns as c (c.key)}
