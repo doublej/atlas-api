@@ -2,9 +2,9 @@
 // hostname (`renderSiteBlock`), in place of the `lan_banner` — so it carries the "LAN only" label.
 // Built the way Next.js mounts its dev indicator: one custom element with its own shadow root,
 // inside a <script> wrapper on <body> (hydration tolerates an extra script, not an extra div) and
-// put back if a framework's render removes it. A small pill in a corner that opens a menu, dragged to snap to another corner (kept in
-// localStorage), hidden in this tab from the menu. It talks to `/api/toolbar` on the console,
-// which acts only on the project this page's hostname names.
+// put back if a framework's render removes it. A small pill in a corner opens a menu, drags to
+// snap to another corner (kept in localStorage) and hides in this tab from the menu. It talks to
+// `/api/toolbar` on the console, which acts only on the project this page's hostname names.
 ;(() => {
   const TAG = 'atlas-toolbar'
   if (window.top !== window || document.querySelector(TAG)) return
@@ -107,39 +107,39 @@
   }
   host.dataset.corner = localStorage.getItem(CORNER) || 'bottom-left'
 
-  // Drag the pill anywhere; on release it snaps to the nearest corner. A press that barely
-  // moves is a click and toggles the menu.
+  // Drag the pill anywhere; on release it snaps to the nearest corner. The click that follows a
+  // drag is swallowed, so only a real click (mouse, keyboard or assistive tech) toggles the menu.
   let drag = null
+  let dragged = false
   pill.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return
     drag = { x: e.clientX, y: e.clientY, moved: false }
+    dragged = false
     pill.setPointerCapture(e.pointerId)
   })
   pill.addEventListener('pointermove', (e) => {
     if (!drag) return
     const dx = e.clientX - drag.x
     const dy = e.clientY - drag.y
-    if (!drag.moved && Math.hypot(dx, dy) < 4) return
+    if (!drag.moved && Math.hypot(dx, dy) < 5) return
     drag.moved = true
     open(false)
     host.style.translate = `${dx}px ${dy}px`
   })
   pill.addEventListener('pointerup', (e) => {
     if (!drag) return
-    const { moved } = drag
+    dragged = drag.moved
     drag = null
     host.style.translate = ''
-    if (!moved) return open(menu.hidden)
+    if (!dragged) return
     const v = e.clientY < innerHeight / 2 ? 'top' : 'bottom'
     const h = e.clientX < innerWidth / 2 ? 'left' : 'right'
     host.dataset.corner = `${v}-${h}`
     localStorage.setItem(CORNER, host.dataset.corner)
   })
-  pill.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      open(menu.hidden)
-    }
+  pill.addEventListener('click', () => {
+    if (dragged) dragged = false
+    else open(menu.hidden)
   })
   document.addEventListener('pointerdown', (e) => {
     if (!e.composedPath().includes(host)) open(false)
