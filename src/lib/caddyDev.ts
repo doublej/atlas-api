@@ -21,8 +21,9 @@ import type { Holder, HostnameChipData, HostnameRow, HostnameState } from './hos
 /** Bump when the service block template changes: every service file is re-pushed once.
  *  2: services' remote half moved to its own password (`CADDY_SERVICE_AUTH_HASH`). */
 const SERVICE_BLOCK_REV = 2
-/** Same for project blocks. 1: the LAN half injects the atlas toolbar. */
-const PROJECT_BLOCK_REV = 1
+/** Same for project blocks. 1: the LAN half injects the atlas toolbar.
+ *  2: the toolbar replaces `lan_banner` and carries the "LAN only" label. */
+const PROJECT_BLOCK_REV = 2
 
 /** A slug write that would take another project's or service's hostname. Routes answer 409. */
 export class SlugTakenError extends Error {

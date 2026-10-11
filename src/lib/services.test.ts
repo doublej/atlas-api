@@ -83,6 +83,13 @@ describe('renderSiteBlock', () => {
     expect(out.indexOf('toolbar.js')).toBeLessThan(out.indexOf('atlas.remote'))
     expect(renderSiteBlock(block)).not.toContain('toolbar')
   })
+
+  it('gives a toolbar page the toolbar instead of the lan_banner', () => {
+    const out = renderSiteBlock({ ...block, toolbar: true })
+    expect(out).not.toContain('lan_banner')
+    expect(out).toContain('request_header @atlas_toolbar_page -Accept-Encoding')
+    expect(renderSiteBlock(block)).toContain('import lan_banner')
+  })
 })
 
 describe('the atlas console block (decision 1, 2.4)', () => {

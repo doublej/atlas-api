@@ -23,17 +23,20 @@ export interface SiteBlock {
   /** `encode zstd gzip` — service blocks only: the console's HTML is 1.4 MB, while a dev server's
    *  bytes aren't worth the Celeron's time. */
   compress?: boolean
-  /** Inject the atlas toolbar (`static/toolbar.js`) into the LAN half's pages — projects only. */
+  /** Inject the atlas toolbar (`static/toolbar.js`) into the LAN half's pages instead of the
+   *  `lan_banner` — projects only. */
   toolbar?: boolean
 }
 
 /**
- * The toolbar's `<script>`, appended to every HTML page of a project's LAN half. Same mechanism
- * and constraints as `lan_banner` (which already drops `Accept-Encoding` for page loads): the
- * replacement stays quote-free. Never on the remote half: that one is handed to clients.
+ * The toolbar's `<script>`, appended to every HTML page of a project's LAN half in place of
+ * `lan_banner`: the toolbar carries the "LAN only" label itself. Same mechanism and constraints
+ * as that snippet — `Accept-Encoding` dropped for page loads (replace can't rewrite a compressed
+ * body), the replacement quote-free. Never on the remote half: that one is handed to clients.
  */
 const TOOLBAR = [
   '@atlas_toolbar_page header Accept *text/html*',
+  'request_header @atlas_toolbar_page -Accept-Encoding',
   'replace @atlas_toolbar_page {',
   '\tmatch {',
   '\t\theader Content-Type text/html*',
@@ -72,9 +75,9 @@ export function renderSiteBlock(b: SiteBlock): string {
     ...encode,
     `\timport admin_ip_check`,
     `\thandle @admin_ips {`,
-    // Marks every page "LAN only" (snippet in `common.caddy`), since this hostname 403s off-LAN.
-    `\t\timport lan_banner`,
-    ...(b.toolbar ? TOOLBAR.map((l) => `\t\t${l}`) : []),
+    // Marks every page "LAN only" (snippet in `common.caddy`), since this hostname 403s off-LAN;
+    // the toolbar says so itself.
+    ...(b.toolbar ? TOOLBAR.map((l) => `\t\t${l}`) : [`\t\timport lan_banner`]),
     proxy('\t\t'),
     `\t}`,
     `\thandle @not_admin {`,
