@@ -1,7 +1,8 @@
 // The atlas toolbar: the NAS Caddy appends this script to every HTML page of a project's LAN dev
 // hostname (`renderSiteBlock`), in place of the `lan_banner` — so it carries the "LAN only" label.
-// Built the way Next.js mounts its dev indicator: one custom element with its own shadow root on
-// <body>, a small pill in a corner that opens a menu, dragged to snap to another corner (kept in
+// Built the way Next.js mounts its dev indicator: one custom element with its own shadow root,
+// inside a <script> wrapper on <body> (hydration tolerates an extra script, not an extra div) and
+// put back if a framework's render removes it. A small pill in a corner that opens a menu, dragged to snap to another corner (kept in
 // localStorage), hidden in this tab from the menu. It talks to `/api/toolbar` on the console,
 // which acts only on the project this page's hostname names.
 ;(() => {
@@ -75,6 +76,7 @@
   hr { border: 0; border-top: 1px solid var(--line); margin: 4px 6px }
   [hidden] { display: none !important }
   @media (prefers-reduced-motion: reduce) { .menu { transition: none } }
+  @media print { :host { display: none } }
 </style>
 <button class="pill" aria-expanded="false" aria-haspopup="menu"
   title="Only reachable on your home network. Click for atlas, drag to move.">
@@ -148,7 +150,8 @@
 
   $('.hide').addEventListener('click', () => {
     sessionStorage.setItem(HIDDEN, '1')
-    host.remove()
+    keep.disconnect()
+    wrap.remove()
   })
 
   call('GET')
@@ -179,5 +182,13 @@
     })
   }
 
-  document.body.append(host)
+  const wrap = document.createElement('script')
+  wrap.type = 'atlas/toolbar' // never executed
+  wrap.style.cssText = 'display:block;position:absolute'
+  wrap.append(host)
+  const keep = new MutationObserver(() => {
+    if (!wrap.isConnected) document.body.append(wrap)
+  })
+  document.body.append(wrap)
+  keep.observe(document.body, { childList: true })
 })()
