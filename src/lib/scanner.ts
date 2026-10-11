@@ -19,6 +19,7 @@ import {
 } from './atlasFile'
 import { estimateTokens } from './claude-tree'
 import { detectDomains, mergeDomains } from './domains'
+import { readTags, type TagMap } from './tags'
 import { attachUmami, type UmamiInfo } from './umami'
 
 const execAsync = promisify(exec)
@@ -176,6 +177,8 @@ export interface Project {
   devPublic?: boolean
   domains?: string[]
   umami?: UmamiInfo
+  /** From `<scan root>/.atlas-tags.json`, keyed by `relativePath`. Local projects only. */
+  tags?: string[]
   claudeSessions?: ClaudeSessionsInfo
   agentFiles?: AgentFilesInfo
   claudeSetup?: ClaudeSetupInfo
@@ -1179,6 +1182,15 @@ function linkAlsoOn(local: Project[], remote: Project[]): void {
   }
 }
 
+/** Recomputed from the file each time, so a cleared tag disappears and `finalizeAtlas` stays idempotent. */
+function applyTags(local: Project[], map: TagMap): void {
+  for (const p of local) {
+    const tags = map[p.relativePath]
+    if (tags?.length) p.tags = tags
+    else delete p.tags
+  }
+}
+
 /**
  * Fold every remote host fragment into a freshly scanned primary atlas.
  *
@@ -1191,6 +1203,7 @@ export async function finalizeAtlas(baseDir: string, atlas: ProjectAtlas): Promi
   if (baseDir !== primary.root) return atlas
 
   const local = atlas.projects.filter((p) => p.isLocal)
+  applyTags(local, await readTags(baseDir))
   const fragments = await readHostFragments(baseDir)
   const remote = fragments.flatMap((f) =>
     f.projects.map((p) => {
@@ -1402,6 +1415,17 @@ export async function updateCachedPort(
     await writeJsonAtomic(cachePath, cached)
   } catch {
     /* no cache yet — the next full scan will read the persisted .atlas port */
+  }
+}
+
+/** After a tag write: re-merge the cache so every consumer (atlas-picker reads the file) sees it now. */
+export async function updateCachedTags(baseDir: string): Promise<void> {
+  const cachePath = join(baseDir, CACHE_FILE)
+  try {
+    const cached: CachedIndex = JSON.parse(await readFile(cachePath, 'utf-8'))
+    await writeJsonAtomic(cachePath, { ...cached, ...(await finalizeAtlas(baseDir, cached)) })
+  } catch {
+    /* no cache yet — the next full scan reads the tags file */
   }
 }
 

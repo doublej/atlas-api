@@ -49,6 +49,10 @@ const scaffoldBehind = $derived(
   </Badge>
 {/each}
 
+{#each project.tags ?? [] as tag (tag)}
+  <Badge>#{tag}</Badge>
+{/each}
+
 {#if project.type}
   <Badge dot={typeColor(project.type)}>{project.type}</Badge>
 {/if}

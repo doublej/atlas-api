@@ -1,9 +1,10 @@
 import { rename } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { json } from '@sveltejs/kit'
-import { resolveInsideCatalog } from '$lib/config'
+import { DEV_FOLDER, resolveInsideCatalog } from '$lib/config'
 import { applyFolderMove, planFolderMove } from '$lib/hostnames/claims'
 import { answeringTaken } from '$lib/hostnames/taken'
+import { moveFolderTags } from '$lib/tags'
 import type { RequestHandler } from './$types'
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -31,6 +32,7 @@ export const POST: RequestHandler = async ({ request }) => {
   return answeringTaken(async () => {
     const moves = await planFolderMove(source, newPath)
     await rename(source, newPath)
+    await moveFolderTags(DEV_FOLDER, source, newPath)
     const hostname = await applyFolderMove(moves, newPath)
     return json({ renamed: true, newPath, ...(hostname ? { hostname } : {}) })
   })

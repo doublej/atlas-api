@@ -13,6 +13,8 @@ export interface FilterCriteria {
   runners: Set<string>
   /** hosts.json ids — the machine facet. Empty means every machine. */
   hosts: Set<string>
+  /** Every picked tag must be on the project (AND), unlike the one-value facets above. */
+  tags: Set<string>
   tools: Set<string>
   onlyWithDev: boolean
   onlyWithReadme: boolean
@@ -26,6 +28,7 @@ export function emptyCriteria(): FilterCriteria {
     types: new Set(),
     runners: new Set(),
     hosts: new Set(),
+    tags: new Set(),
     tools: new Set(),
     onlyWithDev: false,
     onlyWithReadme: false,
@@ -39,7 +42,8 @@ function matchesSearch(project: Project, search: string): boolean {
   return (
     project.name.toLowerCase().includes(needle) ||
     project.relativePath.toLowerCase().includes(needle) ||
-    (project.description?.toLowerCase().includes(needle) ?? false)
+    (project.description?.toLowerCase().includes(needle) ?? false) ||
+    (project.tags?.some((t) => t.includes(needle)) ?? false)
   )
 }
 
@@ -60,7 +64,8 @@ function matchesFacets(project: Project, c: FilterCriteria): boolean {
     facetOk(c.frameworks, project.framework) &&
     facetOk(c.types, project.type) &&
     facetOk(c.runners, project.runner) &&
-    facetOk(c.hosts, project.host)
+    facetOk(c.hosts, project.host) &&
+    [...c.tags].every((t) => project.tags?.includes(t))
   )
 }
 
@@ -81,6 +86,7 @@ export function countActiveFilters(c: FilterCriteria): number {
     c.types.size +
     c.runners.size +
     c.hosts.size +
+    c.tags.size +
     c.tools.size +
     (c.onlyWithDev ? 1 : 0) +
     (c.onlyWithReadme ? 1 : 0) +
@@ -94,4 +100,11 @@ export function toggleSet<T>(set: Set<T>, value: T): Set<T> {
   if (next.has(value)) next.delete(value)
   else next.add(value)
   return next
+}
+
+/** Every tag in `projects`, most used first — the order of the Tags facet. */
+export function tagsByUse(projects: Pick<Project, 'tags'>[]): string[] {
+  const counts = new Map<string, number>()
+  for (const p of projects) for (const t of p.tags ?? []) counts.set(t, (counts.get(t) ?? 0) + 1)
+  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([t]) => t)
 }

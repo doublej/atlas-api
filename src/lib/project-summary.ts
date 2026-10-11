@@ -25,6 +25,7 @@ const SUMMARY_KEYS = [
   'promotion',
   'domains',
   'agentFiles',
+  'tags',
 ] as const satisfies readonly (keyof Project)[]
 
 export type ProjectSummary = Pick<Project, (typeof SUMMARY_KEYS)[number]>

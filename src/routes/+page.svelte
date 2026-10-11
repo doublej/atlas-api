@@ -8,6 +8,7 @@ import {
   type FilterCriteria,
   matchesFilters,
   type PromotionFilter,
+  tagsByUse,
   toggleSet,
 } from '$lib/browser/filters'
 import { buildFolderTree, collectFolderPaths } from '$lib/browser/tree'
@@ -43,6 +44,7 @@ let selectedFrameworks = $state<Set<Framework>>(new Set())
 let selectedTypes = $state<Set<string>>(new Set())
 let selectedRunners = $state<Set<string>>(new Set())
 let selectedHosts = $state<Set<string>>(new Set())
+let selectedTags = $state<Set<string>>(new Set())
 let selectedTools = $state<Set<string>>(new Set())
 let onlyWithDev = $state(false)
 let onlyWithReadme = $state(false)
@@ -73,6 +75,7 @@ const criteria = $derived<FilterCriteria>({
   types: selectedTypes,
   runners: selectedRunners,
   hosts: selectedHosts,
+  tags: selectedTags,
   tools: selectedTools,
   onlyWithDev,
   onlyWithReadme,
@@ -82,6 +85,7 @@ const criteria = $derived<FilterCriteria>({
 const types = $derived([...new Set(projects.map((p) => p.type).filter(Boolean))] as string[])
 const runners = $derived([...new Set(projects.map((p) => p.runner).filter(Boolean))] as string[])
 const hosts = $derived([...new Set(projects.map((p) => p.host).filter(Boolean))])
+const tags = $derived(tagsByUse(projects))
 const filtered = $derived(projects.filter((p) => matchesFilters(p, criteria)))
 const activeFilterCount = $derived(countActiveFilters(criteria))
 const nestedProjects = $derived(buildFolderTree(filtered))
@@ -153,6 +157,7 @@ function clearFilters(): void {
   selectedTypes = new Set()
   selectedRunners = new Set()
   selectedHosts = new Set()
+  selectedTags = new Set()
   selectedTools = new Set()
   onlyWithDev = false
   onlyWithReadme = false
@@ -264,12 +269,14 @@ async function doMove(targetFolder: string): Promise<void> {
 				{frameworks}
 				{runners}
 				{hosts}
+				{tags}
 				showTools={hasJust}
 				showPromotion={hasPromotion}
 				bind:selectedTypes
 				bind:selectedFrameworks
 				bind:selectedRunners
 				bind:selectedHosts
+				bind:selectedTags
 				bind:selectedTools
 				bind:onlyWithDev
 				bind:onlyWithReadme

@@ -10,6 +10,8 @@ interface Props {
   frameworks: Framework[]
   runners: string[]
   hosts: string[]
+  /** Most used first. */
+  tags: string[]
   showTools: boolean
   /** Only a handful of projects have a promotion-vault entry; hide the facet when none do. */
   showPromotion: boolean
@@ -17,6 +19,7 @@ interface Props {
   selectedFrameworks: Set<Framework>
   selectedRunners: Set<string>
   selectedHosts: Set<string>
+  selectedTags: Set<string>
   selectedTools: Set<string>
   onlyWithDev: boolean
   onlyWithReadme: boolean
@@ -28,12 +31,14 @@ let {
   frameworks,
   runners,
   hosts,
+  tags,
   showTools,
   showPromotion,
   selectedTypes = $bindable(),
   selectedFrameworks = $bindable(),
   selectedRunners = $bindable(),
   selectedHosts = $bindable(),
+  selectedTags = $bindable(),
   selectedTools = $bindable(),
   onlyWithDev = $bindable(),
   onlyWithReadme = $bindable(),
@@ -55,6 +60,24 @@ function togglePromotion(id: PromotionFilter): void {
 
 <Card>
   <div class="groups">
+    {#if tags.length > 0}
+      <div class="group">
+        <p class="t-eyebrow" title="A project must carry every picked tag">Tags</p>
+        <div class="chips">
+          {#each tags as tag (tag)}
+            <Chip
+              pressed={selectedTags.has(tag)}
+              onclick={() => {
+                selectedTags = toggleSet(selectedTags, tag)
+              }}
+            >
+              {tag}
+            </Chip>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
     <div class="group">
       <p class="t-eyebrow">Type</p>
       <div class="chips">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Project } from '$lib/scanner'
-import { countActiveFilters, emptyCriteria, matchesFilters, toggleSet } from './filters'
+import { countActiveFilters, emptyCriteria, matchesFilters, tagsByUse, toggleSet } from './filters'
 
 function project(overrides: Partial<Project> = {}): Project {
   return {
@@ -12,6 +12,15 @@ function project(overrides: Partial<Project> = {}): Project {
 }
 
 describe('matchesFilters', () => {
+  it('needs every picked tag and finds tags by search', () => {
+    const p = project({ tags: ['client-psp', 'web'] })
+    expect(matchesFilters(p, { ...emptyCriteria(), tags: new Set(['web']) })).toBe(true)
+    expect(matchesFilters(p, { ...emptyCriteria(), tags: new Set(['web', 'vr']) })).toBe(false)
+    expect(matchesFilters(project(), { ...emptyCriteria(), tags: new Set(['web']) })).toBe(false)
+    expect(matchesFilters(p, { ...emptyCriteria(), search: 'psp' })).toBe(true)
+    expect(tagsByUse([p, project({ tags: ['web'] })])).toEqual(['web', 'client-psp'])
+  })
+
   it('keeps everything when no filter is set', () => {
     expect(matchesFilters(project(), emptyCriteria())).toBe(true)
   })
