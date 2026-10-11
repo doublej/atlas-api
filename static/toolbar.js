@@ -34,7 +34,7 @@
   // The dashed outline is a map's boundary line, the glyph a dot inside one: this page sits
   // inside the home network. The boundary is the one loud thing; it marches while atlas works.
   const ring =
-    '<svg class=ring width=14 height=14 viewBox="0 0 14 14" aria-hidden=true><circle cx=7 cy=7 ' +
+    '<svg class=ring width=16 height=16 viewBox="0 0 14 14" aria-hidden=true><circle cx=7 cy=7 ' +
     'r=5.5 fill=none stroke=currentColor stroke-width=1.5 stroke-dasharray="2.2 1.8"/>' +
     '<circle cx=7 cy=7 r=2 fill=currentColor /></svg>'
   const slug = location.hostname.split('.')[0]
@@ -56,12 +56,19 @@
   .busy .ring { animation: march 1.2s linear infinite }
   @keyframes march { to { rotate: 1turn } }
 
-  .pill { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px 0 7px;
-    border: 1.5px dashed var(--boundary); border-radius: 9999px; background: var(--paper);
-    color: var(--boundary); font-size: 12px; box-shadow: 0 6px 16px -8px rgba(28,25,23,.35);
+  /* At rest only the boundary mark shows; hover, focus, open or busy unrolls the name beside it.
+     In a right-hand corner it unrolls leftwards, so the mark never leaves its corner. */
+  .pill { display: flex; align-items: center; height: 30px; padding: 0 6px;
+    border: 1px solid var(--line); border-radius: 9999px; background: var(--paper);
+    color: var(--boundary); font-size: 12px; box-shadow: 0 4px 14px -6px rgba(28,25,23,.4);
     touch-action: none; user-select: none }
-  .pill .slug { font-weight: 650; color: var(--ink) }
-  .pill .lan { font-weight: 500 }
+  :host([data-corner$=right]) .pill { flex-direction: row-reverse }
+  .label { display: flex; gap: 5px; max-width: 0; overflow: hidden; opacity: 0;
+    white-space: nowrap; transition: max-width .2s ease-out, opacity .15s, padding .2s ease-out }
+  .pill:hover .label, .pill:focus-visible .label, .pill[aria-expanded=true] .label,
+  .pill.busy .label { max-width: 180px; opacity: 1; padding: 0 6px }
+  .slug { font-weight: 650; color: var(--ink) }
+  .lan { font-weight: 500 }
 
   .card { position: absolute; width: 248px; padding: 14px; border: 1px solid var(--line);
     border-radius: 14px; background: var(--paper);
@@ -94,12 +101,12 @@
   .foot a { font-weight: 600 } .foot a:hover { text-decoration: underline }
   .foot .hide { color: var(--muted) } .foot .hide:hover { color: var(--ink) }
   [hidden] { display: none !important }
-  @media (prefers-reduced-motion: reduce) { .card { transition: none } .busy .ring { animation: none } }
+  @media (prefers-reduced-motion: reduce) { .card, .label { transition: none } .busy .ring { animation: none } }
   @media print { :host { display: none } }
 </style>
 <button class="pill" aria-expanded="false" aria-haspopup="dialog"
   title="Only reachable on your home network. Click for atlas, drag to move.">
-  ${ring}<span class="slug"></span><span class="lan">LAN</span>
+  ${ring}<span class="label"><span class="slug"></span><span class="lan">LAN</span></span>
 </button>
 <div class="card" role="dialog" aria-label="atlas" hidden>
   <h2 class="name"></h2>
