@@ -40,7 +40,10 @@ const has = (id: string): boolean => actions.some((a) => a.id === id)
 const labelFor = (id: string): string => actions.find((a) => a.id === id)?.label ?? id
 
 const scripts = $derived(getDynamicActions('run-script', project))
-const recipes = $derived(getDynamicActions('run-just', project))
+// Deduped by name: the scanner's recipe regex also reads `set x := …` lines, once per setting.
+const recipes = $derived([
+  ...new Map(getDynamicActions('run-just', project).map((r) => [r.name, r])).values(),
+])
 const overflow = $derived(actions.filter((a) => !INLINE.has(a.id) && isRunnable(a)))
 const dialogs = $derived(
   actions.filter((a) => ['rename', 'move', 'project-settings', 'beads-create'].includes(a.id)),
