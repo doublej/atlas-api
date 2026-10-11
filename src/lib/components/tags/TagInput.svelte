@@ -11,8 +11,13 @@ interface Props {
   disabled?: boolean
 }
 
-const { tags, vocabulary = [], onchange, placeholder = 'Add tag…', disabled = false }: Props =
-  $props()
+const {
+  tags,
+  vocabulary = [],
+  onchange,
+  placeholder = 'Add tag…',
+  disabled = false,
+}: Props = $props()
 
 const listId = `tags-${Math.random().toString(36).slice(2, 8)}`
 let draft = $state('')
