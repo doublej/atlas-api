@@ -44,7 +44,7 @@ $effect(() => {
     .finally(() => (readmeDone = true))
 })
 
-const long = $derived((readme?.length ?? 0) > 1500)
+const long = $derived((readme?.split('\n').length ?? 0) > 24)
 </script>
 
 <Section id="overview" title="Overview">

@@ -28,13 +28,13 @@ const columns: Column<AppRow>[] = [
   {
     key: 'uptime',
     label: 'Up',
-    width: '70px',
+    width: '84px',
     align: 'right',
     hideBelow: 768,
     sort: (r) => r.uptime,
     cell: upCell,
   },
-  { key: 'stop', label: 'Stop', hideLabel: true, width: '70px', cell: stopCell },
+  { key: 'stop', label: 'Stop', hideLabel: true, width: '84px', cell: stopCell },
 ]
 </script>
 
