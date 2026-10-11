@@ -86,12 +86,14 @@ SvelteKit 2 app (Svelte 5 runes) that scans a development folder and displays pr
 |---|---|
 | `src/lib/components/ui/` | `Button`, `Chip`, `Badge`, `Menu`, `Modal`, `Card` — the Tooling primitives |
 | `src/lib/components/browser/` | `BrowserHeader`, `Toolbar`, `FilterPanel`, `FolderTree`, `HostBanner`, `ProjectViews` (the table / Cards / Nested switch and its loading, empty and error states) |
+| `src/lib/components/browser/overview/` | `TagFacet` (top 30 tags by count + a filter box), `StateChips` (the active/parked/dormant/archived quick facet), `BulkBar` (sticky; add/remove tags via `PATCH /api/tags`, archive/unarchive, copy paths) |
 | `src/lib/components/feedback/` | `Notice`, `PageState`, `ConfirmDialog`, `Toaster` — page state, confirms and action toasts (see `docs/ui-primitives.md`) |
 | `src/lib/components/dialogs/` | `RenameDialog`, `MoveDialog`, `ProjectSettings`, `BeadsDialog` |
 | `src/lib/components/project/` | `ProjectRow`, `ProjectBadges`, `ProjectDetails`, `ProjectActions`, `ProjectLinks`, `ClaudeSetup` |
-| `src/lib/components/table/` | `Table` (the shared data table) · `ProjectTable` (the default view, on `Table`); opening a row loads its full record and renders `ProjectRow` below it |
+| `src/lib/components/table/` | `Table` (the shared data table) · `ProjectTable` (the default view, on `Table`, with `NameCell` — state ring + link to `/p/<relativePath>` — and `TagsCell`); opening a row loads its full record and renders `ProjectRow` below it |
 | `src/lib/components/icons/` | `Icon.svelte` + `paths.ts` — a vendored Lucide subset (no icon dependency) |
 | `src/lib/browser/` | `filters.ts`, `tree.ts`, `api.ts`, `colors.ts` + their tests — pure logic, no runes |
+| `src/lib/browser/view/` | `list-view.svelte.ts` — the list's view state (filters, view mode, sort, selection), synced to the URL with a replacing `goto`, never `replaceState` (shallow routing: Back would return the load-time URL) |
 
 - **`docs/ui-primitives.md`** is the contract for every page: `$lib/http` (the only client
   fetch), `$lib/format` (`errorMessage`, `tildify`), `$lib/toast.svelte`, `$lib/selection.svelte`
