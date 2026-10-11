@@ -1,3 +1,4 @@
+import { projectHref as pageHref } from './components/projectpage/href'
 import type { Project } from './scanner'
 
 /**
@@ -37,6 +38,6 @@ export function summarizeProject(p: Project): ProjectSummary {
   ) as ProjectSummary
 }
 
-/** The project page (`/p/<relativePath>`), each segment encoded. */
-export const projectHref = (p: Pick<Project, 'relativePath'>): string =>
-  `/p/${p.relativePath.split('/').map(encodeURIComponent).join('/')}`
+/** The project page (`/p/<relativePath>`); a remote project's link names its host. */
+export const projectHref = (p: Pick<Project, 'relativePath' | 'host' | 'isLocal'>): string =>
+  pageHref(p.relativePath, p.isLocal ? undefined : p.host)

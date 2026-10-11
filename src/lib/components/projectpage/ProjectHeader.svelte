@@ -10,7 +10,7 @@ import { tildify } from '$lib/format'
 import type { GitStatus, Project } from '$lib/scanner'
 import { toast } from '$lib/toast.svelte'
 import { getHostById } from '$shared/hosts'
-import type { Twin } from './href'
+import { slashed, type Twin } from './href'
 import InlineText from './parts/InlineText.svelte'
 
 type Link = { name: string; href: string } | undefined
@@ -54,7 +54,7 @@ const state = $derived(
 )
 const hostLabel = (id: string): string => getHostById(id)?.label ?? id
 const local = $derived(project.isLocal === true)
-const parent = $derived(project.relativePath.split('/').slice(0, -1).join('/'))
+const parent = $derived(slashed(project.relativePath).split('/').slice(0, -1).join('/'))
 
 async function copyPath(): Promise<void> {
   await navigator.clipboard.writeText(project.path)

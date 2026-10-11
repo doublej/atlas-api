@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit'
 import { hostnamesByPath } from '$lib/caddyDev'
-import { projectHref, type Twin } from '$lib/components/projectpage/href'
+import { projectHref, slashed, type Twin } from '$lib/components/projectpage/href'
 import { ATLAS_TEMPLATES_DIR, DEV_FOLDER } from '$lib/config'
 import { getGitStatus, type Project, scan } from '$lib/scanner'
 import { readTemplateVersions } from '$lib/templates'
@@ -17,7 +17,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     hostnamesByPath(),
   ])
   const host = url.searchParams.get('host')
-  const matches = atlas.projects.filter((p) => p.relativePath === params.path)
+  const matches = atlas.projects.filter((p) => slashed(p.relativePath) === slashed(params.path))
   const project =
     matches.find((p) => p.host === host) ?? matches.find((p) => p.isLocal) ?? matches[0]
   if (!project) error(404, `No project at ${params.path}`)

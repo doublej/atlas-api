@@ -1,6 +1,9 @@
+/** A relativePath with `/` separators — Fractal's scan agent reports Windows backslashes. */
+export const slashed = (relativePath: string): string => relativePath.replaceAll('\\', '/')
+
 /** The project page URL: `/p/<relativePath>`, each segment encoded; `host` picks a remote twin. */
 export function projectHref(relativePath: string, host?: string): string {
-  const path = relativePath.split('/').map(encodeURIComponent).join('/')
+  const path = slashed(relativePath).split('/').map(encodeURIComponent).join('/')
   return `/p/${path}${host ? `?host=${encodeURIComponent(host)}` : ''}`
 }
 
