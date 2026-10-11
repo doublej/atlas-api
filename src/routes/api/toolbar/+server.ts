@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit'
+import { projectHref } from '$lib/components/projectpage/href'
 import { DEV_FOLDER, resolveLocal } from '$lib/config'
 import { TOOLBAR_ORIGIN } from '$lib/guard'
 import { readRegistry } from '$lib/hostnames/registry'
@@ -35,8 +36,9 @@ export const GET: RequestHandler = ({ request }) =>
   forOrigin(request, async (project) => [
     {
       name: project.name,
+      port: project.port,
       canRestart: !!project.devCommand,
-      console: `https://atlas.jurrejan.com/?q=${encodeURIComponent(project.slug)}`,
+      console: `https://atlas.jurrejan.com${projectHref(project.relativePath)}`,
     },
   ])
 
