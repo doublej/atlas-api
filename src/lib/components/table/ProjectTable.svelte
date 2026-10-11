@@ -1,15 +1,41 @@
+<script lang="ts" module>
+import { TableSort } from '$lib/table-sort.svelte'
+
+const DEFAULT_SORT = 'modified'
+/** Counts, dates and "needs attention" open high-to-low; text columns open A→Z. */
+const DESC_FIRST = ['git', 'links', 'claude', 'modified', 'run']
+
+/** `?sort=name`, `?sort=-modified` (descending) → the table's sort. */
+export function sortFromParam(param: string | null): TableSort<string> {
+  const sort = new TableSort<string>(DEFAULT_SORT, DESC_FIRST)
+  if (param) {
+    sort.key = param.replace(/^-/, '')
+    sort.descending = param.startsWith('-')
+  }
+  return sort
+}
+
+/** `null` for the default order, so a plain view keeps a clean URL. */
+export function sortToParam(sort: TableSort<string>): string | null {
+  const value = `${sort.descending ? '-' : ''}${sort.key}`
+  return sort.key === null || value === `-${DEFAULT_SORT}` ? null : value
+}
+</script>
+
 <script lang="ts">
 import type { Snippet } from 'svelte'
+import { goto } from '$app/navigation'
 import { frameworkColor, typeColor } from '$lib/browser/colors'
-import HostnameChip from '$lib/components/dialogs/hostname/HostnameChip.svelte'
 import Icon from '$lib/components/icons/Icon.svelte'
-import type { ProjectSummary } from '$lib/project-summary'
+import { type ProjectSummary, projectHref } from '$lib/project-summary'
 import type { GitStatus } from '$lib/scanner'
-import type { Column, RowState } from '$lib/table'
-import { TableSort } from '$lib/table-sort.svelte'
+import type { Selection } from '$lib/selection.svelte'
+import type { Column } from '$lib/table'
 import { getDynamicActions } from '$shared/actions'
 import { getHostById } from '$shared/hosts'
+import NameCell from './NameCell.svelte'
 import Table from './Table.svelte'
+import TagsCell from './TagsCell.svelte'
 
 interface Props {
   projects: ProjectSummary[]
@@ -20,9 +46,28 @@ interface Props {
   onRunDev: (project: ProjectSummary) => void
   /** The full row (badges, details, actions) shown when a line is opened. */
   detail: Snippet<[ProjectSummary]>
+  /** Owned by the page, which keeps it in the URL (`sortFromParam`). */
+  sort: TableSort<string>
+  /** Local projects only: the bulk bar writes to what is selected. */
+  selection: Selection<string>
+  /** The tag filter, so a tag chip reads pressed while it filters. */
+  activeTags: Set<string>
+  onTag: (tag: string) => void
 }
 
-const { projects, gitStatus, hostnames, runningPorts, showHost, onRunDev, detail }: Props = $props()
+const {
+  projects,
+  gitStatus,
+  hostnames,
+  runningPorts,
+  showHost,
+  onRunDev,
+  detail,
+  sort,
+  selection,
+  activeTags,
+  onTag,
+}: Props = $props()
 
 type P = ProjectSummary
 
@@ -31,9 +76,6 @@ const GIT_RANK: Record<string, number> = { dirty: 3, error: 2, clean: 1, 'no-rep
 const stack = (p: P) => (p.framework && p.framework !== 'unknown' ? p.framework : (p.type ?? ''))
 const swatch = (p: P) =>
   p.framework && p.framework !== 'unknown' ? frameworkColor(p.framework) : typeColor(p.type ?? '')
-
-/** Counts, dates and "needs attention" open high-to-low; text columns open A→Z. */
-const sort = new TableSort<string>('modified', ['git', 'links', 'claude', 'modified', 'run'])
 
 const columns = $derived<Column<P>[]>([
   {
@@ -46,6 +88,7 @@ const columns = $derived<Column<P>[]>([
   },
   { key: 'name', label: 'Name', sort: (p) => p.name.toLowerCase(), cell: nameCell },
   { key: 'path', label: 'Path', sort: (p) => p.relativePath, hideBelow: 768, cell: pathCell },
+  { key: 'tags', width: '13rem', label: 'Tags', hideBelow: 768, cell: tagsCell },
   {
     key: 'stack',
     width: '10rem',
@@ -128,13 +171,9 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
   <span class="git" data-status={status} title="git: {status}"></span>
 {/snippet}
 
-{#snippet nameCell(p: P, row: RowState)}
-  <span class="namecell">
-    <button type="button" class="name" aria-expanded={row.open} onclick={row.toggleOpen}>{p.name}</button>
-    <HostnameChip path={p.path} />
-    {#if p.description}<span class="desc">{p.description}</span>{/if}
-  </span>
-{/snippet}
+{#snippet nameCell(p: P)}<NameCell project={p} />{/snippet}
+
+{#snippet tagsCell(p: P)}<TagsCell tags={p.tags ?? []} active={activeTags} ontag={onTag} />{/snippet}
 
 {#snippet pathCell(p: P)}<span class="path mono" title={p.path}>{p.relativePath}</span>{/snippet}
 
@@ -193,7 +232,21 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
 
 <!-- The first 80 rows (~3 screens) are server-rendered and hydrate in place; the other 500+
      follow right after mount. All of them in the HTML made "/" 1.45MB. -->
-<Table label="Projects" rows={projects} key={(p) => p.path} {columns} {sort} expanded={opened} initialRows={80} />
+<Table
+  label="Projects"
+  rows={projects}
+  key={(p) => p.path}
+  {columns}
+  {sort}
+  {selection}
+  rowLabel={(p) => p.name}
+  canSelect={(p) => Boolean(p.isLocal)}
+  dim={(p) => Boolean(p.archived)}
+  clickOpens
+  onopen={(p) => goto(projectHref(p))}
+  expanded={opened}
+  initialRows={80}
+/>
 
 <style>
   .git {
@@ -216,47 +269,6 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
   }
   .git[data-status='no-repo'] {
     background: var(--status-idle);
-  }
-
-  /* The name keeps its width first; the hostname chip gives way next (down to its dot and a few
-     letters), the description takes only what is left. */
-  .namecell {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .namecell > :global(.chip) {
-    min-width: 4rem;
-  }
-
-  .name,
-  .desc {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  /* Capped, never shrunk: a flex shrink of a fraction of a pixel would already cut it with "…". */
-  .name {
-    flex: none;
-    max-width: 100%;
-    padding: 0;
-    font: inherit;
-    font-weight: 500;
-    color: var(--color-fg);
-    background: none;
-    border: none;
-    cursor: pointer;
-  }
-
-  .namecell:has(> :global(.chip)) > .name {
-    max-width: calc(100% - 4rem - var(--space-2));
-  }
-
-  .desc {
-    flex: 1 1 0;
-    color: var(--color-muted-2);
   }
 
   /* A block, so a deep path or a long branch ellipsizes inside its column. */
@@ -351,14 +363,6 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
     margin: 0;
     padding: 0 0 0 var(--space-4);
     list-style: none;
-  }
-
-  /* A phone's name column has no room beside the name; the opened row shows the chip. */
-  @media (max-width: 768px) {
-    .desc,
-    .namecell > :global(.chip) {
-      display: none;
-    }
   }
 
   /* No hover on touch: the run button is always there. */

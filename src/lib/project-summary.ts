@@ -26,6 +26,7 @@ const SUMMARY_KEYS = [
   'domains',
   'agentFiles',
   'tags',
+  'archived',
 ] as const satisfies readonly (keyof Project)[]
 
 export type ProjectSummary = Pick<Project, (typeof SUMMARY_KEYS)[number]>
@@ -35,3 +36,7 @@ export function summarizeProject(p: Project): ProjectSummary {
     SUMMARY_KEYS.filter((k) => p[k] !== undefined).map((k) => [k, p[k]]),
   ) as ProjectSummary
 }
+
+/** The project page (`/p/<relativePath>`), each segment encoded. */
+export const projectHref = (p: Pick<Project, 'relativePath'>): string =>
+  `/p/${p.relativePath.split('/').map(encodeURIComponent).join('/')}`

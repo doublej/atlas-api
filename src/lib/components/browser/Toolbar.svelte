@@ -6,6 +6,8 @@ type ViewMode = 'table' | 'flat' | 'nested'
 
 interface Props {
   search: string
+  /** The search box, so the page's `/` key can focus it. */
+  input?: HTMLInputElement
   viewMode: ViewMode
   showFilters: boolean
   activeFilterCount: number
@@ -16,6 +18,7 @@ interface Props {
 
 let {
   search = $bindable(),
+  input = $bindable(),
   viewMode = $bindable(),
   showFilters = $bindable(),
   activeFilterCount,
@@ -28,7 +31,13 @@ let {
 <div class="toolbar">
   <div class="search">
     <Icon name="search" size={14} />
-    <input type="search" bind:value={search} placeholder="Search projects" aria-label="Search projects" />
+    <input
+      type="search"
+      bind:this={input}
+      bind:value={search}
+      placeholder="Search projects  ( / )"
+      aria-label="Search projects"
+    />
   </div>
 
   <div class="views" role="group" aria-label="View mode">

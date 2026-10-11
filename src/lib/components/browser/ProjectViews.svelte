@@ -9,6 +9,8 @@ import { errorMessage } from '$lib/format'
 import type { ProjectRecords } from '$lib/project-records.svelte'
 import type { ProjectSummary } from '$lib/project-summary'
 import type { GitStatus, Project } from '$lib/scanner'
+import type { Selection } from '$lib/selection.svelte'
+import type { TableSort } from '$lib/table-sort.svelte'
 import FolderTree from './FolderTree.svelte'
 
 interface Props {
@@ -33,6 +35,11 @@ interface Props {
   onRunDev: (project: ProjectSummary) => void
   /** The full row for one complete record. */
   item: Snippet<[Project]>
+  // The table view's own: sort (kept in the URL), bulk selection, tag chips.
+  sort: TableSort<string>
+  selection: Selection<string>
+  activeTags: Set<string>
+  onTag: (tag: string) => void
 }
 
 const {

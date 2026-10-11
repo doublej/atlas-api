@@ -4,6 +4,7 @@ import { type PromotionFilter, toggleSet } from '$lib/browser/filters'
 import Card from '$lib/components/ui/Card.svelte'
 import Chip from '$lib/components/ui/Chip.svelte'
 import type { Framework } from '$lib/scanner'
+import TagFacet from './overview/TagFacet.svelte'
 
 interface Props {
   types: string[]
@@ -11,7 +12,7 @@ interface Props {
   runners: string[]
   hosts: string[]
   /** Most used first. */
-  tags: string[]
+  tags: { tag: string; count: number }[]
   showTools: boolean
   /** Only a handful of projects have a promotion-vault entry; hide the facet when none do. */
   showPromotion: boolean
@@ -63,18 +64,7 @@ function togglePromotion(id: PromotionFilter): void {
     {#if tags.length > 0}
       <div class="group">
         <p class="t-eyebrow" title="A project must carry every picked tag">Tags</p>
-        <div class="chips">
-          {#each tags as tag (tag)}
-            <Chip
-              pressed={selectedTags.has(tag)}
-              onclick={() => {
-                selectedTags = toggleSet(selectedTags, tag)
-              }}
-            >
-              {tag}
-            </Chip>
-          {/each}
-        </div>
+        <TagFacet {tags} bind:selected={selectedTags} />
       </div>
     {/if}
 

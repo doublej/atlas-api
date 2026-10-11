@@ -218,3 +218,11 @@ async function runApiAction(action: ActionDef, project: Project): Promise<Action
   await http[method](action.api?.endpoint ?? '', body)
   return { ok: true, note: `${action.label} — done` }
 }
+
+// --- Bulk edits from the list -------------------------------------------------
+/** Add and remove tags on many projects in one write. */
+export const patchTags = (paths: string[], add: string[], remove: string[]) =>
+  http.patch<{ updated: { path: string; tags: string[] }[] }>('/api/tags', { paths, add, remove })
+
+export const setArchived = (path: string, archived: boolean) =>
+  http.post('/api/archive', { path, archived })

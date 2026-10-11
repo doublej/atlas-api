@@ -3,18 +3,14 @@ import { onMount } from 'svelte'
 import { invalidateAll } from '$app/navigation'
 import { page } from '$app/state'
 import * as api from '$lib/browser/api'
-import {
-  countActiveFilters,
-  type FilterCriteria,
-  matchesFilters,
-  type PromotionFilter,
-  tagsByUse,
-  toggleSet,
-} from '$lib/browser/filters'
+import { countActiveFilters, matchesFilters, tagsByUse, toggleSet } from '$lib/browser/filters'
 import { buildFolderTree, collectFolderPaths } from '$lib/browser/tree'
+import { ListView } from '$lib/browser/view/list-view.svelte'
 import BrowserHeader from '$lib/components/browser/BrowserHeader.svelte'
 import FilterPanel from '$lib/components/browser/FilterPanel.svelte'
 import HostBanner from '$lib/components/browser/HostBanner.svelte'
+import BulkBar from '$lib/components/browser/overview/BulkBar.svelte'
+import StateChips from '$lib/components/browser/overview/StateChips.svelte'
 import ProjectViews from '$lib/components/browser/ProjectViews.svelte'
 import Toolbar from '$lib/components/browser/Toolbar.svelte'
 import BeadsDialog from '$lib/components/dialogs/BeadsDialog.svelte'
@@ -23,13 +19,12 @@ import ProjectSettings from '$lib/components/dialogs/ProjectSettings.svelte'
 import RenameDialog from '$lib/components/dialogs/RenameDialog.svelte'
 import ProjectRow from '$lib/components/project/ProjectRow.svelte'
 import { errorMessage } from '$lib/format'
+import { listKeys } from '$lib/processes/list-page'
 import { ProjectRecords } from '$lib/project-records.svelte'
 import type { ProjectSummary } from '$lib/project-summary'
 import type { Framework, GitStatus, Project } from '$lib/scanner'
 import { toast } from '$lib/toast.svelte'
 import type { ActionDef } from '$shared/actions'
-
-type ViewMode = 'table' | 'flat' | 'nested'
 
 let { data } = $props()
 // Writable deriveds, not $state + $effect: the rows render during SSR and hydration instead
@@ -39,23 +34,15 @@ let frameworks = $derived<Framework[]>(data.frameworks)
 let folders = $derived<string[]>(data.folders)
 let isRefreshing = $state(false)
 
-let search = $state(page.url.searchParams.get('q') ?? '')
-let selectedFrameworks = $state<Set<Framework>>(new Set())
-let selectedTypes = $state<Set<string>>(new Set())
-let selectedRunners = $state<Set<string>>(new Set())
-let selectedHosts = $state<Set<string>>(new Set())
-let selectedTags = $state<Set<string>>(new Set())
-let selectedTools = $state<Set<string>>(new Set())
-let onlyWithDev = $state(false)
-let onlyWithReadme = $state(false)
-let selectedPromotion = $state<PromotionFilter | null>(null)
+// Filters, view mode and sort, kept in the URL; plus the bulk selection.
+const view = new ListView(page.url.searchParams)
+const { selection } = view
+let searchInput = $state<HTMLInputElement>()
 let runningPorts = $state<Record<string, string>>({})
-let showFilters = $state(false)
 let renaming = $state<Project | null>(null)
 let moving = $state<Project | null>(null)
 let settingsFor = $state<Project | null>(null)
 let beadsFor = $state<Project | null>(null)
-let viewMode = $state<ViewMode>('table')
 let expandedFolders = $state<Set<string>>(new Set())
 type GitState = { status: GitStatus; branch?: string }
 let probedGit = $state<Record<string, GitState>>({})
@@ -69,25 +56,15 @@ const gitStatus = $derived<Record<string, GitState>>({
 })
 let hostnames = $state<Record<string, { local: string; remote: string }>>({})
 
-const criteria = $derived<FilterCriteria>({
-  search,
-  frameworks: selectedFrameworks,
-  types: selectedTypes,
-  runners: selectedRunners,
-  hosts: selectedHosts,
-  tags: selectedTags,
-  tools: selectedTools,
-  onlyWithDev,
-  onlyWithReadme,
-  promotion: selectedPromotion,
-})
-
 const types = $derived([...new Set(projects.map((p) => p.type).filter(Boolean))] as string[])
 const runners = $derived([...new Set(projects.map((p) => p.runner).filter(Boolean))] as string[])
 const hosts = $derived([...new Set(projects.map((p) => p.host).filter(Boolean))])
 const tags = $derived(tagsByUse(projects))
-const filtered = $derived(projects.filter((p) => matchesFilters(p, criteria)))
-const activeFilterCount = $derived(countActiveFilters(criteria))
+const tagCounts = $derived(new Map(tags.map((t) => [t.tag, t.count])))
+const filtered = $derived(projects.filter((p) => matchesFilters(p, view.criteria)))
+/** What the bulk bar writes to: selected, still visible, and on this Mac. */
+const picked = $derived(filtered.filter((p) => p.isLocal && selection.has(p.path)))
+const activeFilterCount = $derived(countActiveFilters(view.criteria))
 const nestedProjects = $derived(buildFolderTree(filtered))
 const hasJust = $derived(projects.some((p) => p.hasJustfile))
 const hasPromotion = $derived(projects.some((p) => p.promotion))
@@ -116,6 +93,23 @@ $effect(() => {
   if (!data.stale) return
   const timer = setTimeout(() => invalidateAll(), 15_000)
   return () => clearTimeout(timer)
+})
+
+// A row filtered away or rescanned out of the catalog leaves the selection.
+$effect(() => selection.prune(filtered.filter((p) => p.isLocal).map((p) => p.path)))
+
+// `/` search, j/k rows, Esc clears the selection, cmd+A selects every visible local row; a
+// focused row's own keys (x select, Enter open its page) are the Table's.
+const onKeydown = listKeys({
+  search: () => searchInput,
+  stop: () => {},
+  clear: () => selection.clear(),
+  selectAll: () =>
+    selection.set(
+      filtered.filter((p) => p.isLocal).map((p) => p.path),
+      true,
+    ),
+  busy: () => Boolean(renaming || moving || settingsFor || beadsFor),
 })
 
 onMount(() => {
@@ -152,16 +146,10 @@ function collapseAllFolders(): void {
   expandedFolders = new Set()
 }
 
-function clearFilters(): void {
-  selectedFrameworks = new Set()
-  selectedTypes = new Set()
-  selectedRunners = new Set()
-  selectedHosts = new Set()
-  selectedTags = new Set()
-  selectedTools = new Set()
-  onlyWithDev = false
-  onlyWithReadme = false
-  selectedPromotion = null
+/** After a bulk write: tags are patched into the cache, an archive needs the rescan. */
+async function afterBulk(what: 'tags' | 'archive'): Promise<void> {
+  if (what === 'tags') await invalidateAll()
+  else await refreshNow()
 }
 
 async function runDev(project: ProjectSummary): Promise<void> {
@@ -223,6 +211,8 @@ async function doMove(targetFolder: string): Promise<void> {
 	<title>Atlas - Projects</title>
 </svelte:head>
 
+<svelte:window onkeydown={onKeydown} />
+
 {#snippet projectItem(project: Project)}
 	<ProjectRow
 		{project}
@@ -242,7 +232,7 @@ async function doMove(targetFolder: string): Promise<void> {
 	/>
 {/snippet}
 
-<main class:wide={viewMode === 'table'}>
+<main class:wide={view.viewMode === 'table'}>
 	<div class="topbar">
 		<BrowserHeader
 			filteredCount={filtered.length}
@@ -250,19 +240,20 @@ async function doMove(targetFolder: string): Promise<void> {
 			refreshing={isRefreshing}
 		/>
 		<Toolbar
-			bind:search
-			bind:viewMode
-			bind:showFilters
+			bind:search={view.criteria.search}
+			bind:input={searchInput}
+			bind:viewMode={view.viewMode}
+			bind:showFilters={view.showFilters}
 			{activeFilterCount}
 			onExpandAll={expandAllFolders}
 			onCollapseAll={collapseAllFolders}
-			onClearFilters={clearFilters}
+			onClearFilters={() => view.clearFilters()}
 		/>
 	</div>
 
 	<HostBanner hosts={degraded} />
 
-	{#if showFilters}
+	{#if view.showFilters}
 		<div class="filter-region">
 			<FilterPanel
 				{types}
@@ -272,27 +263,31 @@ async function doMove(targetFolder: string): Promise<void> {
 				{tags}
 				showTools={hasJust}
 				showPromotion={hasPromotion}
-				bind:selectedTypes
-				bind:selectedFrameworks
-				bind:selectedRunners
-				bind:selectedHosts
-				bind:selectedTags
-				bind:selectedTools
-				bind:onlyWithDev
-				bind:onlyWithReadme
-				bind:promotion={selectedPromotion}
+				bind:selectedTypes={view.criteria.types}
+				bind:selectedFrameworks={view.criteria.frameworks}
+				bind:selectedRunners={view.criteria.runners}
+				bind:selectedHosts={view.criteria.hosts}
+				bind:selectedTags={view.criteria.tags}
+				bind:selectedTools={view.criteria.tools}
+				bind:onlyWithDev={view.criteria.onlyWithDev}
+				bind:onlyWithReadme={view.criteria.onlyWithReadme}
+				bind:promotion={view.criteria.promotion}
 			/>
 		</div>
 	{/if}
 
+	<div class="states">
+		<StateChips counts={tagCounts} bind:selected={view.criteria.tags} />
+	</div>
+
 	<ProjectViews
 		projects={filtered}
 		total={projects.length}
-		{viewMode}
+		viewMode={view.viewMode}
 		{records}
 		error={data.error}
 		onretry={() => invalidateAll()}
-		onClearFilters={clearFilters}
+		onClearFilters={() => view.clearFilters()}
 		tree={nestedProjects}
 		{expandedFolders}
 		onToggleFolder={toggleFolder}
@@ -302,7 +297,20 @@ async function doMove(targetFolder: string): Promise<void> {
 		{showHost}
 		onRunDev={runDev}
 		item={projectItem}
+		sort={view.sort}
+		{selection}
+		activeTags={view.criteria.tags}
+		onTag={(tag) => view.toggleTag(tag)}
 	/>
+
+	{#if view.viewMode === 'table' && picked.length}
+		<BulkBar
+			projects={picked}
+			vocabulary={tags.map((t) => t.tag)}
+			onclear={() => selection.clear()}
+			onchanged={afterBulk}
+		/>
+	{/if}
 </main>
 
 <ProjectSettings
@@ -353,6 +361,10 @@ async function doMove(targetFolder: string): Promise<void> {
 
 	.filter-region {
 		margin-bottom: var(--section-gap);
+	}
+
+	.states {
+		margin-bottom: var(--space-3);
 	}
 
 
