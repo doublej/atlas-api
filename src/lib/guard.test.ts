@@ -104,6 +104,18 @@ const allowed: Case[] = [
     '/api/projects?dir=/Users/jurrejan/dev',
     { host: 'localhost:47891', 'sec-fetch-mode': 'cors' },
   ],
+  [
+    "the toolbar reads its project from a project's LAN dev hostname",
+    'GET',
+    '/api/toolbar',
+    { ...via(LAN), origin: 'https://web.atlas.local.jurrejan.com', 'sec-fetch-site': 'same-site' },
+  ],
+  [
+    'the toolbar restarts its project',
+    'POST',
+    '/api/toolbar',
+    via(LAN, 'https://web.atlas.local.jurrejan.com'),
+  ],
 ]
 
 const refused: [...Case, reason: RegExp][] = [
@@ -315,6 +327,41 @@ const refused: [...Case, reason: RegExp][] = [
     '/api/agent-log',
     via('atlas-api.atlas.remote.jurrejan.com'),
     /unknown forwarded host atlas-api\.atlas\.remote/,
+  ],
+  [
+    'the toolbar off-LAN',
+    'POST',
+    '/api/toolbar',
+    via(REMOTE, 'https://web.atlas.remote.jurrejan.com'),
+    /toolbar only via the LAN console host/,
+  ],
+  [
+    'the toolbar from a page on this Mac, not through the NAS',
+    'POST',
+    '/api/toolbar',
+    { host: 'localhost:47891', origin: 'https://web.atlas.local.jurrejan.com' },
+    /toolbar only via the LAN console host/,
+  ],
+  [
+    'the toolbar route from another site',
+    'POST',
+    '/api/toolbar',
+    via(LAN, 'https://evil.example'),
+    /toolbar call from https:\/\/evil\.example/,
+  ],
+  [
+    'the toolbar route from a nested dev hostname',
+    'POST',
+    '/api/toolbar',
+    via(LAN, 'https://a.web.atlas.local.jurrejan.com'),
+    /toolbar call from/,
+  ],
+  [
+    "a dev hostname's page posts to another route",
+    'POST',
+    '/api/run',
+    via(LAN, 'https://web.atlas.local.jurrejan.com'),
+    /write via atlas\.jurrejan\.com needs Origin/,
   ],
   [
     'forwarded without a host',

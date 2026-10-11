@@ -23,7 +23,24 @@ export interface SiteBlock {
   /** `encode zstd gzip` — service blocks only: the console's HTML is 1.4 MB, while a dev server's
    *  bytes aren't worth the Celeron's time. */
   compress?: boolean
+  /** Inject the atlas toolbar (`static/toolbar.js`) into the LAN half's pages — projects only. */
+  toolbar?: boolean
 }
+
+/**
+ * The toolbar's `<script>`, appended to every HTML page of a project's LAN half. Same mechanism
+ * and constraints as `lan_banner` (which already drops `Accept-Encoding` for page loads): the
+ * replacement stays quote-free. Never on the remote half: that one is handed to clients.
+ */
+const TOOLBAR = [
+  '@atlas_toolbar_page header Accept *text/html*',
+  'replace @atlas_toolbar_page {',
+  '\tmatch {',
+  '\t\theader Content-Type text/html*',
+  '\t}',
+  '\t</body> `<script src=https://atlas.jurrejan.com/toolbar.js defer></script></body>`',
+  '}',
+]
 
 /**
  * `atlas.local` is gated by source IP, not a password — DNS can't point it at a private address
@@ -57,6 +74,7 @@ export function renderSiteBlock(b: SiteBlock): string {
     `\thandle @admin_ips {`,
     // Marks every page "LAN only" (snippet in `common.caddy`), since this hostname 403s off-LAN.
     `\t\timport lan_banner`,
+    ...(b.toolbar ? TOOLBAR.map((l) => `\t\t${l}`) : []),
     proxy('\t\t'),
     `\t}`,
     `\thandle @not_admin {`,

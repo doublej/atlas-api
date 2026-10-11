@@ -21,6 +21,8 @@ import type { Holder, HostnameChipData, HostnameRow, HostnameState } from './hos
 /** Bump when the service block template changes: every service file is re-pushed once.
  *  2: services' remote half moved to its own password (`CADDY_SERVICE_AUTH_HASH`). */
 const SERVICE_BLOCK_REV = 2
+/** Same for project blocks. 1: the LAN half injects the atlas toolbar. */
+const PROJECT_BLOCK_REV = 1
 
 /** A slug write that would take another project's or service's hostname. Routes answer 409. */
 export class SlugTakenError extends Error {
@@ -99,7 +101,7 @@ function wantFor(p: RouteRequest): Want {
     devPublic: p.devPublic ?? false,
     remote: (p.remote ?? true) && hasAuthHash(p.service) ? undefined : false,
     host: p.host,
-    rev: p.service ? SERVICE_BLOCK_REV : undefined,
+    rev: p.service ? SERVICE_BLOCK_REV : PROJECT_BLOCK_REV,
   }
 }
 
@@ -119,6 +121,7 @@ async function ensureUnlocked(p: RouteRequest): Promise<HostnameState> {
     remote: remote !== false,
     authHash: authHashFor(p.service),
     compress: !!p.service,
+    toolbar: !p.service,
   })
   const pushed = await pushToNas(p.slug, content)
   const entry: HostnameEntry = {

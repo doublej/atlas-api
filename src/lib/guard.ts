@@ -27,6 +27,20 @@ const LOCAL_ONLY = [
   '/api/finder',
 ]
 
+/**
+ * The toolbar `static/toolbar.js` that the NAS injects into a project's LAN dev hostname calls
+ * this one route from that page's origin. The route acts only on the project the origin names.
+ */
+const TOOLBAR_ROUTE = '/api/toolbar'
+export const TOOLBAR_ORIGIN = /^https:\/\/([a-z0-9-]+)\.atlas\.local\.jurrejan\.com$/
+
+/** Through a LAN console hostname, from a project's LAN dev hostname: nothing else. */
+function refuseToolbar(headers: Headers, proxied: boolean, forwarded: string): string | null {
+  if (!proxied || !LAN_HOSTS.includes(forwarded)) return 'toolbar only via the LAN console host'
+  const origin = headers.get('origin')
+  return origin && TOOLBAR_ORIGIN.test(origin) ? null : `toolbar call from ${origin ?? 'no Origin'}`
+}
+
 /** `/api/projects?dir=` walks any folder the daemon can reach and writes its cache file into it. */
 const isLocalOnly = (route: string, query: URLSearchParams) =>
   (route === '/api/projects' && Boolean(query.get('dir'))) ||
@@ -80,13 +94,14 @@ export function refusal(
   // ones included — so `Host` comes first, proxied or not (Caddy sends `localhost` on every block).
   const host = headers.get('host') ?? '(none)'
   if (!LOOPBACK_HOST.test(host)) return `host ${host} is not this Mac`
-  const write = method !== 'GET' && method !== 'HEAD'
+  const write = !['GET', 'HEAD'].includes(method)
   const proxied = headers.has('x-forwarded-for')
   const forwarded = headers.get('x-forwarded-host') ?? '(none)'
   // Whatever routes another hostname here (a project entry on port 47891) is not the console, so
   // it gets nothing — not even the open reads.
   if (proxied && forwarded !== REMOTE_HOST && !LAN_HOSTS.includes(forwarded))
     return `unknown forwarded host ${forwarded}`
+  if (route === TOOLBAR_ROUTE) return refuseToolbar(headers, proxied, forwarded)
   const self = proxied ? `https://${forwarded}` : `http://${host}`
   if (!write && !isLocalOnly(route, query)) return refuseOpenRead(headers, self)
   // Direct: nothing from another origin (CSRF) — a page from any other local dev server is just

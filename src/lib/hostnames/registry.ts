@@ -28,7 +28,7 @@ export interface HostnameEntry {
   /** `.atlas` `devPublic` override — remote reachable with no password. Tracked so a flag
    *  flip with no port change still triggers a re-push. */
   devPublic?: boolean
-  /** Template revision of a service block; a bump re-pushes every service file once. */
+  /** Template revision of the block (service or project); a bump re-pushes every such file once. */
   rev?: number
   registeredAt: string
   nasSynced?: boolean

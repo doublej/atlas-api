@@ -76,6 +76,13 @@ describe('renderSiteBlock', () => {
     expect(service.match(/^\tencode zstd gzip$/gm)).toHaveLength(2)
     expect(renderSiteBlock(block)).not.toContain('encode')
   })
+
+  it('injects the toolbar into the LAN half only, and only when asked', () => {
+    const out = renderSiteBlock({ ...block, toolbar: true })
+    expect(out.match(/toolbar\.js/g)).toHaveLength(1)
+    expect(out.indexOf('toolbar.js')).toBeLessThan(out.indexOf('atlas.remote'))
+    expect(renderSiteBlock(block)).not.toContain('toolbar')
+  })
 })
 
 describe('the atlas console block (decision 1, 2.4)', () => {
