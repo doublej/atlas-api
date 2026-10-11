@@ -34,3 +34,36 @@ export const PUT: RequestHandler = async ({ request }) => {
   await updateCachedTags(DEV_FOLDER)
   return json({ path, tags: clean })
 }
+
+/**
+ * Bulk edit: `{ paths, add?, remove? }` adds and removes tags on every project in `paths` in one
+ * write. A path outside the catalog fails the whole request before anything is written.
+ */
+export const PATCH: RequestHandler = async ({ request }) => {
+  const { paths, add = [], remove = [] } = await request.json()
+  const strings = (v: unknown): v is string[] =>
+    Array.isArray(v) && v.every((t) => typeof t === 'string')
+  if (!strings(paths) || !paths.length || !strings(add) || !strings(remove)) {
+    return json(
+      { error: 'paths (non-empty string array), add?, remove? required' },
+      { status: 400 },
+    )
+  }
+  const resolved = paths.map((p) => resolveInsideCatalog(p))
+  const bad = paths.find((_, i) => !resolved[i])
+  if (bad) return json({ error: `${bad} is not in this machine's catalog` }, { status: 400 })
+
+  const map = await readTags(DEV_FOLDER)
+  const plus = normalizeTags(add)
+  const minus = new Set(normalizeTags(remove))
+  const updated = (resolved as string[]).map((path) => {
+    const key = relative(DEV_FOLDER, path)
+    const tags = normalizeTags([...(map[key] ?? []), ...plus]).filter((t) => !minus.has(t))
+    if (tags.length) map[key] = tags
+    else delete map[key]
+    return { path, tags }
+  })
+  await writeTags(DEV_FOLDER, map)
+  await updateCachedTags(DEV_FOLDER)
+  return json({ updated })
+}

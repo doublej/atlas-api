@@ -1,6 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 
+export { normalizeTags } from './tag-normalize'
+
 /**
  * `<scan root>/.atlas-tags.json` — every project's tags in one file, keyed by `relativePath`.
  *
@@ -11,20 +13,6 @@ import { join, relative } from 'node:path'
 export type TagMap = Record<string, string[]>
 
 export const tagsPath = (baseDir: string): string => join(baseDir, '.atlas-tags.json')
-
-/** Lowercase kebab, deduped, sorted — so `Client PSP` and `client-psp` are one tag. */
-export function normalizeTags(tags: string[]): string[] {
-  const clean = tags
-    .map((t) =>
-      t
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, ''),
-    )
-    .filter(Boolean)
-  return [...new Set(clean)].sort()
-}
 
 export async function readTags(baseDir: string): Promise<TagMap> {
   try {
