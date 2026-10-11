@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { Project } from '$lib/scanner'
-import { countActiveFilters, emptyCriteria, matchesFilters, tagsByUse, toggleSet } from './filters'
+import {
+  countActiveFilters,
+  criteriaFromQuery,
+  criteriaToQuery,
+  emptyCriteria,
+  matchesFilters,
+  stateOf,
+  tagsByUse,
+  toggleSet,
+} from './filters'
 
 function project(overrides: Partial<Project> = {}): Project {
   return {
@@ -18,7 +27,11 @@ describe('matchesFilters', () => {
     expect(matchesFilters(p, { ...emptyCriteria(), tags: new Set(['web', 'vr']) })).toBe(false)
     expect(matchesFilters(project(), { ...emptyCriteria(), tags: new Set(['web']) })).toBe(false)
     expect(matchesFilters(p, { ...emptyCriteria(), search: 'psp' })).toBe(true)
-    expect(tagsByUse([p, project({ tags: ['web'] })])).toEqual(['web', 'client-psp'])
+    expect(tagsByUse([p, project({ tags: ['web'] })])).toEqual([
+      { tag: 'web', count: 2 },
+      { tag: 'client-psp', count: 1 },
+    ])
+    expect(stateOf(project({ tags: ['web', 'parked'] }))).toBe('parked')
   })
 
   it('keeps everything when no filter is set', () => {
@@ -101,5 +114,26 @@ describe('toggleSet', () => {
     expect([...added]).toEqual(['a', 'b'])
     expect([...original]).toEqual(['a'])
     expect([...toggleSet(added, 'a')]).toEqual(['b'])
+  })
+})
+
+describe('criteria in the URL', () => {
+  it('round-trips every filter and writes nothing for an empty view', () => {
+    const c = {
+      ...emptyCriteria(),
+      search: 'atlas',
+      tags: new Set(['web', 'active']),
+      hosts: new Set(['m2']),
+      onlyWithDev: true,
+      promotion: 'promoted' as const,
+    }
+    const q = criteriaToQuery(c)
+    expect(q.getAll('tag')).toEqual(['web', 'active'])
+    expect(criteriaFromQuery(new URLSearchParams(q.toString()))).toEqual(c)
+    expect(criteriaToQuery(emptyCriteria()).toString()).toBe('')
+  })
+
+  it('drops an unknown promotion value', () => {
+    expect(criteriaFromQuery(new URLSearchParams('promo=bogus')).promotion).toBeNull()
   })
 })

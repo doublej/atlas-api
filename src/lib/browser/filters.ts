@@ -102,9 +102,53 @@ export function toggleSet<T>(set: Set<T>, value: T): Set<T> {
   return next
 }
 
-/** Every tag in `projects`, most used first — the order of the Tags facet. */
-export function tagsByUse(projects: Pick<Project, 'tags'>[]): string[] {
+/** Every tag in `projects` with how many carry it, most used first — the Tags facet's order. */
+export function tagsByUse(projects: Pick<Project, 'tags'>[]): { tag: string; count: number }[] {
   const counts = new Map<string, number>()
   for (const p of projects) for (const t of p.tags ?? []) counts.set(t, (counts.get(t) ?? 0) + 1)
-  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([t]) => t)
+  return [...counts]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([tag, count]) => ({ tag, count }))
+}
+
+/** The lifecycle tags; a project carries at most one of them. */
+export const STATE_TAGS = ['active', 'parked', 'dormant', 'archived'] as const
+
+export const stateOf = (p: Pick<Project, 'tags'>): string | undefined =>
+  STATE_TAGS.find((s) => p.tags?.includes(s))
+
+/** URL param → the criteria Set it fills; each repeats (`?tag=a&tag=b`). */
+const MULTI = {
+  tag: 'tags',
+  type: 'types',
+  framework: 'frameworks',
+  runner: 'runners',
+  host: 'hosts',
+  tool: 'tools',
+} as const satisfies Record<string, keyof FilterCriteria>
+
+const PROMOTIONS: PromotionFilter[] = ['promoted', 'unpromoted', 'in-progress']
+
+/** The filters as query params, so a view is a bookmarkable URL. Empty filters write nothing. */
+export function criteriaToQuery(c: FilterCriteria): URLSearchParams {
+  const q = new URLSearchParams()
+  if (c.search) q.set('q', c.search)
+  for (const [param, field] of Object.entries(MULTI)) for (const v of c[field]) q.append(param, v)
+  if (c.onlyWithDev) q.set('dev', '1')
+  if (c.onlyWithReadme) q.set('readme', '1')
+  if (c.promotion) q.set('promo', c.promotion)
+  return q
+}
+
+export function criteriaFromQuery(q: URLSearchParams): FilterCriteria {
+  const promo = q.get('promo') as PromotionFilter | null
+  const sets = Object.entries(MULTI).map(([param, field]) => [field, new Set(q.getAll(param))])
+  return {
+    ...emptyCriteria(),
+    ...Object.fromEntries(sets),
+    search: q.get('q') ?? '',
+    onlyWithDev: q.get('dev') === '1',
+    onlyWithReadme: q.get('readme') === '1',
+    promotion: promo && PROMOTIONS.includes(promo) ? promo : null,
+  }
 }
