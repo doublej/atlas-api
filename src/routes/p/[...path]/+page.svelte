@@ -151,8 +151,7 @@ const actions = {
 /** `[` and `]` step through the catalog; never while typing or with a dialog open. */
 function onkeydown(e: KeyboardEvent): void {
   if (e.metaKey || e.ctrlKey || e.altKey || document.querySelector('dialog[open]')) return
-  const t = e.target as HTMLElement
-  if (t.closest('input, textarea, select, [contenteditable]')) return
+  if ((e.target as Element).closest?.('input, textarea, select, [contenteditable]')) return
   const to = e.key === '[' ? data.prev : e.key === ']' ? data.next : undefined
   if (to) goto(to.href)
 }
