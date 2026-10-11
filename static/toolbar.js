@@ -2,14 +2,13 @@
 // hostname (`renderSiteBlock`), in place of the `lan_banner` — so it carries the "LAN only" label.
 // Built the way Next.js mounts its dev indicator: one custom element with its own shadow root,
 // inside a <script> wrapper on <body> (hydration tolerates an extra script, not an extra div) and
-// put back if a framework's render removes it. A small pill in a corner opens a menu, drags to
-// snap to another corner (kept in localStorage) and hides in this tab from the menu. It talks to
+// put back if a framework's render removes it. A tab flush on the bottom edge, centred, opens a
+// card above it; the card can hide it for this browser tab. It talks to
 // `/api/toolbar` on the console, which acts only on the project this page's hostname names.
 ;(() => {
   const TAG = 'atlas-toolbar'
   if (window.top !== window || document.querySelector(TAG)) return
   const api = `${new URL(document.currentScript.src).origin}/api/toolbar`
-  const CORNER = 'atlas-toolbar:corner'
   const HIDDEN = 'atlas-toolbar:hidden'
   if (sessionStorage.getItem(HIDDEN)) return
 
@@ -39,7 +38,8 @@
     '<circle cx=7 cy=7 r=2 fill=currentColor /></svg>'
   const slug = location.hostname.split('.')[0]
   root.innerHTML = `<style>
-  :host { all: initial; position: fixed; z-index: 2147483647; --gap: 12px;
+  :host { all: initial; position: fixed; z-index: 2147483647; left: 50%; bottom: 0;
+    translate: -50% 0;
     --paper: #fffdf8; --ink: #1c1917; --muted: #78716c; --line: rgba(28,25,23,.12);
     --hover: #f5f0e6; --boundary: #b45309; --stop: #b91c1c; --focus: #5e6ad2;
     color-scheme: light dark; color: var(--ink);
@@ -47,8 +47,6 @@
   @media (prefers-color-scheme: dark) { :host { --paper: #1c1917; --ink: #fafaf9;
     --muted: #a8a29e; --line: rgba(250,250,249,.12); --hover: #292524; --boundary: #fbbf24;
     --stop: #f87171 } }
-  :host([data-corner^=top]) { top: var(--gap) } :host([data-corner^=bottom]) { bottom: var(--gap) }
-  :host([data-corner$=left]) { left: var(--gap) } :host([data-corner$=right]) { right: var(--gap) }
   * { box-sizing: border-box }
   button, a { all: unset; cursor: pointer }
   :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px }
@@ -56,13 +54,15 @@
   .busy .ring { animation: march 1.2s linear infinite }
   @keyframes march { to { rotate: 1turn } }
 
-  /* At rest only the boundary mark shows; hover, focus, open or busy unrolls the name beside it.
-     In a right-hand corner it unrolls leftwards, so the mark never leaves its corner. */
-  .pill { display: flex; align-items: center; height: 30px; padding: 0 6px;
-    border: 1px solid var(--line); border-radius: 9999px; background: var(--paper);
-    color: var(--boundary); font-size: 12px; box-shadow: 0 4px 14px -6px rgba(28,25,23,.4);
-    touch-action: none; user-select: none }
-  :host([data-corner$=right]) .pill { flex-direction: row-reverse }
+  /* A tab sewn to the bottom edge: square where it meets the viewport, rounded where it rises.
+     At rest only the boundary mark shows; hover, focus, open or busy unrolls the name to both
+     sides, since the tab stays centred. The safe-area inset keeps it above an iPhone's bar. */
+  .pill { display: flex; align-items: center; min-height: 26px; padding: 0 9px;
+    padding-bottom: env(safe-area-inset-bottom); border: 1px solid var(--line);
+    border-bottom: 0; border-radius: 10px 10px 0 0; background: var(--paper);
+    color: var(--boundary); font-size: 12px; box-shadow: 0 -4px 14px -8px rgba(28,25,23,.45);
+    user-select: none }
+  .pill:focus-visible { outline-offset: -3px }
   .label { display: flex; gap: 5px; max-width: 0; overflow: hidden; opacity: 0;
     white-space: nowrap; transition: max-width .2s ease-out, opacity .15s, padding .2s ease-out }
   .pill:hover .label, .pill:focus-visible .label, .pill[aria-expanded=true] .label,
@@ -70,16 +70,13 @@
   .slug { font-weight: 650; color: var(--ink) }
   .lan { font-weight: 500 }
 
-  .card { position: absolute; width: 248px; padding: 14px; border: 1px solid var(--line);
+  .card { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+    width: 248px; padding: 14px; border: 1px solid var(--line);
     border-radius: 14px; background: var(--paper);
     box-shadow: 0 18px 40px -16px rgba(28,25,23,.45);
     transition: opacity .14s, translate .14s, visibility .14s }
   .card[hidden] { display: block !important; opacity: 0; visibility: hidden; pointer-events: none }
-  :host([data-corner^=bottom]) .card { bottom: calc(100% + 8px) }
-  :host([data-corner^=top]) .card { top: calc(100% + 8px) }
-  :host([data-corner^=bottom]) .card[hidden] { translate: 0 4px }
-  :host([data-corner^=top]) .card[hidden] { translate: 0 -4px }
-  :host([data-corner$=left]) .card { left: 0 } :host([data-corner$=right]) .card { right: 0 }
+  .card[hidden] { translate: 0 4px }
 
   h2 { all: unset; display: block; font-size: 15px; font-weight: 650; line-height: 1.25;
     overflow-wrap: anywhere }
@@ -105,7 +102,7 @@
   @media print { :host { display: none } }
 </style>
 <button class="pill" aria-expanded="false" aria-haspopup="dialog"
-  title="Only reachable on your home network. Click for atlas, drag to move.">
+  title="Only reachable on your home network. Click for atlas.">
   ${ring}<span class="label"><span class="slug"></span><span class="lan">LAN</span></span>
 </button>
 <div class="card" role="dialog" aria-label="atlas" hidden>
@@ -136,42 +133,7 @@
     menu.hidden = !on
     pill.setAttribute('aria-expanded', String(on))
   }
-  host.dataset.corner = localStorage.getItem(CORNER) || 'bottom-left'
-
-  // Drag the pill anywhere; on release it snaps to the nearest corner. The click that follows a
-  // drag is swallowed, so only a real click (mouse, keyboard or assistive tech) toggles the menu.
-  let drag = null
-  let dragged = false
-  pill.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return
-    drag = { x: e.clientX, y: e.clientY, moved: false }
-    dragged = false
-    pill.setPointerCapture(e.pointerId)
-  })
-  pill.addEventListener('pointermove', (e) => {
-    if (!drag) return
-    const dx = e.clientX - drag.x
-    const dy = e.clientY - drag.y
-    if (!drag.moved && Math.hypot(dx, dy) < 5) return
-    drag.moved = true
-    open(false)
-    host.style.translate = `${dx}px ${dy}px`
-  })
-  pill.addEventListener('pointerup', (e) => {
-    if (!drag) return
-    dragged = drag.moved
-    drag = null
-    host.style.translate = ''
-    if (!dragged) return
-    const v = e.clientY < innerHeight / 2 ? 'top' : 'bottom'
-    const h = e.clientX < innerWidth / 2 ? 'left' : 'right'
-    host.dataset.corner = `${v}-${h}`
-    localStorage.setItem(CORNER, host.dataset.corner)
-  })
-  pill.addEventListener('click', () => {
-    if (dragged) dragged = false
-    else open(menu.hidden)
-  })
+  pill.addEventListener('click', () => open(menu.hidden))
   document.addEventListener('pointerdown', (e) => {
     if (!e.composedPath().includes(host)) open(false)
   })
