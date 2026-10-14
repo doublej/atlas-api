@@ -233,12 +233,12 @@ async function doMove(targetFolder: string): Promise<void> {
 {/snippet}
 
 <main class:wide={view.viewMode === 'table'}>
+	<BrowserHeader
+		filteredCount={filtered.length}
+		totalCount={projects.length}
+		refreshing={isRefreshing}
+	/>
 	<div class="topbar">
-		<BrowserHeader
-			filteredCount={filtered.length}
-			totalCount={projects.length}
-			refreshing={isRefreshing}
-		/>
 		<Toolbar
 			bind:search={view.criteria.search}
 			bind:input={searchInput}
@@ -327,11 +327,14 @@ async function doMove(targetFolder: string): Promise<void> {
 
 <style>
 	main {
+		/* The toolbar's own top padding counts towards the 20px under the plate. */
+		--feature-header-space: calc(var(--space-5) - var(--toolbar-py));
+
 		width: 100%;
 		max-width: var(--col-max);
 		min-height: 100vh;
 		margin: 0 auto;
-		padding: 0 var(--page-pad) var(--space-16);
+		padding: var(--space-6) var(--page-pad) var(--space-16);
 	}
 
 	/* 500+ projects: the table takes the whole window, not the reading column. */
@@ -339,9 +342,9 @@ async function doMove(targetFolder: string): Promise<void> {
 		max-width: none;
 	}
 
-	/* Header and toolbar travel together as one sticky band, stacked below the
-	   global nav (also sticky top:0 — offset here so the two bands don't
-	   overlap once scrolled). */
+	/* The toolbar is a sticky band below the global nav (also sticky top:0 —
+	   offset here so the two bands don't overlap once scrolled); the plate
+	   above it scrolls away like every other page's. */
 	.topbar {
 		position: sticky;
 		top: var(--nav-h);
@@ -371,7 +374,7 @@ async function doMove(targetFolder: string): Promise<void> {
 
 	@media (max-width: 768px) {
 		main {
-			padding: 0 var(--space-4) var(--space-12);
+			padding: var(--space-6) var(--space-4) var(--space-12);
 		}
 
 		/* A phone can't spare a quarter of its height to the band: only the nav stays put. */
