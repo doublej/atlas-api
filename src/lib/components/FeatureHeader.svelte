@@ -53,7 +53,9 @@ const plate = getPlate()
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
     column-gap: var(--space-4);
-    margin-bottom: var(--space-5);
+    /* 20px to what follows. A parent that spaces its children with a flex gap sets this to what
+       its gap leaves of those 20px, so every page has the same space under its plate. */
+    margin-bottom: var(--feature-header-space, var(--space-5));
     padding-bottom: var(--space-4);
   }
 
@@ -181,7 +183,7 @@ const plate = getPlate()
     }
 
     .page .title {
-      font-size: 36px;
+      font-size: 32px;
     }
 
     .actions {
