@@ -187,6 +187,7 @@ const plate = getPlate()
     }
 
     .actions {
+      order: 1;
       grid-column: 1 / -1;
       grid-row: auto;
       justify-content: flex-start;
