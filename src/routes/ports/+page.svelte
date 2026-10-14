@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount } from 'svelte'
 import { page } from '$app/state'
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import ConfirmDialog from '$lib/components/feedback/ConfirmDialog.svelte'
 import Notice from '$lib/components/feedback/Notice.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
@@ -128,27 +129,32 @@ onMount(() => {
 <svelte:window onkeydown={onKeydown} />
 
 <main>
-  <header>
-    <h1 class="t-h2">Ports</h1>
-    <span class="t-small muted">
-      {listeners.length} listening on this Mac{updatedAt
-        ? ` · updated ${new Date(updatedAt).toLocaleTimeString()}`
-        : ''}
-    </span>
-    <span class="spacer"></span>
-    <input
-      bind:this={search}
-      class="search"
-      type="search"
-      placeholder="Filter port, name, path…  ( / )"
-      aria-label="Filter ports"
-      bind:value={query}
-    />
-    <Button onclick={() => load(true)}>Refresh</Button>
-    <Button variant="danger" disabled={!sel.size} onclick={() => stopPorts(sel.list)}>
-      Stop selected ({sel.size})
-    </Button>
-  </header>
+  <FeatureHeader
+    level={1}
+    eyebrow="This Mac"
+    title="Ports"
+    lede="Every TCP listener on this Mac, grouped by owner: project, service, Docker or system."
+    source="netstat · process snapshot"
+  >
+    {#snippet meta()}
+      <span>{listeners.length} listening</span>
+      {#if updatedAt}·<span>updated {new Date(updatedAt).toLocaleTimeString()}</span>{/if}
+    {/snippet}
+    {#snippet actions()}
+      <input
+        bind:this={search}
+        class="search"
+        type="search"
+        placeholder="Filter port, name, path…  ( / )"
+        aria-label="Filter ports"
+        bind:value={query}
+      />
+      <Button onclick={() => load(true)}>Refresh</Button>
+      <Button variant="danger" disabled={!sel.size} onclick={() => stopPorts(sel.list)}>
+        Stop selected ({sel.size})
+      </Button>
+    {/snippet}
+  </FeatureHeader>
 
   {#if collisions.size}
     <Notice tone="warn">
@@ -183,22 +189,13 @@ onMount(() => {
 
 <style>
   main {
+    --feature-header-space: var(--space-1);
+
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
     margin: 0 auto;
     padding: var(--space-6) var(--page-pad) var(--space-16);
-  }
-
-  header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2) var(--space-3);
-    flex-wrap: wrap;
-  }
-
-  .spacer {
-    flex: 1;
   }
 
   .search {

@@ -62,9 +62,11 @@ const refsIcon = { all: '⇄', selected: '◎', off: '⊘' }
 	}
 	h1 {
 		white-space: nowrap;
-		font-size: 0.92rem;
-		font-weight: 700;
-		letter-spacing: -0.02em;
+		font-family: var(--font-display);
+		font-size: 22px;
+		font-weight: 400;
+		line-height: 1;
+		letter-spacing: -0.01em;
 		margin: 0;
 		display: flex;
 		align-items: center;
@@ -79,8 +81,8 @@ const refsIcon = { all: '⇄', selected: '◎', off: '⊘' }
 		transform: rotate(45deg);
 	}
 	.proj {
-		color: var(--color-muted);
-		font: 400 0.72rem/1 var(--font-mono);
+		color: var(--color-muted-2);
+		font: 400 11.5px/1 var(--font-mono);
 		overflow-wrap: anywhere;
 	}
 	.hint {

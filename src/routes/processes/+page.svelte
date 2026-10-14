@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount } from 'svelte'
 import { page } from '$app/state'
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import ConfirmDialog from '$lib/components/feedback/ConfirmDialog.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import Button from '$lib/components/ui/Button.svelte'
@@ -168,19 +169,23 @@ onMount(() => {
 <svelte:window onkeydown={onKeydown} />
 
 <main>
-  <header>
-    <h1 class="t-h2">Processes</h1>
-    <span class="t-small muted">
-      {visible.length} of {rows.length} {all ? 'rows' : 'development rows'} on this Mac{updatedAt
-        ? ` · updated ${updatedAt}`
-        : ''}
-    </span>
-    <span class="spacer"></span>
-    <Button onclick={() => load(true)}>Refresh</Button>
-    <Button variant="danger" disabled={!sel.size} onclick={() => stop(sel.list)}>
-      Stop selected ({sel.size})
-    </Button>
-  </header>
+  <FeatureHeader
+    level={1}
+    eyebrow="This Mac"
+    title="Processes"
+    lede="What is running for development, folded into one row per app with its CPU and memory."
+  >
+    {#snippet meta()}
+      <span>{visible.length} of {rows.length} {all ? 'rows' : 'development rows'}</span>
+      {#if updatedAt}·<span>updated {updatedAt}</span>{/if}
+    {/snippet}
+    {#snippet actions()}
+      <Button onclick={() => load(true)}>Refresh</Button>
+      <Button variant="danger" disabled={!sel.size} onclick={() => stop(sel.list)}>
+        Stop selected ({sel.size})
+      </Button>
+    {/snippet}
+  </FeatureHeader>
 
   <PageState {error} onretry={() => load(true)} empty={!view} emptyText="No snapshot yet.">
     {#if view}
@@ -241,6 +246,8 @@ onMount(() => {
 
 <style>
   main {
+    --feature-header-space: var(--space-1);
+
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
@@ -248,16 +255,11 @@ onMount(() => {
     padding: var(--space-6) var(--page-pad) var(--space-16);
   }
 
-  header,
   .filters {
     display: flex;
     align-items: center;
-    gap: var(--space-2) var(--space-3);
-    flex-wrap: wrap;
-  }
-
-  .filters {
     gap: var(--space-2);
+    flex-wrap: wrap;
   }
 
   .divider {
@@ -265,10 +267,6 @@ onMount(() => {
     width: var(--hairline);
     margin-inline: var(--space-1);
     background: var(--color-border);
-  }
-
-  .spacer {
-    flex: 1;
   }
 
   .search,
