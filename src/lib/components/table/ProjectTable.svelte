@@ -27,6 +27,7 @@ import type { Snippet } from 'svelte'
 import { goto } from '$app/navigation'
 import { frameworkColor, typeColor } from '$lib/browser/colors'
 import Icon from '$lib/components/icons/Icon.svelte'
+import { localDateTime } from '$lib/format'
 import { type ProjectSummary, projectHref } from '$lib/project-summary'
 import type { GitStatus } from '$lib/scanner'
 import type { Selection } from '$lib/selection.svelte'
@@ -225,7 +226,7 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
 {/snippet}
 
 {#snippet ageCell(p: P)}
-  <time class="num muted" datetime={p.modifiedAt} title={new Date(p.modifiedAt).toLocaleString()}>{age(p.modifiedAt)}</time>
+  <time class="num muted" datetime={p.modifiedAt} title={localDateTime(p.modifiedAt)}>{age(p.modifiedAt)}</time>
 {/snippet}
 
 {#snippet runCell(p: P)}

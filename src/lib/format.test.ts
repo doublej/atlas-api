@@ -1,7 +1,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { errorMessage, tildify } from './format'
+import { errorMessage, localDateTime, tildify } from './format'
 
 describe('errorMessage', () => {
   it('reads an Error and stringifies anything else', () => {
@@ -25,5 +25,13 @@ describe('tildify', () => {
   })
   it.runIf(process.platform === 'darwin')('matches the real $HOME on the server', () => {
     expect(tildify(join(homedir(), 'dev'))).toBe('~/dev')
+  })
+})
+
+describe('localDateTime', () => {
+  it('reads exactly like Date#toLocaleString', () => {
+    for (const v of ['2026-10-14T13:08:25.158Z', '2001-01-02T00:00:00Z', 0]) {
+      expect(localDateTime(v)).toBe(new Date(v).toLocaleString())
+    }
   })
 })
