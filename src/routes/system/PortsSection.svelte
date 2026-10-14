@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Card from '$lib/components/ui/Card.svelte'
@@ -8,12 +9,20 @@ let { audit }: { audit: PageData['audit'] } = $props()
 </script>
 
 <section>
-  <header>
-    <h2 class="t-h3">Ports</h2>
-    <span class="t-small muted">
-      report-only, this machine only — atlas never backfills a port from here
-    </span>
-  </header>
+  <FeatureHeader
+    title="Ports"
+    lede="Ports that two projects or daemons on this Mac both claim. Report only: atlas never assigns a port from here."
+    source="shared/daemons.json + .atlas"
+  >
+    {#snippet meta()}
+      {#if audit}
+        <span>{audit.collisions.length} collision{audit.collisions.length === 1 ? '' : 's'}</span>·
+        <span>{audit.unmanaged.length} unmanaged</span>
+      {:else}
+        <span>no audit</span>
+      {/if}
+    {/snippet}
+  </FeatureHeader>
 
   <PageState error={audit ? null : 'The scan failed, so no audit could be run.'} empty={!audit}>
     {#if audit}
@@ -71,14 +80,6 @@ let { audit }: { audit: PageData['audit'] } = $props()
 </section>
 
 <style>
-  header {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-3);
-    margin-bottom: var(--space-4);
-    flex-wrap: wrap;
-  }
-
   .heading {
     font-weight: 600;
     margin-bottom: var(--space-2);

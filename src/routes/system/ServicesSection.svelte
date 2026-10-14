@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import Notice from '$lib/components/feedback/Notice.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
@@ -12,13 +13,15 @@ const failing = $derived(services.filter((s) => s.error))
 </script>
 
 <section>
-  <header>
-    <h2 class="t-h3">Services</h2>
-    <span class="t-small muted">
-      permanent local web UIs from <code class="mono">shared/services.json</code>, re-synced every
-      60s
-    </span>
-  </header>
+  <FeatureHeader
+    title="Services"
+    lede="Permanent local web UIs that get a dev hostname without being a project."
+    source="shared/services.json"
+  >
+    {#snippet meta()}
+      <span>{services.length} hostnames</span>·<span>re-synced every 60s</span>
+    {/snippet}
+  </FeatureHeader>
 
   <PageState
     empty={services.length === 0}
@@ -50,14 +53,6 @@ const failing = $derived(services.filter((s) => s.error))
 </section>
 
 <style>
-  header {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-3);
-    margin-bottom: var(--space-4);
-    flex-wrap: wrap;
-  }
-
   .list {
     display: flex;
     flex-direction: column;

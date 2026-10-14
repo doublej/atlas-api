@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import Table from '$lib/components/table/Table.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
@@ -23,6 +24,7 @@ const SELF_MANAGED_HINT =
 /** Polled state, once there is any; until then the table shows what the server rendered. */
 let polled = $state<DaemonRow[] | null>(null)
 const source = $derived(polled ?? daemons)
+const failing = $derived(source?.filter((d) => d.state.status === 'error').length ?? 0)
 const columns: Column<DaemonRow>[] = [
   { key: 'name', label: 'Daemon', sort: (d) => d.name, wrap: true, cell: nameCell },
   { key: 'state', width: '11rem', label: 'State', sort: (d) => d.state.status, cell: stateCell },
@@ -128,12 +130,17 @@ $effect(() => {
 {#snippet noDaemons()}No daemons registered.{/snippet}
 
 <section>
-  <header>
-    <h2 class="t-h3">Daemons</h2>
-    <span class="t-small muted">
-      <code class="mono">shared/daemons.json</code> joined with live launchctl state · polled every 10s
-    </span>
-  </header>
+  <FeatureHeader
+    title="Daemons"
+    lede="The launchd jobs atlas knows about, joined with what launchctl says about each right now."
+    source="shared/daemons.json"
+  >
+    {#snippet meta()}
+      {#if source}<span>{source.length} registered</span>·{/if}
+      {#if failing}<span>{failing} failing</span>·{/if}
+      <span>polled every 10s</span>
+    {/snippet}
+  </FeatureHeader>
 
   <PageState
     error={loadError || (source ? '' : 'Could not read /api/daemons.')}
@@ -148,16 +155,11 @@ $effect(() => {
 
 <style>
   section {
+    --feature-header-space: var(--space-1);
+
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
-  }
-
-  header {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-3);
-    flex-wrap: wrap;
   }
 
   .name-line {

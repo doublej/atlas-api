@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import ConfirmDialog from '$lib/components/feedback/ConfirmDialog.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import Table from '$lib/components/table/Table.svelte'
@@ -101,22 +102,28 @@ $effect(() => {
 {/snippet}
 
 <section>
-  <header>
-    <h2 class="t-h3">Hostnames</h2>
-    <span class="t-small muted">
-      registry · projects · services · NAS Caddy{report
-        ? ` — checked ${new Date(report.checkedAt).toLocaleTimeString()}`
-        : ''}
-    </span>
-    <span class="tools">
+  <FeatureHeader
+    title="Hostnames"
+    lede="Compares the hostname registry with your projects, services and the NAS Caddy, and offers a fix where atlas can make one."
+    source=".atlas-hostnames.json"
+  >
+    {#snippet meta()}
+      {#if report}
+        <span>checked {new Date(report.checkedAt).toLocaleTimeString()}</span>·
+        <span>{report.items.length} difference{report.items.length === 1 ? '' : 's'}</span>
+      {:else}
+        <span>not checked yet</span>
+      {/if}
+    {/snippet}
+    {#snippet actions()}
       <Button disabled={fixing !== null} onclick={load}>Check again</Button>
       {#if fixable.length > 1}
         <Button variant="primary" disabled={fixing !== null} onclick={() => (confirming = fixable)}>
           {fixing === '*' ? 'Fixing…' : `Fix all ${fixable.length}`}
         </Button>
       {/if}
-    </span>
-  </header>
+    {/snippet}
+  </FeatureHeader>
 
   <PageState loading={!report && !error} loadingText="Asking the NAS…" {error} onretry={load}>
     {#if report}
@@ -139,19 +146,3 @@ $effect(() => {
   onconfirm={() => fix(confirming?.map((i) => i.id) ?? [])}
   onclose={() => (confirming = null)}
 />
-
-<style>
-  header {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-3);
-    margin-bottom: var(--space-4);
-    flex-wrap: wrap;
-  }
-
-  .tools {
-    display: inline-flex;
-    gap: var(--space-2);
-    margin-left: auto;
-  }
-</style>

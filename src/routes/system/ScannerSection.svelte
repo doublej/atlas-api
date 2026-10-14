@@ -1,6 +1,7 @@
 <script lang="ts">
 import { untrack } from 'svelte'
 import type { AtlasConfig } from '$lib/atlasFile'
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import { errorMessage } from '$lib/format'
@@ -20,6 +21,8 @@ let ignoreRows = $state(untrack(() => config.ignore.map((pattern) => ({ pattern 
 let saving = $state(false)
 let saved = $state(false)
 let rescanning = $state(false)
+
+const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`
 
 async function save() {
   const bad = depthRows.find((r) => r.k.trim() && !Number.isInteger(Number(r.v)))
@@ -61,12 +64,18 @@ async function rescan() {
 </script>
 
 <section>
-  <header>
-    <h2 class="t-h3">Scanner</h2>
-    <span class="t-small muted">
-      <code class="mono">.atlas-config.json</code> — the walk limits the detectors obey
-    </span>
-  </header>
+  <FeatureHeader
+    title="Scanner"
+    lede="How far the walk into ~/dev goes, and which folders it forces in, demotes or skips."
+    source=".atlas-config.json"
+  >
+    {#snippet meta()}
+      <span>max depth {config.maxDepth}</span>·
+      <span>{plural(Object.keys(config.depth).length, 'depth override')}</span>·
+      <span>{plural(Object.keys(config.force).length, 'force override')}</span>·
+      <span>{plural(config.ignore.length, 'ignore pattern')}</span>
+    {/snippet}
+  </FeatureHeader>
 
   <Card>
     <label class="depth t-small">
@@ -147,14 +156,6 @@ async function rescan() {
 </section>
 
 <style>
-  header {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-3);
-    margin-bottom: var(--space-4);
-    flex-wrap: wrap;
-  }
-
   .depth {
     display: flex;
     align-items: center;
