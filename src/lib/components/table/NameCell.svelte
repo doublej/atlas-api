@@ -1,3 +1,10 @@
+<script lang="ts" module>
+/** `python` for `python/fb-scrape`: where a project sits in the catalog. Windows paths too. */
+export function folderOf(relativePath: string): string {
+  return relativePath.split(/[\\/]/).slice(0, -1).join('/')
+}
+</script>
+
 <script lang="ts">
 import { stateOf } from '$lib/browser/filters'
 import HostnameChip from '$lib/components/dialogs/hostname/HostnameChip.svelte'
@@ -6,11 +13,15 @@ import { type ProjectSummary, projectHref } from '$lib/project-summary'
 /** The Name column: state dot, the name as a link to the project page, hostname chip, description. */
 const { project: p }: { project: ProjectSummary } = $props()
 const state = $derived(stateOf(p))
+/** Shown before the name while the table is too narrow for its Folder column. */
+const folder = $derived(folderOf(p.relativePath))
 </script>
 
 <span class="namecell">
   <span class="state" data-state={state ?? 'none'} title={state ? `state: ${state}` : 'no state tag'}></span>
-  <a class="name" href={projectHref(p)}>{p.name}</a>
+  <a class="name" href={projectHref(p)}>
+    {#if folder}<span class="folder">{folder}/</span>{/if}<span class="label">{p.name}</span>
+  </a>
   <HostnameChip path={p.path} />
   {#if p.description}<span class="desc">{p.description}</span>{/if}
 </span>
@@ -64,6 +75,7 @@ const state = $derived(stateOf(p))
 
   /* Capped, never shrunk: a flex shrink of a fraction of a pixel would already cut it with "…". */
   .name {
+    display: flex;
     flex: none;
     max-width: calc(100% - 7px - var(--space-2));
     font-weight: 500;
@@ -74,6 +86,39 @@ const state = $derived(stateOf(p))
   .name:hover {
     color: var(--color-accent);
     text-decoration: underline;
+  }
+
+  /* A deep folder gives way before the name does. */
+  .folder,
+  .label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .folder {
+    flex: 0 100 auto;
+    min-width: 3ch;
+    font-weight: 400;
+    color: var(--color-muted-2);
+  }
+
+  .label {
+    flex: 0 1 auto;
+  }
+
+  /* Too narrow to say both (a phone), or the Folder column's tier in ProjectTable, where the
+     folder would say it twice. */
+  @container table (max-width: 640px) {
+    .folder {
+      display: none;
+    }
+  }
+
+  @container table (min-width: 1281px) {
+    .folder {
+      display: none;
+    }
   }
 
   .namecell:has(> :global(.chip)) > .name {

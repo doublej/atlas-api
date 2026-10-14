@@ -27,8 +27,12 @@ export interface Column<T> {
    * leave and clips past it.
    */
   width?: string
-  /** Hides the column below this viewport width. */
-  hideBelow?: 768 | 1100
+  /**
+   * Hides the column while the table itself is narrower than this. A container query, not a
+   * media query: a side panel or a narrow window counts the same, so the columns that stay keep
+   * room to be read.
+   */
+  hideBelow?: 768 | 960 | 1100 | 1280 | 1440 | 1600
   /** Keeps the label for screen readers only — icon columns. */
   hideLabel?: boolean
 }

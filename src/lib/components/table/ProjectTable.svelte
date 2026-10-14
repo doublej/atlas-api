@@ -33,7 +33,7 @@ import type { Selection } from '$lib/selection.svelte'
 import type { Column } from '$lib/table'
 import { getDynamicActions } from '$shared/actions'
 import { getHostById } from '$shared/hosts'
-import NameCell from './NameCell.svelte'
+import NameCell, { folderOf } from './NameCell.svelte'
 import Table from './Table.svelte'
 import TagsCell from './TagsCell.svelte'
 
@@ -77,6 +77,9 @@ const stack = (p: P) => (p.framework && p.framework !== 'unknown' ? p.framework 
 const swatch = (p: P) =>
   p.framework && p.framework !== 'unknown' ? frameworkColor(p.framework) : typeColor(p.type ?? '')
 
+// Name is the one column without a width: it takes what is left. Each other column hides at the
+// table width where showing it would leave Name under ~300px — stack, then links, tags, path,
+// branch and the CLAUDE.md size, in that order. Below the Folder tier the name carries its folder.
 const columns = $derived<Column<P>[]>([
   {
     key: 'git',
@@ -87,8 +90,15 @@ const columns = $derived<Column<P>[]>([
     cell: gitCell,
   },
   { key: 'name', label: 'Name', sort: (p) => p.name.toLowerCase(), cell: nameCell },
-  { key: 'path', label: 'Path', sort: (p) => p.relativePath, hideBelow: 768, cell: pathCell },
-  { key: 'tags', width: '13rem', label: 'Tags', hideBelow: 768, cell: tagsCell },
+  {
+    key: 'path',
+    width: '15rem',
+    label: 'Folder',
+    sort: (p) => p.relativePath,
+    hideBelow: 1280,
+    cell: pathCell,
+  },
+  { key: 'tags', width: '13rem', label: 'Tags', hideBelow: 1100, cell: tagsCell },
   {
     key: 'stack',
     width: '10rem',
@@ -102,7 +112,7 @@ const columns = $derived<Column<P>[]>([
     width: '10rem',
     label: 'Branch',
     sort: (p) => gitStatus[p.path]?.branch ?? '',
-    hideBelow: 1100,
+    hideBelow: 1440,
     cell: branchCell,
   },
   ...(showHost
@@ -122,7 +132,7 @@ const columns = $derived<Column<P>[]>([
     label: 'Links',
     sort: (p) =>
       Number(Boolean(runningPorts[p.path] || hostnames[p.slug])) + (p.domains?.length ?? 0),
-    hideBelow: 768,
+    hideBelow: 960,
     cell: linksCell,
   },
   {
@@ -131,7 +141,7 @@ const columns = $derived<Column<P>[]>([
     label: 'CLAUDE.md',
     sort: (p) => p.agentFiles?.claude?.tokens ?? 0,
     align: 'right',
-    hideBelow: 1100,
+    hideBelow: 1600,
     cell: claudeCell,
   },
   {
@@ -175,7 +185,7 @@ const tokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` :
 
 {#snippet tagsCell(p: P)}<TagsCell tags={p.tags ?? []} active={activeTags} ontag={onTag} />{/snippet}
 
-{#snippet pathCell(p: P)}<span class="path mono" title={p.path}>{p.relativePath}</span>{/snippet}
+{#snippet pathCell(p: P)}<span class="path mono" title={p.path}>{folderOf(p.relativePath)}</span>{/snippet}
 
 {#snippet stackCell(p: P)}
   {#if stack(p)}

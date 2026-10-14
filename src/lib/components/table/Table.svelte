@@ -222,6 +222,8 @@ function onRowKey(e: KeyboardEvent, i: number, row: T, k: K) {
     border-radius: inherit;
     /* A tall table's scrollbar must not narrow its columns against its siblings'. */
     scrollbar-gutter: stable;
+    /* `hideBelow` measures the table, not the window (a cell may query it too). */
+    container: table / inline-size;
   }
 
   /* Fixed layout: the <colgroup> widths decide, never the content, so every table built from the
@@ -337,17 +339,43 @@ function onRowKey(e: KeyboardEvent, i: number, row: T, k: K) {
     white-space: nowrap;
   }
 
-  @media (max-width: 1100px) {
+  @container table (max-width: 1600px) {
+    [data-hide='1600'] {
+      display: none;
+    }
+  }
+
+  @container table (max-width: 1440px) {
+    [data-hide='1440'] {
+      display: none;
+    }
+  }
+
+  @container table (max-width: 1280px) {
+    [data-hide='1280'] {
+      display: none;
+    }
+  }
+
+  @container table (max-width: 1100px) {
     [data-hide='1100'] {
       display: none;
     }
   }
 
-  @media (max-width: 768px) {
+  @container table (max-width: 960px) {
+    [data-hide='960'] {
+      display: none;
+    }
+  }
+
+  @container table (max-width: 768px) {
     [data-hide='768'] {
       display: none;
     }
+  }
 
+  @media (max-width: 768px) {
     /* A phone's width goes to the content, not to gutters. */
     th,
     td {
