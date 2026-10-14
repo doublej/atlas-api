@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import Notice from '$lib/components/feedback/Notice.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import Table from '$lib/components/table/Table.svelte'
@@ -83,10 +84,11 @@ const columns: Column<Operation>[] = [
     </Card>
   {/if}
 
-  <div class="bar">
-    <h2 class="t-h3">Operation log</h2>
-    <span class="t-caption muted">newest run first · <span class="mono">operations.jsonl</span></span>
-  </div>
+  <FeatureHeader
+    title="Operation log"
+    lede="Every disk operation, newest run first. Add a note, or record a folder you chose to keep."
+    source="operations.jsonl"
+  />
   <div class="bar t-small">
     <input class="grow" placeholder="Add a note…" bind:value={note} />
     <Button disabled={!note.trim()} onclick={async () => {
@@ -118,6 +120,8 @@ const columns: Column<Operation>[] = [
 
 <style>
   section {
+    --feature-header-space: var(--space-2);
+
     display: flex;
     flex-direction: column;
     gap: var(--space-3);

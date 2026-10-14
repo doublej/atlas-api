@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import Table from '$lib/components/table/Table.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
@@ -145,13 +146,12 @@ const lastColumns: Column<Operation>[] = [
 {#snippet freedCell(o: Operation)}<span class="num">{human(o.end?.freed ?? 0)}</span>{/snippet}
 
 <section>
-  <div class="bar">
-    <h2 class="t-h3">Trim</h2>
-    <span class="t-caption muted">each installed tool trims its own cache</span>
-    <span class="spacer"></span>
-    <label class="t-small"><input type="checkbox" bind:checked={rustSweep} disabled={settings?.rustSweep} /> Rust sweep{settings?.rustSweep ? ' (always on)' : ''}</label>
-    <Button variant="primary" disabled={!plan.length} onclick={() => runJob('trim', sweepArg)}>Run trim</Button>
-  </div>
+  <FeatureHeader title="Trim" lede="Clears tool caches, each with the tool's own clean-up command.">
+    {#snippet actions()}
+      <label class="t-small"><input type="checkbox" bind:checked={rustSweep} disabled={settings?.rustSweep} /> Rust sweep{settings?.rustSweep ? ' (always on)' : ''}</label>
+      <Button variant="primary" disabled={!plan.length} onclick={() => runJob('trim', sweepArg)}>Run trim</Button>
+    {/snippet}
+  </FeatureHeader>
   <PageState loading={!loaded && !error} loadingText="Planning…" {error} empty={!loaded}>
     <Card flush>
       <Table label="Trim plan" {rows} key={(r) => r.id} columns={planColumns} dim={(r) => Boolean(r.skip) || r.refused} />

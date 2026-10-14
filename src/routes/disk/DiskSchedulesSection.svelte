@@ -1,6 +1,7 @@
 <script lang="ts">
 import { untrack } from 'svelte'
 import { invalidateAll } from '$app/navigation'
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
@@ -48,7 +49,14 @@ async function change(verb: 'enable' | 'disable' | 'set', s: ScheduleStatus) {
 </script>
 
 <section>
-  <div class="bar"><h2 class="t-h3">Schedules</h2><span class="t-caption muted">launchd jobs, run unattended under the approval policy</span></div>
+  <FeatureHeader
+    title="Schedules"
+    lede="launchd jobs that run disk work on their own, within the approval policy."
+  >
+    {#snippet meta()}
+      <span>{schedules.filter((s) => s.enabled).length} of {schedules.length} on</span>
+    {/snippet}
+  </FeatureHeader>
   <PageState empty={!schedules.length} emptyText="No schedules could be read.">
     <div class="cards">
       {#each schedules as s (s.job)}

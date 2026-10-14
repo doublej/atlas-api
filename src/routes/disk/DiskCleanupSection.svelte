@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import Table from '$lib/components/table/Table.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
@@ -88,15 +89,22 @@ function toggleRisk(r: Risk) {
 {#snippet restoreCell(f: FolderRow)}<span class="muted mono">{f.restore}</span>{/snippet}
 
 <section>
-  <div class="bar">
-    <h2 class="t-h3">Cleanup</h2>
-    <span class="t-caption muted">
-      {scan ? `${human(scan.totalBytes)} in ${scan.folders.length} folders · scan ${ago(scan.ranAt)}` : 'no scan yet'}
-    </span>
-    <span class="spacer"></span>
-    <Button onclick={() => runJob('scan', [])}>Scan</Button>
-    <Button variant="primary" disabled={!sel.size} onclick={() => (reviewing = true)}>Review ({sel.size})</Button>
-  </div>
+  <FeatureHeader
+    title="Cleanup"
+    lede="Folders in your home folder that can be rebuilt or reinstalled, sorted by how safe they are to delete."
+  >
+    {#snippet meta()}
+      {#if scan}
+        <span>{human(scan.totalBytes)} in {scan.folders.length} folders</span>·<span>scan {ago(scan.ranAt)}</span>
+      {:else}
+        <span>no scan yet</span>
+      {/if}
+    {/snippet}
+    {#snippet actions()}
+      <Button onclick={() => runJob('scan', [])}>Scan</Button>
+      <Button variant="primary" disabled={!sel.size} onclick={() => (reviewing = true)}>Review ({sel.size})</Button>
+    {/snippet}
+  </FeatureHeader>
   <div class="bar">
     {#each RISKS as r (r.id)}
       <Chip pressed={shown.has(r.id)} onclick={() => toggleRisk(r.id)}>{r.id}</Chip>
@@ -135,6 +143,8 @@ function toggleRisk(r: Risk) {
 
 <style>
   section {
+    --feature-header-space: var(--space-2);
+
     display: flex;
     flex-direction: column;
     gap: var(--space-3);

@@ -1,6 +1,7 @@
 <script lang="ts">
 import { untrack } from 'svelte'
 import { invalidateAll } from '$app/navigation'
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import Button from '$lib/components/ui/Button.svelte'
 import Card from '$lib/components/ui/Card.svelte'
 import type { DiskSettings } from '$lib/disk-types'
@@ -82,10 +83,13 @@ async function save() {
 </script>
 
 <section>
-  <div class="bar">
-    <h2 class="t-h3">Settings</h2>
-    <span class="t-caption muted"><span class="mono">atlas disk config</span> — dev folder <span class="mono">{settings.devRoot}</span></span>
-  </div>
+  <FeatureHeader
+    title="Settings"
+    lede="What counts as idle, how many versions are kept, and where archives go."
+    source="atlas disk config"
+  >
+    {#snippet meta()}<span>dev folder {settings.devRoot}</span>{/snippet}
+  </FeatureHeader>
   <Card>
     <div class="grid t-small">
       {#each NUMBERS as n (n.key)}

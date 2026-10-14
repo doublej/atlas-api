@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import PageState from '$lib/components/feedback/PageState.svelte'
 import Table from '$lib/components/table/Table.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
@@ -86,17 +87,24 @@ $effect(() => sel.prune((analysis?.projects ?? []).map((p) => p.id)))
 {#snippet noRows()}No projects {filter === 'all' ? '' : `in state ${filter}`} — Rescan to analyse.{/snippet}
 
 <section>
-  <div class="bar">
-    <h2 class="t-h3">Projects</h2>
-    <span class="t-caption muted">
-      {analysis ? `${analysis.projects.length} projects · analysis ${ago(analysis.ranAt)}` : 'no analysis yet'}
-    </span>
-    <span class="spacer"></span>
-    <Button onclick={() => runJob('analyze', [])}>Rescan</Button>
-    <Button variant="primary" disabled={!sel.size} onclick={() => (planning = true)}>
-      Archive selected ({sel.size})
-    </Button>
-  </div>
+  <FeatureHeader
+    title="Projects"
+    lede="Idle projects that can be packed into one verified archive each, largest first."
+  >
+    {#snippet meta()}
+      {#if analysis}
+        <span>{analysis.projects.length} projects</span>·<span>analysis {ago(analysis.ranAt)}</span>
+      {:else}
+        <span>no analysis yet</span>
+      {/if}
+    {/snippet}
+    {#snippet actions()}
+      <Button onclick={() => runJob('analyze', [])}>Rescan</Button>
+      <Button variant="primary" disabled={!sel.size} onclick={() => (planning = true)}>
+        Archive selected ({sel.size})
+      </Button>
+    {/snippet}
+  </FeatureHeader>
   <PageState empty={!analysis} emptyText="No analysis yet — Rescan measures every project.">
     <div class="bar">
       <Chip pressed={filter === 'all'} onclick={() => (filter = 'all')}>all</Chip>

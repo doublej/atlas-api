@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import ConfirmDialog from '$lib/components/feedback/ConfirmDialog.svelte'
 import Table from '$lib/components/table/Table.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
@@ -114,10 +115,15 @@ function act(verb: string, ids: string[]) {
 {#snippet noArchives()}No archives yet.{/snippet}
 
 <section>
-  <div class="bar">
-    <h2 class="t-h3">Archives</h2>
-    <span class="t-caption muted">{archives.length} versions in <span class="mono">{settings?.archiveDir}</span> · {human(localBytes)} on this Mac</span>
-  </div>
+  <FeatureHeader
+    title="Archives"
+    lede="Every archived version. Restore one, check it still matches, or prune old versions."
+    source={settings?.archiveDir}
+  >
+    {#snippet meta()}
+      <span>{archives.length} versions</span>·<span>{human(localBytes)} on this Mac</span>
+    {/snippet}
+  </FeatureHeader>
   <div class="bar">
     <Button variant="primary" disabled={!sel.size} onclick={() => (restoring = true)}>Restore ({sel.size})</Button>
     <Button disabled={!sel.size} onclick={() => act('check', sel.list)}>Check</Button>
