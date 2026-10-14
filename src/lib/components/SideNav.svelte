@@ -1,4 +1,23 @@
 <script lang="ts" module>
+import { getContext, setContext } from 'svelte'
+
+const PLATE = Symbol('side-nav-plate')
+
+/** What a FeatureHeader inside a SideNav shows above its title: the tab's number and the page. */
+export interface Plate {
+  readonly page: string
+  readonly index: string
+}
+
+export function getPlate(): Plate | undefined {
+  return getContext<Plate | undefined>(PLATE)
+}
+
+/** `1` → `01`: the number a tab carries in the menu and on its section's header. */
+export function plateIndex(position: number): string {
+  return String(position + 1).padStart(2, '0')
+}
+
 export interface SideTab {
   /** The `?tab=` value. */
   id: string
@@ -33,6 +52,15 @@ const { title, label, tabs, active, summary, class: cls = '', children }: Props 
 
 let nav = $state<HTMLElement>()
 
+setContext<Plate>(PLATE, {
+  get page() {
+    return title
+  },
+  get index() {
+    return plateIndex(tabs.findIndex((t) => t.id === active))
+  },
+})
+
 // Below 768px the menu scrolls sideways: keep the open tab in view (a no-op as a column). On
 // every resize too: a page scrollbar that appears once the content loads narrows the menu.
 $effect(() => {
@@ -51,15 +79,17 @@ $effect(() => {
 </script>
 
 <!-- A page of tabs down the side (?tab=), one shown at a time. The menu doubles as a status
-     board: each line says what it holds and how much of it needs you. Below 768px it turns into
+     board: each line says what it holds and how much of it needs you. Tabs are numbered like an
+     atlas's plates, and the section's FeatureHeader repeats the number. Below 768px it turns into
      a horizontal scroller above the content. -->
 <main class={cls}>
   <aside>
-    <h1 class="t-h2">{title}</h1>
+    <h1>{title}</h1>
     {#if summary}<div class="summary t-caption muted">{@render summary()}</div>{/if}
     <nav aria-label={label} bind:this={nav}>
-      {#each tabs as tab (tab.id)}
+      {#each tabs as tab, i (tab.id)}
         <a href="?tab={tab.id}" aria-current={active === tab.id ? 'page' : undefined}>
+          <span class="idx num" aria-hidden="true">{plateIndex(i)}</span>
           <span class="label">
             {tab.label}
             {#if tab.alert}<span class="alert num">{tab.alert}</span>{/if}
@@ -92,7 +122,12 @@ $effect(() => {
   }
 
   h1 {
-    margin-bottom: var(--space-4);
+    margin: 0 0 var(--space-4);
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: -0.01em;
   }
 
   h1:has(+ .summary) {
@@ -103,32 +138,69 @@ $effect(() => {
     margin-bottom: var(--space-4);
   }
 
+  /* One hairline rail down the menu; the open tab lights its stretch of it in the accent. */
   nav {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
 
+  nav::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--hairline);
+    background: var(--color-border-strong);
+  }
+
   nav a {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-sm);
-    border-left: 2px solid transparent;
+    position: relative;
+    display: grid;
+    grid-template-columns: 2ch minmax(0, 1fr);
+    column-gap: var(--space-3);
+    row-gap: 1px;
+    padding: 7px var(--space-3) 7px 14px;
     color: var(--color-muted);
     text-decoration: none;
+    transition: color var(--duration-fast) var(--ease-out);
+  }
+
+  nav a::before {
+    content: '';
+    position: absolute;
+    inset: 4px auto 4px 0;
+    width: 2px;
+    border-radius: 1px;
+    background: transparent;
     transition: background var(--duration-fast) var(--ease-out);
   }
 
   nav a:hover {
-    background: var(--color-card-2);
+    color: var(--color-fg);
+  }
+
+  nav a:hover::before {
+    background: var(--color-border-strong);
   }
 
   nav a[aria-current='page'] {
     color: var(--color-fg);
-    background: var(--color-card);
-    border-left-color: var(--color-accent);
+  }
+
+  nav a[aria-current='page']::before {
+    background: var(--color-accent);
+  }
+
+  .idx {
+    grid-row: span 2;
+    padding-top: 2px;
+    font-size: 11px;
+    color: var(--color-muted-2);
+  }
+
+  [aria-current='page'] .idx {
+    color: var(--color-accent);
   }
 
   .label {
@@ -183,16 +255,30 @@ $effect(() => {
       overflow-x: auto;
     }
 
-    nav a {
-      flex: none;
-      white-space: nowrap;
-      border-left: none;
-      border-bottom: 2px solid transparent;
-      border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    nav::before {
+      inset: auto 0 0;
+      width: auto;
+      height: var(--hairline);
     }
 
-    nav a[aria-current='page'] {
-      border-bottom-color: var(--color-accent);
+    nav a {
+      flex: none;
+      grid-template-columns: auto auto;
+      column-gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      white-space: nowrap;
+    }
+
+    nav a::before {
+      inset: auto var(--space-2) 0;
+      width: auto;
+      height: 2px;
+    }
+
+    .idx {
+      grid-row: auto;
+      padding-top: 0;
+      align-self: center;
     }
 
     .hint {

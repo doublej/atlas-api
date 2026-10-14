@@ -1,4 +1,5 @@
 <script lang="ts">
+import FeatureHeader from '$lib/components/FeatureHeader.svelte'
 import Notice from '$lib/components/feedback/Notice.svelte'
 import Badge from '$lib/components/ui/Badge.svelte'
 import Button from '$lib/components/ui/Button.svelte'
@@ -40,6 +41,7 @@ let saveError = $state('')
 let restartRequired = $state(false)
 
 const stateFor = (id: string): HostState | undefined => liveStates.find((s) => s.id === id)
+const projectTotal = $derived(liveStates.reduce((n, s) => n + s.projectCount, 0))
 
 function age(iso: string | undefined): string {
   if (!iso) return 'never'
@@ -112,11 +114,16 @@ async function saveRegistry() {
 </script>
 
 <section>
-  <header>
-    <h2 class="t-h3">Hosts</h2>
-    <span class="t-small muted">the machines atlas catalogs — only the primary is ever written to</span>
-    <Button onclick={openEditor}>Edit registry</Button>
-  </header>
+  <FeatureHeader
+    title="Hosts"
+    lede="The machines atlas catalogs. Only this Mac is ever written to; the others are read over SSH."
+    source="shared/hosts.json"
+  >
+    {#snippet meta()}
+      <span>{registry.length} machines</span>·<span>{projectTotal} projects</span>
+    {/snippet}
+    {#snippet actions()}<Button onclick={openEditor}>Edit registry</Button>{/snippet}
+  </FeatureHeader>
 
   {#if restartRequired}
     <div class="restart">
@@ -219,18 +226,6 @@ async function saveRegistry() {
 </Modal>
 
 <style>
-  header {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-3);
-    margin-bottom: var(--space-4);
-    flex-wrap: wrap;
-  }
-  header span {
-    flex: 1;
-    min-width: 200px;
-  }
-
   .restart {
     margin-bottom: var(--space-4);
   }
