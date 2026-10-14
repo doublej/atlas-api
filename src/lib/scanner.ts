@@ -18,6 +18,7 @@ import {
   readConfig,
 } from './atlasFile'
 import { estimateTokens } from './claude-tree'
+import { type DescriptionMap, readDescriptions } from './descriptions'
 import { detectDomains, mergeDomains } from './domains'
 import { readTags, type TagMap } from './tags'
 import { attachUmami, type UmamiInfo } from './umami'
@@ -1191,6 +1192,11 @@ function applyTags(local: Project[], map: TagMap): void {
   }
 }
 
+/** A central description beats the detected one. A cleared entry shows the detected text again at the next scan. */
+function applyDescriptions(local: Project[], map: DescriptionMap): void {
+  for (const p of local) if (map[p.relativePath]) p.description = map[p.relativePath]
+}
+
 /**
  * Fold every remote host fragment into a freshly scanned primary atlas.
  *
@@ -1204,6 +1210,7 @@ export async function finalizeAtlas(baseDir: string, atlas: ProjectAtlas): Promi
 
   const local = atlas.projects.filter((p) => p.isLocal)
   applyTags(local, await readTags(baseDir))
+  applyDescriptions(local, await readDescriptions(baseDir))
   const fragments = await readHostFragments(baseDir)
   const remote = fragments.flatMap((f) =>
     f.projects.map((p) => {
@@ -1329,52 +1336,6 @@ export async function getReadme(projectPath: string): Promise<string | null> {
   }
 }
 
-export async function updateDescription(projectPath: string, description: string): Promise<void> {
-  // Try package.json
-  const pkgPath = join(projectPath, 'package.json')
-  try {
-    const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
-    pkg.description = description
-    await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
-    return
-  } catch {
-    /* no package.json */
-  }
-
-  // Try pyproject.toml
-  const pyPath = join(projectPath, 'pyproject.toml')
-  try {
-    let content = await readFile(pyPath, 'utf-8')
-    if (content.includes('description')) {
-      content = content.replace(/description\s*=\s*"[^"]*"/, `description = "${description}"`)
-    } else {
-      content = content.replace(/\[project\]/, `[project]\ndescription = "${description}"`)
-    }
-    await writeFile(pyPath, content)
-    return
-  } catch {
-    /* no pyproject.toml */
-  }
-
-  // Try Cargo.toml
-  const cargoPath = join(projectPath, 'Cargo.toml')
-  try {
-    let content = await readFile(cargoPath, 'utf-8')
-    if (content.includes('description')) {
-      content = content.replace(/description\s*=\s*"[^"]*"/, `description = "${description}"`)
-    } else {
-      content = content.replace(/\[package\]/, `[package]\ndescription = "${description}"`)
-    }
-    await writeFile(cargoPath, content)
-    return
-  } catch {
-    /* no Cargo.toml */
-  }
-
-  // Fallback: create/update .atlas (only if description is non-empty)
-  if (description) await patchAtlas(projectPath, { description })
-}
-
 export async function setArchived(projectPath: string, archived: boolean): Promise<void> {
   await patchAtlas(projectPath, { archived: archived || null })
 }
@@ -1418,7 +1379,7 @@ export async function updateCachedPort(
   }
 }
 
-/** After a tag write: re-merge the cache so every consumer (atlas-picker reads the file) sees it now. */
+/** After a tag or description write: re-merge the cache so every consumer (atlas-picker reads the file) sees it now. */
 export async function updateCachedTags(baseDir: string): Promise<void> {
   const cachePath = join(baseDir, CACHE_FILE)
   try {

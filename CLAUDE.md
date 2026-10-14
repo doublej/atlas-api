@@ -199,7 +199,8 @@ Scripts, just recipes, domains and umami links come from `getDynamicActions`.
 - `POST /api/readme` - Lazy README loading
 - `POST /api/refresh` - Force rescan
 - `POST /api/iterm`, `/api/finder` - macOS integrations
-- `PUT /api/description` - Update project description in manifest
+- `PUT /api/description` - Set a project's description in `~/dev/.atlas-descriptions.json` (keyed by
+  `relativePath`, never the repo; empty clears). An entry beats `.atlas`, the manifest and the README line
 - `POST /api/rename`, `/api/move` - File operations; every dev hostname at or under the folder
   follows it (only the row's path when a `.atlas` slug keeps it, else `moveRoute`), and a clash is
   a 409 before the move. The source must sit strictly inside the catalog (`resolveInsideCatalog`)
