@@ -16,6 +16,7 @@ block or table selection code. Reference migrations: `src/routes/system/` and `s
 | Data table | `Table` + `Column` | `src/lib/components/table/Table.svelte`, `src/lib/table.ts` |
 | Row selection | `Selection` | `src/lib/selection.svelte.ts` |
 | Tabs down the side | `SideNav` | `src/lib/components/SideNav.svelte` |
+| A page's or a section's title | `FeatureHeader` | `src/lib/components/FeatureHeader.svelte` |
 
 Everything is styled from `src/lib/styles/tokens.css`. Svelte 5 runes only.
 
@@ -218,7 +219,7 @@ row-click selection code.
 | `align?` | `'right'` for numbers and sizes |
 | `wrap?` | lets the cell wrap anywhere instead of one line |
 | `width?` | the column's fixed width, any CSS length but a percentage (a `<col>` ignores one; use `vw` bounds in a `clamp()` to narrow it on a phone). Columns without one split what is left, and every cell clips at its edge. The table is `table-layout: fixed`, so tables built from the same columns share one grid |
-| `hideBelow?` | `768 \| 1100` — hide the column below that viewport width |
+| `hideBelow?` | `768 \| 960 \| 1100 \| 1280 \| 1440 \| 1600` — hide the column while the *table* is narrower than that (a container query on the frame, named `table`, so a side panel counts; a cell may query it too) |
 | `hideLabel?` | header label for screen readers only (icon columns) |
 
 Mouse and keyboard:
@@ -280,7 +281,9 @@ Known fits and gaps for the pending migrations:
 
 The `?tab=` side menu page shell, which `/system` and `/disk` each used to copy. It renders the
 whole page: `<main>` grid, sticky aside with heading, menu, and the content column (sections
-spaced by `--section-gap`). Below 768px the menu becomes a horizontal scroller above the content
+spaced by `--section-gap`). The menu is a numbered index (`01`, `02`… — `plateIndex(i)`) on a
+hairline rail; the open tab lights its stretch in the accent, and a `FeatureHeader` inside the
+tab repeats its number. Below 768px the menu becomes a horizontal scroller above the content
 and hints hide.
 
 | Prop | Type | |
@@ -303,4 +306,31 @@ const active = $derived(tabs.find((t) => t.id === page.url.searchParams.get('tab
 <SideNav title="System" label="System sections" {tabs} {active}>
   {#if active === 'hosts'}<HostsSection … />{/if}
 </SideNav>
+```
+
+## FeatureHeader — `components/FeatureHeader.svelte`
+
+Every page and every SideNav section opens on one: a mono eyebrow, the title in the display serif,
+one sentence of what the feature does, then a legend line — live figures and the data's source,
+led by a small scale bar. Replaces `<h1 class="t-h2">` / `<h2 class="t-h3">` plus a muted span
+that mixed all three.
+
+| Prop | Type | |
+|---|---|---|
+| `title` | `string` | |
+| `level?` | `1 \| 2` | `1` a page of its own (`h1`, larger), `2` a section (default) |
+| `eyebrow?` | `string` | inside a SideNav it defaults to the tab's number and the page (`03 System`); pass it elsewhere (`This Mac`, `Template · go`) |
+| `lede?` | `string` | one plain sentence: what it does for you. Not a file path, not a count |
+| `meta?` | snippet | live figures — `<span>`s with `·` between them |
+| `source?` | `string` | where the data comes from (`shared/daemons.json`, `atlas disk config`), mono |
+| `actions?` | snippet | controls on the title line; below 768px they drop under the lede |
+
+It keeps 20px below itself. A parent that spaces its children with a flex `gap` sets
+`--feature-header-space` to what the gap leaves of those 20px (gap 16px → `var(--space-1)`).
+
+```svelte
+<FeatureHeader title="Daemons" lede="The launchd jobs atlas knows about…" source="shared/daemons.json">
+  {#snippet meta()}<span>{n} registered</span>·<span>polled every 10s</span>{/snippet}
+  {#snippet actions()}<Button onclick={refresh}>Refresh</Button>{/snippet}
+</FeatureHeader>
 ```
