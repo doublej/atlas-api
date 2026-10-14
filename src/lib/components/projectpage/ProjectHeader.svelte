@@ -63,7 +63,7 @@ async function copyPath(): Promise<void> {
 </script>
 
 <header class="band">
-  <nav class="crumbs t-caption" aria-label="Project navigation">
+  <nav class="crumbs" aria-label="Project navigation">
     <a href="/">Projects</a>
     {#if parent}<span class="muted-2">/ {parent}</span>{/if}
     <span class="step">
@@ -139,16 +139,30 @@ async function copyPath(): Promise<void> {
     padding: var(--space-4) 0 var(--space-4);
   }
 
+  /* The plate's eyebrow: where the project sits, and the way to its neighbours. */
   .crumbs {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-1) var(--space-2);
     min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.4;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
   }
 
   .crumbs a {
     color: var(--color-muted);
     text-decoration: none;
+  }
+
+  /* Uppercase and tracked, a crumb breaks badly: a narrow screen wraps whole crumbs instead. */
+  .crumbs a,
+  .crumbs span {
+    white-space: nowrap;
   }
 
   .crumbs a:hover {
@@ -157,7 +171,8 @@ async function copyPath(): Promise<void> {
 
   .step {
     display: inline-flex;
-    gap: var(--space-3);
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
     margin-left: auto;
   }
 

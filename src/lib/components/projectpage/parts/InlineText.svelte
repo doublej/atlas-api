@@ -106,8 +106,10 @@ async function save(): Promise<void> {
   }
 
   .text[data-variant='title'] {
-    font-size: 22px;
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: 40px;
+    font-weight: 400;
+    line-height: 1.05;
     letter-spacing: -0.01em;
     color: var(--color-fg);
   }
@@ -155,9 +157,14 @@ async function save(): Promise<void> {
     border-radius: var(--radius-sm);
   }
 
+  /* Same face, size and left edge as the title it replaces, so the text does not jump. */
   .edit[data-variant='title'] input {
-    height: 36px;
-    font-size: 20px;
-    font-weight: 600;
+    height: auto;
+    margin-left: calc(-1 * (var(--space-2) + var(--hairline)));
+    font-family: var(--font-display);
+    font-size: 40px;
+    font-weight: 400;
+    line-height: 1.05;
+    letter-spacing: -0.01em;
   }
 </style>

@@ -1,13 +1,15 @@
 <script lang="ts">
 import type { Snippet } from 'svelte'
+import { plateIndex } from '$lib/components/SideNav.svelte'
 import Card from '$lib/components/ui/Card.svelte'
+import { SECTIONS, type SectionId } from './SectionIndex.svelte'
 
 /**
- * One card of the project page, anchored by `id` for the side index. A `<dl class="facts">`
+ * One card of the project page, anchored by `id` for the side index, whose number it repeats. A `<dl class="facts">`
  * inside renders as a two-column label/value grid; `<h3>` as a sub-heading.
  */
 interface Props {
-  id: string
+  id: SectionId
   title: string
   /** Trailing controls on the heading line. */
   actions?: Snippet
@@ -15,12 +17,14 @@ interface Props {
 }
 
 const { id, title, actions, children }: Props = $props()
+
+const index = $derived(plateIndex(SECTIONS.findIndex(([s]) => s === id)))
 </script>
 
 <div class="section" {id}>
   <Card>
     <div class="head">
-      <h2 class="t-h3">{title}</h2>
+      <h2><span class="idx num" aria-hidden="true">{index}</span>{title}</h2>
       {#if actions}<span class="actions">{@render actions()}</span>{/if}
     </div>
     {@render children()}
@@ -41,7 +45,20 @@ const { id, title, actions, children }: Props = $props()
   }
 
   h2 {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
     margin: 0;
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: -0.01em;
+  }
+
+  .idx {
+    font-size: 11px;
+    color: var(--color-accent);
   }
 
   .actions {
