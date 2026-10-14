@@ -1,9 +1,13 @@
 /** A row's sort value; `null`/`undefined`/'' are blank and always sort last. */
 export type SortValue = string | number | null | undefined
 
+// One collator for every row: `localeCompare` with options builds a new one per call, which made
+// the default sort of ~700 projects cost ~17ms under Bun (SSR) and ~8ms in Chrome. Same order.
+const collator = new Intl.Collator(undefined, { numeric: true })
+
 function compare(a: string | number, b: string | number): number {
   if (typeof a === 'number' && typeof b === 'number') return a - b
-  return String(a).localeCompare(String(b), undefined, { numeric: true })
+  return collator.compare(String(a), String(b))
 }
 
 const isBlank = (v: SortValue) => v === null || v === undefined || v === ''
