@@ -20,7 +20,7 @@ const families = $derived([...new Set(items.map((i) => i.family))].sort())
 <aside class="rail">
   <div class="rail-header">
     <h1>Templates</h1>
-    <span class="count">{items.length}</span>
+    <span class="count num">{items.length}</span>
   </div>
   {#each families as family (family)}
     <div class="family">
@@ -57,8 +57,11 @@ const families = $derived([...new Set(items.map((i) => i.family))].sort())
     margin-bottom: var(--space-4);
   }
   .rail-header h1 {
-    font-size: 14px;
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: -0.01em;
   }
   .count {
     color: var(--color-muted);
